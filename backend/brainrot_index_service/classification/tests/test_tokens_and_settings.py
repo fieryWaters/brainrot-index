@@ -75,7 +75,7 @@ class UserSettingsTests(TestCase):
             self.assertEqual(plugin['enabled'], True)
             self.assertEqual(plugin['flagged_action'], 'hide')
         thresholds = {plugin['slug']: plugin['threshold'] for plugin in plugins}
-        self.assertEqual(thresholds, {'engagement-bait': 60, 'ragebait': 40, 'brainrot': 60, 'ai-slop': 60})
+        self.assertEqual(thresholds, {'engagement-bait': 60, 'ragebait': 40, 'brainrot': 40, 'ai-slop': 30})
 
     def test_plugin_settings_can_be_changed(self):
         response = self.client.patch(

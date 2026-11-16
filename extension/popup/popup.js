@@ -41,6 +41,33 @@ async function setUpSwitchAndLink() {
   document.getElementById("site-link").href = stored.serverAddress;
 }
 
+// Free-text feedback, sent with the address of the tab the popup was opened over.
+function setUpFeedbackForm() {
+  const feedbackText = document.getElementById("feedback-text");
+  const feedbackStatus = document.getElementById("feedback-status");
+  document.getElementById("feedback-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const [activeTab] = await extensionApi.tabs.query({ active: true, currentWindow: true });
+    const reply = await extensionApi.runtime.sendMessage({
+      type: "send-feedback",
+      feedback: { text: feedbackText.value, page_url: activeTab.url },
+    });
+    if (reply.sent) {
+      feedbackText.value = "";
+      feedbackStatus.textContent = "Sent, thank you";
+    } else {
+      feedbackStatus.textContent = "Could not send";
+    }
+  });
+}
+
+async function showExtensionCommit() {
+  const commit = await extensionApi.runtime.sendMessage({ type: "get-extension-commit" });
+  document.getElementById("extension-commit").textContent = commit;
+}
+
 setUpSwitchAndLink();
+setUpFeedbackForm();
+showExtensionCommit();
 showAccountStatus();
 showSessionCounts();

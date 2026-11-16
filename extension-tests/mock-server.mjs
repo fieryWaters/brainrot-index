@@ -8,6 +8,8 @@
 //   allow                   otherwise.
 // The post id rules exist so that any live feed yields some of each action.
 //
+// POST /api/feedback/ checks the required fields and answers 201 with a new id.
+//
 // Run on its own with `node mock-server.mjs` (port 8787), or import startMockServer from tests.
 import http from "node:http";
 
@@ -68,6 +70,7 @@ async function readJsonBody(request) {
 
 export function startMockServer(port) {
   const requestCountByPost = new Map(); // "platform:post_id" -> classify requests seen
+  let feedbackCount = 0;
 
   const server = http.createServer(async (request, response) => {
     const path = new URL(request.url, "http://mock").pathname;
@@ -103,6 +106,16 @@ export function startMockServer(port) {
         return { platform: post.platform, post_id: post.post_id, status: "done", ...chooseAnswer(post) };
       });
       sendJson(response, 200, { results });
+      return;
+    }
+    if (path === "/api/feedback/" && request.method === "POST") {
+      const feedback = await readJsonBody(request);
+      if (feedback.source === undefined || (feedback.text === undefined && feedback.expected_action === undefined)) {
+        sendJson(response, 400, { error: "source and one of text or expected_action are required" });
+        return;
+      }
+      feedbackCount = feedbackCount + 1;
+      sendJson(response, 201, { id: feedbackCount });
       return;
     }
     sendJson(response, 404, { error: "not found" });

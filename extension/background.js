@@ -5,8 +5,16 @@
 importScripts("extension-api.js");
 
 const DEFAULT_SERVER_ADDRESS = "https://brainrot.jacob-waters.com";
+const MISSED_POST_MENU_ITEM_ID = "should-have-been-filtered";
 
 extensionApi.runtime.onInstalled.addListener(async () => {
+  extensionApi.contextMenus.create({
+    id: MISSED_POST_MENU_ITEM_ID,
+    title: "Brainrot Index: this should have been filtered",
+    contexts: ["all"],
+    documentUrlPatterns: ["https://www.reddit.com/*", "https://x.com/*"],
+  });
+
   const stored = await extensionApi.storage.local.get(["serverAddress", "extensionEnabled"]);
   if (stored.serverAddress === undefined) {
     await extensionApi.storage.local.set({ serverAddress: DEFAULT_SERVER_ADDRESS });
@@ -24,6 +32,20 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "classify") {
     classifyPosts(message.posts).then(sendResponse);
     return true;
+  }
+  if (message.type === "get-extension-commit") {
+    extensionCommit().then(sendResponse);
+    return true;
+  }
+  if (message.type === "send-feedback") {
+    sendFeedback(message.feedback).then(sendResponse);
+    return true;
+  }
+});
+
+extensionApi.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === MISSED_POST_MENU_ITEM_ID) {
+    reportMissedPost(tab.id, info.frameId, info.pageUrl);
   }
 });
 
@@ -113,4 +135,45 @@ async function classifyPosts(posts) {
   }
   await extensionApi.storage.session.set(finishedAnswers);
   return { state: "connected", results: results.concat(serverResults) };
+}
+
+// The git commit this copy of the extension was loaded from, written to build-info.json by
+// extension-tests/stamp-build-info.mjs. "unstamped" when that file was never written.
+async function extensionCommit() {
+  try {
+    const response = await fetch(extensionApi.runtime.getURL("build-info.json"));
+    const buildInfo = await response.json();
+    if (buildInfo.dirty) {
+      return buildInfo.commit + "-dirty";
+    }
+    return buildInfo.commit;
+  } catch (missingFile) {
+    return "unstamped";
+  }
+}
+
+// feedback holds any of text, page_url, platform, post_id, shown_action and expected_action.
+// Answers { sent: true } when the server recorded it.
+async function sendFeedback(feedback) {
+  const body = { ...feedback, source: "extension", extension_commit: await extensionCommit() };
+  try {
+    const response = await callServer("POST", "/api/feedback/", body);
+    return { sent: response.ok };
+  } catch (networkError) {
+    return { sent: false };
+  }
+}
+
+// Sends feedback for the post the reader last right-clicked in that tab. When the right-click was not
+// inside a post, only the page address is attached; expected_action is still sent because the server
+// requires text or expected_action.
+async function reportMissedPost(tabId, frameId, pageUrl) {
+  const clickedPost = await extensionApi.tabs.sendMessage(tabId, { type: "get-right-clicked-post" }, { frameId: frameId });
+  const feedback = { page_url: pageUrl, expected_action: "hide" };
+  if (clickedPost !== null) {
+    feedback.platform = clickedPost.platform;
+    feedback.post_id = clickedPost.post_id;
+    feedback.shown_action = clickedPost.shown_action;
+  }
+  return sendFeedback(feedback);
 }

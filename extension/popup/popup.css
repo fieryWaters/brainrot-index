@@ -17,3 +17,15 @@ p {
   display: block;
   margin: 10px 0;
 }
+
+#feedback-text {
+  box-sizing: border-box;
+  width: 100%;
+  font: inherit;
+}
+
+.commit-line {
+  margin-top: 10px;
+  color: #888;
+  font-size: 11px;
+}

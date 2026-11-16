@@ -7,7 +7,7 @@
 
 const BATCH_QUIET_MS = 150;
 const BATCH_MAX_POSTS = 25;
-const PENDING_RETRY_DELAYS_MS = [2000, 4000, 8000];
+const PENDING_RETRY_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
 const ALLOW_ANSWER = { status: "done", action: "allow", reasons: [] };
 
 let config = null;  // server config while watching; null while stopped
@@ -29,13 +29,14 @@ function pluginThatFlagged(answer) {
   return answer.reasons[0].plugin;
 }
 
-function showAnswer(postElement, postId, answer) {
-  if (revealedPostIds.has(postId) || answer.action === "allow") {
+// shownAction is normally answer.action; receiveAnswer passes "blur" for a hidden post above the viewport.
+function showAnswer(postElement, postId, answer, shownAction = answer.action) {
+  if (revealedPostIds.has(postId) || shownAction === "allow") {
     siteAdapter.applyAction(postElement, { action: "allow" });
     return;
   }
   siteAdapter.applyAction(postElement, {
-    action: answer.action,
+    action: shownAction,
     pluginName: pluginThatFlagged(answer),
     allowReveal: config.allow_reveal,
     onReveal: () => revealedPostIds.add(postId),
@@ -45,7 +46,7 @@ function showAnswer(postElement, postId, answer) {
         page_url: location.href,
         platform: siteAdapter.platform,
         post_id: postId,
-        shown_action: answer.action,
+        shown_action: shownAction,
         expected_action: "allow",
       },
     }),
@@ -138,7 +139,8 @@ function sendNextBatch() {
 }
 
 // Sends posts to the server through the background worker. Posts the server is still working on are
-// asked about again after 2, 4 and 8 seconds, then treated as allowed.
+// asked about again after 0.5, 1, 2, 4 and 8 seconds, then treated as allowed. The server itself waits
+// up to about 1.5 seconds inside each call, so most posts are done by the first or second ask.
 async function requestAnswers(posts, retryCount) {
   const reply = await extensionApi.runtime.sendMessage({ type: "classify", posts: posts });
   if (config === null) {
@@ -176,10 +178,18 @@ async function requestAnswers(posts, retryCount) {
   }
 }
 
+// Collapsing a post above the top of the viewport would move everything the reader is looking at,
+// so such a post is blurred instead (blurring does not change its height). It is collapsed the next
+// time the site renders it.
 function receiveAnswer(postId, answer) {
   answerByPostId.set(postId, answer);
   for (const postElement of waitingElementsByPostId.get(postId) ?? []) {
-    if (postIdByElement.get(postElement) === postId) {
+    if (postIdByElement.get(postElement) !== postId) {
+      continue;
+    }
+    if (answer.action === "hide" && postElement.getBoundingClientRect().top < 0) {
+      showAnswer(postElement, postId, answer, "blur");
+    } else {
       showAnswer(postElement, postId, answer);
     }
   }

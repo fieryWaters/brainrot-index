@@ -42,6 +42,11 @@ function decoratePost(postElement, treatment) {
 
   const notice = document.createElement("div");
   notice.className = NOTICE_CLASS;
+  // A blurred post keeps its height: its label floats over the post's top edge instead of taking a
+  // line of its own, so labelling a post never moves the content around it.
+  if (treatment.action !== "hide") {
+    notice.classList.add("brainrot-index-notice-over-post");
+  }
   notice.textContent = noticeText(treatment);
   notice.addEventListener("click", () => revealIfAllowed(postElement));
   if (treatment.action === "blur" || treatment.action === "hide") {

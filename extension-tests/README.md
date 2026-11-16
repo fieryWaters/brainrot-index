@@ -34,6 +34,18 @@ tests send three real feedback reports (marked as automated in the popup text). 
 address must be one the manifest grants: `https://brainrot.jacob-waters.com`, `http://localhost`
 or `http://127.0.0.1`.
 
+To also exercise the real dashboard's Connect extension button and the settings checks (a plugin
+threshold of 20 must filter more; child mode must blur pending posts and remove reveal), pass a
+logged-in website session for the same account:
+
+    BRAINROT_SERVER=... BRAINROT_TOKEN=... BRAINROT_SESSION_COOKIE=<sessionid> BRAINROT_CSRF_TOKEN=<csrftoken> npm test
+
+Against a real server the runner prints, for each surface (Reddit feed, Reddit comments, X feed,
+X replies): posts sent, how many were done on the first ask, the time from first send to done, the
+flags by plugin, and a few flagged examples.
+
+`BRAINROT_ONLY=4g npm test -- x` runs only the tests whose names start with "4g".
+
 ## Profiles
 
 - Reddit tests use a new empty profile in `.profiles/` (git-ignored) on every run.

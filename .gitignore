@@ -16,3 +16,6 @@ dist/
 
 # Prototype server logs
 legacy/server/ingest-log/
+
+# Screenshots of live feeds and the X test account
+docs/screenshots/

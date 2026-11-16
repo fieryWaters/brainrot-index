@@ -19,6 +19,16 @@
   font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+/* No top or left: an absolute box with automatic offsets sits where it would have been in the flow,
+   which is the top left corner of the post that follows it, and it takes no space. */
+.brainrot-index-notice-over-post {
+  position: absolute;
+  z-index: 1;
+  margin: 6px 8px;
+  background: rgba(128, 128, 128, 0.85);
+  color: #fff;
+}
+
 .brainrot-index-report-wrong {
   margin-left: 10px;
   padding: 0 6px;

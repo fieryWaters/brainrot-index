@@ -32,6 +32,22 @@ function imageUrls(tweetElement) {
   return [...urls];
 }
 
+// On a post's page X ends the replies with a section of unrelated posts under a "Discover more" heading,
+// the only heading inside the timeline's cells. A tweet after that heading is a post, not a reply.
+// X removes cells far from the viewport, so once the heading has been seen on a page, tweets rendered
+// while it is gone are below it.
+let pagePathWhereRepliesEnd = null;
+
+function comesAfterReplies(tweetElement) {
+  const discoverMoreHeading = document.querySelector('[data-testid="cellInnerDiv"] h2[role="heading"]');
+  if (discoverMoreHeading !== null) {
+    pagePathWhereRepliesEnd = location.pathname;
+    const position = discoverMoreHeading.compareDocumentPosition(tweetElement);
+    return (position & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  }
+  return pagePathWhereRepliesEnd === location.pathname;
+}
+
 const siteAdapter = {
   platform: "x",
 
@@ -67,7 +83,7 @@ const siteAdapter = {
     };
 
     const openPostMatch = location.pathname.match(/^\/[^/]+\/status\/(\d+)/);
-    if (openPostMatch !== null && openPostMatch[1] !== statusId) {
+    if (openPostMatch !== null && openPostMatch[1] !== statusId && !comesAfterReplies(tweetElement)) {
       record.kind = "reply";
       record.parent_post_id = openPostMatch[1];
     }

@@ -6,7 +6,12 @@
 //   BRAINROT_SERVER=https://brainrot.jacob-waters.com BRAINROT_TOKEN=<token> node run-tests.mjs
 //     Runs against a real server. The connect test is skipped (the real site needs a login), and the
 //     checks that depend on the mock's fixed rules (pending first, at least one blur and one hide)
-//     are reported instead of asserted.
+//     are reported instead of asserted. For each surface it prints what the server decided.
+//   Adding BRAINROT_SESSION_COOKIE=<sessionid> BRAINROT_CSRF_TOKEN=<csrftoken> (a logged-in website
+//     session for the same account) also runs the real "Connect extension" button on the dashboard,
+//     and checks that a plugin threshold and child mode, changed through the API, take effect.
+//   BRAINROT_ONLY=4g node run-tests.mjs x
+//     Runs only the tests whose names start with "4g".
 //
 // The reddit group uses a fresh profile in .profiles/. The x group uses the signed-in test profile
 // below and only reads: it never posts, likes, follows or changes anything.
@@ -23,6 +28,8 @@ const MOCK_PORT = 8787;
 const usingMockServer = process.env.BRAINROT_SERVER === undefined;
 const serverAddress = process.env.BRAINROT_SERVER ?? `http://127.0.0.1:${MOCK_PORT}`;
 const token = process.env.BRAINROT_TOKEN ?? MOCK_TOKEN;
+const sessionCookie = process.env.BRAINROT_SESSION_COOKIE;
+const csrfToken = process.env.BRAINROT_CSRF_TOKEN;
 
 // Lets Playwright see the extension service worker's fetches, so tests can read every classify call.
 process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = "1";
@@ -36,7 +43,12 @@ function check(condition, description) {
   console.log("    ok: " + description);
 }
 
+// BRAINROT_ONLY=<prefix> runs only the tests whose names start with that prefix (connect steps always run).
 async function runTest(name, testFunction) {
+  const onlyPrefix = process.env.BRAINROT_ONLY;
+  if (onlyPrefix !== undefined && !name.startsWith(onlyPrefix) && !name.startsWith("2.")) {
+    return;
+  }
   console.log("\n== " + name);
   try {
     await testFunction();
@@ -59,16 +71,223 @@ async function waitUntil(condition, timeoutMs) {
 }
 
 // Every POST /api/classify/ the extension makes: the posts sent and the results received, in order.
+// sentAt and answeredAt are milliseconds since the epoch, taken when the request left and when its
+// answer arrived.
 function recordClassifyCalls(context) {
   const classifyCalls = [];
+  const sentAtByRequest = new WeakMap();
+  context.on("request", (request) => {
+    sentAtByRequest.set(request, Date.now());
+  });
   context.on("requestfinished", async (request) => {
     if (!request.url().endsWith("/api/classify/")) {
       return;
     }
+    const answeredAt = Date.now();
     const response = await request.response();
-    classifyCalls.push({ posts: request.postDataJSON().posts, results: (await response.json()).results });
+    classifyCalls.push({
+      posts: request.postDataJSON().posts,
+      results: (await response.json()).results,
+      sentAt: sentAtByRequest.get(request),
+      answeredAt: answeredAt,
+    });
   });
   return classifyCalls;
+}
+
+// What the server decided for the posts sent during one test: counts, timing, plugins, examples.
+// The time is from the first request carrying a post to the answer that finished it; the extension
+// adds up to 150 ms of batching before that and applies the action as soon as the answer arrives.
+function reportServerDecisions(surfaceName, classifyCalls) {
+  const postById = new Map();
+  const firstSentAtById = new Map();
+  const doneResultById = new Map();
+  const doneAtById = new Map();
+  let doneOnFirstAsk = 0;
+  for (const call of classifyCalls) {
+    for (const post of call.posts) {
+      postById.set(post.post_id, post);
+      if (!firstSentAtById.has(post.post_id)) {
+        firstSentAtById.set(post.post_id, call.sentAt);
+      }
+    }
+    for (const result of call.results) {
+      if (result.status !== "done" || doneResultById.has(result.post_id)) {
+        continue;
+      }
+      if (firstSentAtById.get(result.post_id) === call.sentAt) {
+        doneOnFirstAsk = doneOnFirstAsk + 1;
+      }
+      doneResultById.set(result.post_id, result);
+      doneAtById.set(result.post_id, call.answeredAt);
+    }
+  }
+  const waits = [...doneAtById.entries()].map(([postId, doneAt]) => doneAt - firstSentAtById.get(postId)).sort((a, b) => a - b);
+  const flaggedCountByPlugin = {};
+  const flaggedExamples = [];
+  for (const result of doneResultById.values()) {
+    if (result.action === "allow") {
+      continue;
+    }
+    const topReason = result.reasons[0];
+    const key = `${topReason.plugin} (${result.action})`;
+    flaggedCountByPlugin[key] = (flaggedCountByPlugin[key] ?? 0) + 1;
+    flaggedExamples.push(`${topReason.plugin} ${topReason.score} ${result.action}: ` + postById.get(result.post_id).text.replace(/\s+/g, " ").slice(0, 80));
+  }
+  console.log(`\n    -- server decisions: ${surfaceName}`);
+  console.log(`    posts sent: ${postById.size}; done: ${doneResultById.size}; done on the first ask: ${doneOnFirstAsk}`);
+  if (waits.length > 0) {
+    console.log(`    first send to done: median ${waits[Math.floor(waits.length / 2)]} ms, worst ${waits[waits.length - 1]} ms`);
+  }
+  console.log(`    flagged: ${JSON.stringify(flaggedCountByPlugin)}`);
+  for (const example of flaggedExamples.slice(0, 4)) {
+    console.log("      " + example);
+  }
+}
+
+// Website API calls made as the logged-in test account, for the settings checks.
+async function callWebsiteApi(method, path, body) {
+  const response = await fetch(serverAddress + path, {
+    method: method,
+    headers: {
+      "Cookie": `sessionid=${sessionCookie}; csrftoken=${csrfToken}`,
+      "X-CSRFToken": csrfToken,
+      "Content-Type": "application/json",
+      "Referer": serverAddress + "/dashboard",
+      "Origin": serverAddress,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  check(response.ok, `${method} ${path} answered ${response.status}`);
+  return response.json();
+}
+
+// The dashboard's "Connect extension" button, clicked in the browser with the test account's session
+// cookies added to the profile. No password is typed anywhere.
+async function testRealConnectFlow(context, serviceWorker, extensionId) {
+  await serviceWorker.evaluate(async (address) => {
+    await chrome.storage.local.set({ serverAddress: address });
+    await chrome.storage.local.remove("token");
+  }, serverAddress);
+  const siteHost = new URL(serverAddress).hostname;
+  await context.addCookies([
+    { name: "sessionid", value: sessionCookie, domain: siteHost, path: "/", secure: true, httpOnly: true, sameSite: "Lax" },
+    { name: "csrftoken", value: csrfToken, domain: siteHost, path: "/", secure: true, sameSite: "Lax" },
+  ]);
+  const dashboardPage = await context.newPage();
+  await dashboardPage.goto(serverAddress + "/dashboard", { waitUntil: "domcontentloaded" });
+  const connectButton = dashboardPage.getByRole("button", { name: "Connect extension" });
+  await connectButton.waitFor({ timeout: 15000 });
+  await connectButton.click();
+  const connectedText = dashboardPage.getByText("Connected", { exact: true });
+  await connectedText.waitFor({ timeout: 10000 });
+  check(await connectedText.isVisible(), "the dashboard shows Connected");
+  await dashboardPage.close();
+  const stored = await serviceWorker.evaluate(() => chrome.storage.local.get("token"));
+  check(typeof stored.token === "string" && stored.token.length > 0, "the extension stored a token");
+  check(await readPopupStatus(context, extensionId) === "Connected to your account", "popup shows connected");
+}
+
+function countFilteredAnswers(classifyCalls) {
+  const actionById = new Map();
+  for (const call of classifyCalls) {
+    for (const result of call.results) {
+      if (result.status === "done") {
+        actionById.set(result.post_id, result.action);
+      }
+    }
+  }
+  let filteredCount = 0;
+  for (const action of actionById.values()) {
+    if (action !== "allow") {
+      filteredCount = filteredCount + 1;
+    }
+  }
+  return { answeredCount: actionById.size, filteredCount };
+}
+
+// Lowering one plugin's threshold on the website must filter more of the same feed.
+async function testThresholdTakesEffect(page, serviceWorker, classifyCalls, feedUrl) {
+  const { plugins } = await callWebsiteApi("GET", "/api/plugins/");
+  const plugin = plugins.find((candidate) => candidate.enabled);
+  console.log(`    plugins: ${plugins.map((candidate) => `${candidate.slug} ${candidate.threshold} ${candidate.flagged_action}${candidate.enabled ? "" : " (off)"}`).join(", ")}`);
+
+  async function filteredOnFreshLoad() {
+    await serviceWorker.evaluate(() => chrome.storage.session.clear());
+    const callsBefore = classifyCalls.length;
+    await page.goto(feedUrl, { waitUntil: "domcontentloaded" });
+    await waitForAnswersToSettle(page, classifyCalls);
+    await scrollDown(page, 2);
+    await waitForAnswersToSettle(page, classifyCalls);
+    return countFilteredAnswers(classifyCalls.slice(callsBefore));
+  }
+
+  const before = await filteredOnFreshLoad();
+  await callWebsiteApi("PATCH", `/api/plugins/${plugin.slug}/`, { threshold: 20 });
+  let after;
+  try {
+    after = await filteredOnFreshLoad();
+  } finally {
+    await callWebsiteApi("PATCH", `/api/plugins/${plugin.slug}/`, { threshold: 60 });
+  }
+  console.log(`    ${plugin.slug} at ${plugin.threshold}: ${before.filteredCount} of ${before.answeredCount} filtered; at 20: ${after.filteredCount} of ${after.answeredCount}`);
+  check(after.filteredCount / Math.max(after.answeredCount, 1) > before.filteredCount / Math.max(before.answeredCount, 1),
+    "a lower threshold filters a larger share of posts");
+}
+
+// Child mode: pending posts are blurred and blurred posts cannot be revealed.
+async function testChildMode(page, serviceWorker, classifyCalls, feedUrl) {
+  await callWebsiteApi("PATCH", "/api/settings/", { mode: "child" });
+  try {
+    await serviceWorker.evaluate(() => chrome.storage.session.clear());
+    const status = await serviceWorker.evaluate(() => getStatus());
+    console.log("    config in child mode: " + JSON.stringify(status.config));
+    check(status.config.pending_action === "blur" && status.config.allow_reveal === false, "the server config says blur while pending and no reveal");
+    await page.goto(feedUrl, { waitUntil: "domcontentloaded" });
+    const sawPending = await waitUntil(async () => (await page.locator('[data-brainrot-index-action="pending"]').count()) > 0, 10000);
+    check(sawPending, "posts are blurred while pending");
+    await waitForAnswersToSettle(page, classifyCalls);
+    await scrollDown(page, 3);
+    await waitForAnswersToSettle(page, classifyCalls);
+    const blurLabels = await page.locator(".brainrot-index-notice-over-post").allTextContents();
+    console.log(`    blur labels in child mode: ${blurLabels.length}`);
+    check(blurLabels.every((label) => !label.includes("click to show")), "no blur label offers click to show");
+    const blurredPost = page.locator('[data-brainrot-index-action="blur"]').first();
+    if (await blurredPost.count() === 1) {
+      await blurredPost.click({ position: { x: 40, y: 60 } });
+      await page.waitForTimeout(500);
+      check(await blurredPost.getAttribute("data-brainrot-index-action") === "blur", "clicking a blurred post does not reveal it");
+    } else {
+      console.log("    info: no blurred post to click");
+    }
+  } finally {
+    await callWebsiteApi("PATCH", "/api/settings/", { mode: "adult" });
+  }
+}
+
+// Starts the extension on the server under test: the mock's connect page, the real dashboard, or a
+// token passed in the environment.
+async function connectExtension(context, serviceWorker, extensionId, groupName) {
+  // The worker's install handler writes the default address; settings written before it finishes are lost.
+  await waitUntil(async () => (await serviceWorker.evaluate(() => chrome.storage.local.get("serverAddress"))).serverAddress !== undefined, 5000);
+  if (usingMockServer) {
+    await runTest(`2. ${groupName}: connect flow stores the token, popup shows connected`, () =>
+      testConnectFlow(serviceWorker, extensionId, context));
+  } else if (sessionCookie !== undefined) {
+    await runTest(`2. ${groupName}: real dashboard Connect extension button`, () =>
+      testRealConnectFlow(context, serviceWorker, extensionId));
+  } else {
+    await configureExtension(serviceWorker);
+  }
+}
+
+// Runs one surface's test and, against a real server, prints what the server decided during it.
+async function runSurfaceTest(name, classifyCalls, testFunction) {
+  const callsBefore = classifyCalls.length;
+  await runTest(name, testFunction);
+  if (!usingMockServer) {
+    reportServerDecisions(name, classifyCalls.slice(callsBefore));
+  }
 }
 
 // Every POST /api/feedback/ body the extension sends, with the response status.
@@ -146,6 +365,10 @@ async function testReportWrongControl(page, feedbackCalls, platform) {
 // event) and then runs the worker function the menu item calls.
 async function testMissedPostMenuItem(page, serviceWorker, feedbackCalls, platform) {
   const unfilteredPost = page.locator(UNFILTERED_POST_SELECTOR[platform]).first();
+  for (let step = 0; step < 6 && (await unfilteredPost.count()) === 0; step++) {
+    await scrollDown(page, 1);
+  }
+  check(await unfilteredPost.count() === 1, "an unfiltered post is on the page");
   const postId = await unfilteredPost.evaluate(readPostIdInPage, platform);
   await unfilteredPost.dispatchEvent("contextmenu");
   const callsBefore = feedbackCalls.length;
@@ -242,7 +465,9 @@ async function checkPageMatchesAnswers(page, serviceWorker, platform) {
       continue;
     }
     answeredCount = answeredCount + 1;
-    if (answer.action !== treatment.action) {
+    // A post answered "hide" while above the viewport is blurred instead, so nothing visible moves.
+    const blurredInsteadOfHidden = answer.action === "hide" && treatment.action === "blur";
+    if (answer.action !== treatment.action && !blurredInsteadOfHidden) {
       mismatches.push(`${treatment.id}: answer ${answer.action}, page shows ${treatment.action}`);
     }
   }
@@ -311,7 +536,7 @@ function checkActedOn(actionCounts, what) {
 
 async function waitForAnswersToSettle(page, classifyCalls) {
   await waitUntil(() => classifyCalls.length > 0, 20000);
-  // The mock answers pending first and the extension asks again after 2 seconds.
+  // The mock answers pending first and the extension asks again after half a second.
   await waitUntil(async () => (await page.locator('[data-brainrot-index-action="pending"]').count()) === 0, 20000);
   await page.waitForTimeout(1000);
 }
@@ -348,6 +573,62 @@ async function checkFeed(page, serviceWorker, classifyCalls, platform, feedUrl) 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(6000);
   checkNoResends(classifyCalls);
+}
+
+// Content the reader is looking at must not move when answers arrive. The test loads a feed with the
+// extension switched off, scrolls down, then switches it on, so the posts above the viewport are marked
+// pending and answered while the reader looks further down. It follows one visible post's position.
+async function testScrollStability(context, page, serviceWorker, platform, feedUrl) {
+  const postSelector = platform === "reddit" ? "shreddit-post" : 'article[data-testid="tweet"]';
+  await serviceWorker.evaluate(() => chrome.storage.session.clear());
+  await serviceWorker.evaluate(() => chrome.storage.local.set({ extensionEnabled: false }));
+  await page.goto(feedUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(5000);
+  await page.mouse.wheel(0, 1400);
+  await page.waitForTimeout(1500);
+
+  // Runs in the page: numbers the posts in the viewport, below the top 120 px.
+  const watchedCount = await page.evaluate((selector) => {
+    let index = 0;
+    for (const post of document.querySelectorAll(selector)) {
+      const top = post.getBoundingClientRect().top;
+      if (top > 120 && top < window.innerHeight) {
+        post.dataset.testWatched = String(index);
+        index = index + 1;
+      }
+    }
+    return index;
+  }, postSelector);
+  check(watchedCount > 0, `posts are in view to watch (${watchedCount})`);
+
+  await serviceWorker.evaluate(() => chrome.storage.local.set({ extensionEnabled: true }));
+  const samples = [];
+  for (let sample = 0; sample < 50; sample++) {
+    samples.push(await page.evaluate(() => [...document.querySelectorAll("[data-test-watched]")]
+      .sort((a, b) => Number(a.dataset.testWatched) - Number(b.dataset.testWatched))
+      .map((post) => {
+        const rect = post.getBoundingClientRect();
+        return { top: Math.round(rect.top), hidden: rect.height === 0 };
+      })));
+    await page.waitForTimeout(100);
+  }
+
+  // The reader watches the highest post in view that stays visible. A post in view collapsing above it
+  // moves it legitimately (the reader saw that post collapse), so that case is reported, not judged.
+  const neverHidden = (index) => samples.every((sample) => sample[index] !== undefined && !sample[index].hidden);
+  let watchedIndex = 0;
+  while (watchedIndex < watchedCount && !neverHidden(watchedIndex)) {
+    watchedIndex = watchedIndex + 1;
+  }
+  check(watchedIndex < watchedCount, "a post in view stayed visible");
+  const tops = samples.map((sample) => sample[watchedIndex].top);
+  const largestMove = Math.max(...tops) - Math.min(...tops);
+  console.log(`    watched post (${watchedIndex} posts in view above it collapsed) top over 5 s: ${[...new Set(tops)].join(" ")} (moved ${largestMove} px)`);
+  if (watchedIndex > 0) {
+    console.log("    info: a post in view was hidden while the reader looked at it, so movement is expected");
+    return;
+  }
+  check(largestMove <= 2, "the watched post did not move when answers arrived");
 }
 
 // Shared body of the Reddit comments and X replies tests.
@@ -391,7 +672,10 @@ async function readPopupStatus(context, extensionId) {
 }
 
 async function testConnectFlow(serviceWorker, extensionId, context) {
-  await serviceWorker.evaluate((address) => chrome.storage.local.set({ serverAddress: address }), serverAddress);
+  await serviceWorker.evaluate(async (address) => {
+    await chrome.storage.local.set({ serverAddress: address });
+    await chrome.storage.local.remove("token");
+  }, serverAddress);
   check(await readPopupStatus(context, extensionId) !== "Connected to your account", "popup shows not connected before connecting");
   const sitePage = await context.newPage();
   await sitePage.goto(serverAddress + "/");
@@ -491,18 +775,13 @@ async function runRedditGroup() {
 
     await runTest("1. extension loads, service worker starts, default options", () =>
       testExtensionLoads(serviceWorker, extensionId, context));
-    if (usingMockServer) {
-      await runTest("2. connect flow stores the token, popup shows connected", () =>
-        testConnectFlow(serviceWorker, extensionId, context));
-    } else {
-      await configureExtension(serviceWorker);
-    }
-    await runTest("3a. Reddit feed", () =>
+    await connectExtension(context, serviceWorker, extensionId, "Reddit profile");
+    await runSurfaceTest("3a. Reddit feed", classifyCalls, () =>
       checkFeed(page, serviceWorker, classifyCalls, "reddit", "https://www.reddit.com/r/popular/"));
     await runTest("6a. feedback: Wrong? control on a filtered post", () => testReportWrongControl(page, feedbackCalls, "reddit"));
     await runTest("6b. feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "reddit"));
     await runTest("6c. feedback: popup text box", () => testPopupFeedbackBox(context, extensionId, feedbackCalls));
-    await runTest("3b. Reddit comments", async () => {
+    await runSurfaceTest("3b. Reddit comments", classifyCalls, async () => {
       await page.goto("https://www.reddit.com/r/AskReddit/", { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(4000);
       const threadPath = await page.evaluate(() => {
@@ -512,7 +791,15 @@ async function runRedditGroup() {
       });
       await checkReplies(page, serviceWorker, classifyCalls, "reddit", "https://www.reddit.com" + threadPath);
     });
+    await runTest("3c. Reddit scroll stability", () =>
+      testScrollStability(context, page, serviceWorker, "reddit", "https://www.reddit.com/r/popular/"));
     await runTest("5. scroll performance on Reddit", () => testScrollPerformance(context, serviceWorker, extensionId, classifyCalls, "https://www.reddit.com/r/popular/"));
+    if (!usingMockServer && sessionCookie !== undefined) {
+      await runTest("7a. a lower plugin threshold filters more", () =>
+        testThresholdTakesEffect(page, serviceWorker, classifyCalls, "https://www.reddit.com/r/popular/"));
+      await runTest("7b. child mode blurs pending posts and removes reveal", () =>
+        testChildMode(page, serviceWorker, classifyCalls, "https://www.reddit.com/r/popular/"));
+    }
   } finally {
     await context.close();
   }
@@ -555,21 +842,95 @@ async function testXRecycledTweets(page, serviceWorker, classifyCalls) {
   await checkPageMatchesAnswers(page, serviceWorker, "x");
 }
 
+// Runs in the page: the status ids of the tweets above and below the "Discover more" heading, or null
+// while the heading is not in the page.
+function readTweetsAroundHeading() {
+  const heading = document.querySelector('[data-testid="cellInnerDiv"] h2[role="heading"]');
+  if (heading === null) {
+    return null;
+  }
+  const before = [];
+  const after = [];
+  for (const tweet of document.querySelectorAll('article[data-testid="tweet"]')) {
+    const timeLink = tweet.querySelector("a[href*='/status/'] time")?.closest("a");
+    if (!timeLink) {
+      continue;
+    }
+    const statusId = timeLink.getAttribute("href").split("/")[3];
+    if (heading.compareDocumentPosition(tweet) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      after.push(statusId);
+    } else {
+      before.push(statusId);
+    }
+  }
+  return { headingText: heading.textContent, before, after };
+}
+
+// On a post's page, tweets under the "Discover more" heading are unrelated posts and must be sent as
+// kind "post". The test opens posts with few replies so that heading is reachable.
+async function testXDiscoverMore(page, classifyCalls) {
+  await page.goto("https://x.com/home", { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(5000);
+  const statusPaths = await page.evaluate(() => {
+    const paths = [];
+    for (const tweet of document.querySelectorAll('article[data-testid="tweet"]')) {
+      const replyCount = parseInt(tweet.querySelector('[data-testid="reply"]')?.getAttribute("aria-label") ?? "0", 10) || 0;
+      const timeLink = tweet.querySelector("a[href*='/status/'] time")?.closest("a");
+      if (timeLink && replyCount >= 2 && replyCount <= 12) {
+        paths.push(timeLink.getAttribute("href"));
+      }
+    }
+    return paths;
+  });
+  check(statusPaths.length > 0, "found a post with 2 to 12 replies");
+  // Not every post's page has the section, so up to five posts are tried.
+  let statusPath = null;
+  let tweetsAroundHeading = null;
+  for (const candidatePath of statusPaths.slice(0, 5)) {
+    statusPath = candidatePath;
+    await page.goto("https://x.com" + statusPath, { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(4000);
+    for (let step = 0; step < 10 && tweetsAroundHeading === null; step++) {
+      tweetsAroundHeading = await page.evaluate(readTweetsAroundHeading);
+      await page.mouse.wheel(0, 1000);
+      await page.waitForTimeout(2000);
+    }
+    if (tweetsAroundHeading !== null) {
+      // Bring the tweets below the heading into view and let them be sent.
+      await page.mouse.wheel(0, 800);
+      await page.waitForTimeout(3000);
+      tweetsAroundHeading = (await page.evaluate(readTweetsAroundHeading)) ?? tweetsAroundHeading;
+      break;
+    }
+  }
+  check(tweetsAroundHeading !== null, "the Discover more heading appeared");
+  console.log(`    heading "${tweetsAroundHeading.headingText}": ${tweetsAroundHeading.before.length} tweets above, ${tweetsAroundHeading.after.length} below`);
+  const openPostId = statusPath.split("/")[3];
+  const sentKindById = new Map(allSentPosts(classifyCalls).map((post) => [post.post_id, post]));
+  const sentAfter = tweetsAroundHeading.after.filter((id) => sentKindById.has(id));
+  const sentRepliesBefore = tweetsAroundHeading.before.filter((id) => id !== openPostId && sentKindById.has(id));
+  check(sentAfter.length > 0, `tweets below the heading were sent (${sentAfter.length})`);
+  console.log(`    open post ${openPostId}; sent below the heading: ` + JSON.stringify(sentAfter.map((id) => ({ id, kind: sentKindById.get(id).kind, parent: sentKindById.get(id).parent_post_id }))));
+  check(sentAfter.every((id) => sentKindById.get(id).kind === "post" && sentKindById.get(id).parent_post_id === undefined),
+    "every tweet below the heading was sent as a post with no parent");
+  check(sentRepliesBefore.every((id) => sentKindById.get(id).kind === "reply"), "every tweet above the heading was sent as a reply");
+}
+
 async function runXGroup() {
   const { context, serviceWorker, extensionId } = await launchBrave(X_TEST_PROFILE_DIR, { signedInProfile: true });
   try {
-    await configureExtension(serviceWorker);
+    await connectExtension(context, serviceWorker, extensionId, "X profile");
     await serviceWorker.evaluate(() => chrome.storage.session.clear());
     const classifyCalls = recordClassifyCalls(context);
     const feedbackCalls = recordFeedbackCalls(context);
     const page = context.pages()[0] ?? (await context.newPage());
 
-    await runTest("4a. X home feed", () =>
+    await runSurfaceTest("4a. X home feed", classifyCalls, () =>
       checkFeed(page, serviceWorker, classifyCalls, "x", "https://x.com/home"));
     await runTest("4c. X recycled tweets", () => testXRecycledTweets(page, serviceWorker, classifyCalls));
     await runTest("4d. X feedback: Wrong? control", () => testReportWrongControl(page, feedbackCalls, "x"));
     await runTest("4e. X feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "x"));
-    await runTest("4b. X replies", async () => {
+    await runSurfaceTest("4b. X replies", classifyCalls, async () => {
       await page.goto("https://x.com/home", { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(5000);
       // The tweet with the most replies, read from the reply button's label ("123 Replies. Reply").
@@ -588,6 +949,8 @@ async function runXGroup() {
       });
       await checkReplies(page, serviceWorker, classifyCalls, "x", "https://x.com" + statusPath);
     });
+    await runTest("4g. X Discover more posts are not replies", () => testXDiscoverMore(page, classifyCalls));
+    await runTest("4h. X scroll stability", () => testScrollStability(context, page, serviceWorker, "x", "https://x.com/home"));
     await runTest("4f. scroll performance on X", () =>
       testScrollPerformance(context, serviceWorker, extensionId, classifyCalls, "https://x.com/home"));
   } finally {

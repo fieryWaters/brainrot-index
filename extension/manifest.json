@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Brainrot Index",
+  "version": "0.1.0",
+  "description": "Blurs or hides feed posts on Reddit and X that your Brainrot Index account flags.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://brainrot.jacob-waters.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.reddit.com/*"],
+      "js": ["extension-api.js", "content/post-decoration.js", "sites/reddit.js", "content/feed-watcher.js"],
+      "css": ["content/post-decoration.css"]
+    },
+    {
+      "matches": ["https://x.com/*"],
+      "js": ["extension-api.js", "content/post-decoration.js", "sites/x.js", "content/feed-watcher.js"],
+      "css": ["content/post-decoration.css"]
+    },
+    {
+      "matches": ["https://brainrot.jacob-waters.com/*", "http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["extension-api.js", "content/connect-listener.js"]
+    }
+  ]
+}

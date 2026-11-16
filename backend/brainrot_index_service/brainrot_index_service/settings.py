@@ -55,6 +55,8 @@ SECRET_KEY = resolved_secret_key(SECURE_MODE)
 
 # The public address of the site, for example https://brainrotindex.com.
 SITE_URL = config('SITE_URL', default='').strip().rstrip('/')
+# The git commit this build came from, passed in by deploy.sh.
+GIT_COMMIT = os.environ.get('GIT_COMMIT', 'unknown')
 SITE_DOMAIN = urlparse(SITE_URL).hostname or ''
 GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID', default='').strip()
 
@@ -85,6 +87,13 @@ STRIPE_SECRET_KEY = config('STRIPE_TEST_SECRET_KEY', default='').strip()
 STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='').strip()
 OPENROUTER_API_KEY = config('OPENROUTER_API_KEY', default='').strip()
 
+# Where classification inference runs: openrouter or local (any OpenAI-compatible
+# chat completions server). Both use the same client code.
+INFERENCE_SOURCE = config('INFERENCE_SOURCE', default='openrouter').strip()
+OPENROUTER_MODEL = config('OPENROUTER_MODEL', default='google/gemini-2.5-flash-lite').strip()
+LOCAL_INFERENCE_BASE_URL = config('LOCAL_INFERENCE_BASE_URL', default='').strip().rstrip('/')
+LOCAL_INFERENCE_MODEL = config('LOCAL_INFERENCE_MODEL', default='').strip()
+
 
 # Application definition
 
@@ -99,6 +108,8 @@ INSTALLED_APPS = [
     'corsheaders',
     'anymail',
     'api',
+    'classification',
+    'feedback',
 ]
 
 # -- Email -------------------------------------------------------------------
@@ -207,6 +218,9 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Original post images, kept on the post_images volume.
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # Cloudflare Tunnel and reverse proxy support
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

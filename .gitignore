@@ -5,6 +5,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+*.egg-info/
 
 # Node.js
 node_modules/

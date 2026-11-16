@@ -18,7 +18,8 @@ dependencies = [
     "requests>=2.34.2",
     "django-anymail[resend]>=15.2",
     "argon2-cffi>=25.1.0",
+    "pillow>=12.0",
 ]
 
 [tool.setuptools]
-packages = ["api", "brainrot_index_service"]
+packages = ["api", "brainrot_index_service", "classification", "feedback"]

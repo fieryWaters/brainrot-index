@@ -93,14 +93,22 @@ def model_image_data_url(post_image):
     """The stored image as a JPEG data URL whose longest side is at most 768
     pixels, or None when the stored bytes are not an image Pillow can read."""
     try:
-        with post_image.file.open('rb') as image_file, Image.open(image_file) as picture:
-            small_picture = picture.convert('RGB')
-            small_picture.thumbnail((MODEL_IMAGE_MAX_SIDE, MODEL_IMAGE_MAX_SIDE))
-            jpeg_buffer = io.BytesIO()
-            small_picture.save(jpeg_buffer, format='JPEG', quality=MODEL_IMAGE_JPEG_QUALITY)
+        with post_image.file.open('rb') as image_file:
+            return image_file_data_url(image_file)
     except OSError as error:
         logger.warning("Cannot decode post image %s: %s", post_image.id, error)
         return None
+
+
+def image_file_data_url(image_file):
+    """An image file (a path or an open binary file) as a JPEG data URL whose
+    longest side is at most 768 pixels. Raises OSError when the bytes are not
+    an image Pillow can read."""
+    with Image.open(image_file) as picture:
+        small_picture = picture.convert('RGB')
+        small_picture.thumbnail((MODEL_IMAGE_MAX_SIDE, MODEL_IMAGE_MAX_SIDE))
+        jpeg_buffer = io.BytesIO()
+        small_picture.save(jpeg_buffer, format='JPEG', quality=MODEL_IMAGE_JPEG_QUALITY)
 
     encoded_jpeg = base64.b64encode(jpeg_buffer.getvalue()).decode('ascii')
     return f"data:image/jpeg;base64,{encoded_jpeg}"

@@ -67,6 +67,7 @@ user settings, and feedback. Make an account staff once:
 
 - Logs: `docker compose logs -f web backend`
 - Backend tests: `docker compose exec backend python manage.py test api classification feedback`
+- Evaluate a model against `eval/dataset.jsonl` (the folder is mounted, not built in; see `eval/README.md`): `docker compose run --rm --no-deps --user "$(id -u):$(id -g)" -v "$PWD/eval:/app/eval" --entrypoint python backend manage.py evaluate_plugins --dataset /app/eval/dataset.jsonl --inference-source openrouter --model google/gemini-2.5-flash-lite`
 - Worker logs: `docker compose logs -f worker`
 - Frontend tests: `docker build --target build -t brainrot-index-frontend-test frontend/brainrot-index-frontend && docker run --rm brainrot-index-frontend-test npx vitest run`
 - Django shell: `docker compose exec backend python manage.py shell`

@@ -42,6 +42,7 @@ decide the action.
 | `.env.example`                      | Every setting the stack reads, with a one-line description.      |
 | `DEPLOY.md`                         | Ports, addresses, email, and the future public tunnel.           |
 | `legacy/`                           | The original proof of concept (Safari userscript, Node server, Ollama scoring). |
+| `eval/`                             | Labeled posts and per-model results for scoring the classifier; see `eval/README.md`. |
 
 ## Deploy
 

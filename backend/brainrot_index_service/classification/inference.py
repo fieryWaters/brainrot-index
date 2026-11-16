@@ -1,9 +1,14 @@
 """Applying a plugin's rubric to a post with an OpenAI-compatible chat
-completions API, either OpenRouter or a local server (INFERENCE_SOURCE)."""
+completions API, either OpenRouter or a local server (INFERENCE_SOURCE).
+
+The production worker and the evaluation command share everything here up to
+the model's parsed answer; only where the post comes from and where the
+answer is saved differ."""
 
 import json
 import logging
 import time
+from dataclasses import dataclass
 
 import requests
 from django.conf import settings
@@ -44,11 +49,32 @@ fields, in this order:
 - label: exactly one of: {labels}."""
 
 
-def inference_endpoint():
-    """(base URL, API key, model) for the configured INFERENCE_SOURCE."""
+@dataclass
+class ModelOutcome:
+    """What the model answered for one classification. answer is None when
+    every attempt failed; the measurements are those of the last attempt,
+    except cost, which adds up every attempt the provider reported a cost for."""
+
+    answer: dict | None = None
+    raw_response: str = ''
+    latency_ms: int | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    cost: float | None = None
+
+
+def configured_model():
+    """The model production uses with the configured INFERENCE_SOURCE."""
     if settings.INFERENCE_SOURCE == INFERENCE_SOURCE_OPENROUTER:
-        return OPENROUTER_BASE_URL, settings.OPENROUTER_API_KEY, settings.OPENROUTER_MODEL
-    return settings.LOCAL_INFERENCE_BASE_URL, '', settings.LOCAL_INFERENCE_MODEL
+        return settings.OPENROUTER_MODEL
+    return settings.LOCAL_INFERENCE_MODEL
+
+
+def inference_endpoint(inference_source):
+    """(base URL, API key) of an inference source."""
+    if inference_source == INFERENCE_SOURCE_OPENROUTER:
+        return OPENROUTER_BASE_URL, settings.OPENROUTER_API_KEY
+    return settings.LOCAL_INFERENCE_BASE_URL, ''
 
 
 def system_prompt(plugin_version):
@@ -57,27 +83,28 @@ def system_prompt(plugin_version):
     return plugin_version.rubric_prompt + '\n\n' + RESPONSE_INSTRUCTIONS.format(labels=labels)
 
 
-def describe_post(post, image_count):
-    lines = [f"Platform: {PLATFORM_NAMES[post.platform]}"]
-    if post.community:
-        lines.append(f"Community: {post.community}")
+def describe_post(platform, community, kind, text, parent_text, image_count):
+    """The post as the model reads it. parent_text is None when a reply's
+    parent post is unknown."""
+    lines = [f"Platform: {PLATFORM_NAMES[platform]}"]
+    if community:
+        lines.append(f"Community: {community}")
 
-    if post.kind == POST_KIND_REPLY:
+    if kind == POST_KIND_REPLY:
         lines.append("Kind: reply")
-        parent_post = Post.objects.filter(platform=post.platform, post_id=post.parent_post_id).first()
-        if parent_post is not None:
-            lines.append(f"Replying to this post: {parent_post.text[:MAX_PARENT_TEXT_CHARACTERS]}")
+        if parent_text is not None:
+            lines.append(f"Replying to this post: {parent_text[:MAX_PARENT_TEXT_CHARACTERS]}")
     else:
         lines.append("Kind: post")
 
     lines.append(f"Images attached: {image_count}")
     lines.append("Text:")
-    lines.append(post.text[:MAX_TEXT_CHARACTERS] or "(no text)")
+    lines.append(text[:MAX_TEXT_CHARACTERS] or "(no text)")
     return '\n'.join(lines)
 
 
-def build_messages(plugin_version, post, image_urls):
-    user_content = [{'type': 'text', 'text': describe_post(post, len(image_urls))}]
+def build_messages(plugin_version, post_description, image_urls):
+    user_content = [{'type': 'text', 'text': post_description}]
     for image_url in image_urls:
         user_content.append({'type': 'image_url', 'image_url': {'url': image_url}})
     return [
@@ -99,8 +126,8 @@ def answer_schema(allowed_labels):
     }
 
 
-def request_chat_completion(messages, allowed_labels):
-    base_url, api_key, model = inference_endpoint()
+def request_chat_completion(messages, allowed_labels, inference_source, model):
+    base_url, api_key = inference_endpoint(inference_source)
     request_body = {
         'model': model,
         'messages': messages,
@@ -111,7 +138,7 @@ def request_chat_completion(messages, allowed_labels):
             'json_schema': {'name': 'classification', 'strict': True, 'schema': answer_schema(allowed_labels)},
         },
     }
-    if settings.INFERENCE_SOURCE == INFERENCE_SOURCE_OPENROUTER:
+    if inference_source == INFERENCE_SOURCE_OPENROUTER:
         # Never fall back to a provider that would ignore the JSON schema.
         request_body['provider'] = {'require_parameters': True}
 
@@ -146,6 +173,41 @@ def parse_answer(answer_text, allowed_labels):
     return answer
 
 
+def ask_model(messages, allowed_labels, inference_source, model):
+    """Sends the messages to the model, retrying once after a failed request
+    or an invalid answer, and returns a ModelOutcome."""
+    outcome = ModelOutcome()
+    for attempt in range(1, ATTEMPTS_PER_CLASSIFICATION + 1):
+        started_at = time.monotonic()
+        try:
+            response = request_chat_completion(messages, allowed_labels, inference_source, model)
+            outcome.latency_ms = round((time.monotonic() - started_at) * 1000)
+            outcome.raw_response = response.text
+            response.raise_for_status()
+            completion = response.json()
+            usage = completion.get('usage') or {}
+            outcome.prompt_tokens = usage.get('prompt_tokens')
+            outcome.completion_tokens = usage.get('completion_tokens')
+            if usage.get('cost') is not None:
+                outcome.cost = (outcome.cost or 0) + usage['cost']
+            outcome.answer = parse_answer(completion['choices'][0]['message']['content'], allowed_labels)
+        except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as error:
+            logger.warning("Model request attempt %s failed: %s", attempt, error)
+            continue
+        if outcome.answer is not None:
+            break
+        logger.warning("Model request attempt %s gave an invalid answer", attempt)
+    return outcome
+
+
+def stored_parent_text(post):
+    """The text of a reply's parent post, or None when it was never seen."""
+    parent_post = Post.objects.filter(platform=post.platform, post_id=post.parent_post_id).first()
+    if parent_post is None:
+        return None
+    return parent_post.text
+
+
 def run_classification(classification):
     """Calls the model for one pending classification and saves the outcome."""
     plugin_version = classification.plugin_version
@@ -157,42 +219,36 @@ def run_classification(classification):
         if data_url is not None:
             images_with_data.append((post_image, data_url))
 
-    messages_to_send = build_messages(plugin_version, post, [data_url for _, data_url in images_with_data])
+    parent_text = None
+    if post.kind == POST_KIND_REPLY:
+        parent_text = stored_parent_text(post)
+    post_description = describe_post(
+        post.platform, post.community, post.kind, post.text, parent_text, len(images_with_data))
+
+    messages_to_send = build_messages(
+        plugin_version, post_description, [data_url for _, data_url in images_with_data])
     # The stored prompt points at the stored images instead of repeating their bytes.
     messages_to_store = build_messages(
-        plugin_version, post, [f"post_image:{post_image.id}" for post_image, _ in images_with_data])
+        plugin_version, post_description, [f"post_image:{post_image.id}" for post_image, _ in images_with_data])
 
-    _, _, model = inference_endpoint()
+    model = configured_model()
     classification.prompt = messages_to_store
     classification.model = model
     classification.inference_source = settings.INFERENCE_SOURCE
 
-    answer = None
-    for attempt in range(1, ATTEMPTS_PER_CLASSIFICATION + 1):
-        started_at = time.monotonic()
-        try:
-            response = request_chat_completion(messages_to_send, plugin_version.allowed_labels)
-            classification.latency_ms = round((time.monotonic() - started_at) * 1000)
-            classification.raw_response = response.text
-            response.raise_for_status()
-            completion = response.json()
-            usage = completion.get('usage') or {}
-            classification.prompt_tokens = usage.get('prompt_tokens')
-            classification.completion_tokens = usage.get('completion_tokens')
-            answer = parse_answer(completion['choices'][0]['message']['content'], plugin_version.allowed_labels)
-        except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as error:
-            logger.warning("Classification %s attempt %s failed: %s", classification.id, attempt, error)
-            continue
-        if answer is not None:
-            break
-        logger.warning("Classification %s attempt %s gave an invalid answer", classification.id, attempt)
+    outcome = ask_model(messages_to_send, plugin_version.allowed_labels, settings.INFERENCE_SOURCE, model)
+    classification.raw_response = outcome.raw_response
+    classification.latency_ms = outcome.latency_ms
+    classification.prompt_tokens = outcome.prompt_tokens
+    classification.completion_tokens = outcome.completion_tokens
 
-    if answer is None:
+    if outcome.answer is None:
+        logger.warning("Classification %s failed", classification.id)
         classification.status = CLASSIFICATION_FAILED
     else:
         classification.status = CLASSIFICATION_DONE
-        classification.score = answer['score']
-        classification.label = answer['label']
-        classification.reasoning = answer['reasoning']
+        classification.score = outcome.answer['score']
+        classification.label = outcome.answer['label']
+        classification.reasoning = outcome.answer['reasoning']
     classification.completed_at = timezone.now()
     classification.save()

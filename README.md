@@ -29,7 +29,19 @@ decide the action.
 | `GET, PATCH /api/settings/` | session | `{enabled, mode, allow_reveal}` |
 | `GET /api/plugins/` | session | `{plugins: [{slug, name, description, enabled, threshold, flagged_action}]}` |
 | `PATCH /api/plugins/<slug>/` | session | change `enabled`, `threshold`, `flagged_action` |
-| `POST /api/feedback/` | session or extension token | a problem report, stamped with the running commit |
+| `POST /api/feedback/` | session, extension token, or none (20 an hour per address) | a problem report, stamped with the running commit |
+
+## Working through feedback
+
+Reports from the site's Feedback button and from the extension are `Feedback` rows,
+stamped with the site and extension commits they were written against.
+
+1. Read the open ones: `docker compose exec backend python manage.py list_feedback`
+   (`--all` includes resolved ones). The admin at `/admin/` filters on Resolved too.
+2. Fix the problem and commit.
+3. Mark the reports resolved with that commit:
+   `docker compose exec backend python manage.py resolve_feedback 17 20 --commit <hash> --note "what was wrong"`.
+   Reports that are not fixed stay open. Rows are never deleted.
 
 ## Layout
 

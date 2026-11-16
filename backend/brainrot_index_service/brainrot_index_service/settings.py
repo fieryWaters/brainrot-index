@@ -264,6 +264,7 @@ REST_FRAMEWORK = {
         'auth_reset_request': '5/hour',
         'auth_reset_confirm': '10/hour',
         'auth_verify': '20/hour',
+        'feedback_anon': '20/hour',
     },
 }
 

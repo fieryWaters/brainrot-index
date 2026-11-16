@@ -21,7 +21,8 @@ class Feedback(models.Model):
     """A problem report written while using the product, stamped with the code
     versions it was written against so fixed reports can be told apart."""
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='feedback')
+    # Empty for a report sent from the website by someone not signed in.
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='feedback', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     source = models.CharField(max_length=16, choices=SOURCE_CHOICES)
     text = models.TextField(blank=True, default='')
@@ -35,8 +36,14 @@ class Feedback(models.Model):
     shown_action = models.CharField(max_length=16, choices=ACTION_CHOICES, blank=True, default='')
     expected_action = models.CharField(max_length=16, choices=ACTION_CHOICES, blank=True, default='')
 
+    # Set once the problem is fixed, naming the commit that fixed it, so open reports are easy to find.
+    resolved = models.BooleanField(default=False)
+    resolved_commit = models.CharField(max_length=64, blank=True, default='')
+    resolved_note = models.TextField(blank=True, default='')
+
     class Meta:
         verbose_name_plural = 'feedback'
 
     def __str__(self):
-        return f"feedback {self.id} from {self.user} ({self.source})"
+        sender = self.user if self.user is not None else "someone not signed in"
+        return f"feedback {self.id} from {sender} ({self.source})"

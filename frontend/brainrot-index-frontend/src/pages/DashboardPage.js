@@ -70,7 +70,7 @@ export function mountDashboardPage() {
     window.postMessage({ type: TOKEN_MESSAGE_TYPE, token: data.token }, window.location.origin)
     clearTimeout(extensionAnswerTimer)
     extensionAnswerTimer = setTimeout(() => {
-      connectStatus.textContent = 'The Brainrot Index extension is not installed in this browser.'
+      connectStatus.textContent = 'The extension did not answer on this page. If you just installed or reloaded it, reload this page and press Connect extension again.'
     }, EXTENSION_ANSWER_TIMEOUT_MS)
   })
 

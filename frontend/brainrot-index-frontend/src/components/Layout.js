@@ -73,7 +73,6 @@ export function createLayout() {
   function renderNav() {
     const { isAuthenticated, email } = getState()
 
-    feedbackButton.el.classList.toggle('hidden', !isAuthenticated)
     if (isAuthenticated) {
       emailP.textContent = email || ''
       avatarBtn.textContent = email ? email[0].toUpperCase() : '?'

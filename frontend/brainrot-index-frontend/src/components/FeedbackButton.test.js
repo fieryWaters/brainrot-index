@@ -15,7 +15,7 @@ describe('FeedbackButton', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderElement(createFeedbackButton().el)
 
-    fireEvent.click(screen.getByText('Feedback'))
+    fireEvent.click(screen.getByText('Feedback', { selector: 'button' }))
     fireEvent.input(screen.getByPlaceholderText('What went wrong, or what should change?'), { target: { value: 'Slider is confusing' } })
     fireEvent.click(screen.getByText('Send'))
 
@@ -24,5 +24,19 @@ describe('FeedbackButton', () => {
     expect(url).toBe('/api/feedback/')
     expect(JSON.parse(options.body)).toEqual({ source: 'site', text: 'Slider is confusing', page_url: window.location.href })
     await waitFor(() => expect(screen.getByPlaceholderText('What went wrong, or what should change?').value).toBe(''))
+  })
+})
+
+describe('FeedbackButton failures', () => {
+  it('says why a report was not sent', async () => {
+    document.cookie = 'csrftoken=test-csrf'
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 429, headers: { 'Content-Type': 'application/json' } })))
+    renderElement(createFeedbackButton().el)
+
+    fireEvent.click(screen.getByText('Feedback', { selector: 'button' }))
+    fireEvent.input(screen.getByPlaceholderText('What went wrong, or what should change?'), { target: { value: 'Hello' } })
+    fireEvent.click(screen.getByText('Send'))
+
+    expect(await screen.findByText('Not sent: too many reports from this address. Please try again in an hour.')).toBeInTheDocument()
   })
 })

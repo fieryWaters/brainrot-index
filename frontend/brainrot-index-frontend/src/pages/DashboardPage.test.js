@@ -73,13 +73,13 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Connected')).toBeInTheDocument()
   })
 
-  it('says the extension is missing when nothing answers', async () => {
+  it('tells the reader to reload the page when the extension does not answer', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     renderElement(mountDashboardPage().el)
     fireEvent.click(screen.getByText('Connect extension'))
     await waitFor(() => expect(requests.some((request) => request.path.endsWith('/extension/token/'))).toBe(true))
     await vi.advanceTimersByTimeAsync(EXTENSION_ANSWER_TIMEOUT_MS + 100)
 
-    expect(screen.getByText('The Brainrot Index extension is not installed in this browser.')).toBeInTheDocument()
+    expect(screen.getByText('The extension did not answer on this page. If you just installed or reloaded it, reload this page and press Connect extension again.')).toBeInTheDocument()
   })
 })

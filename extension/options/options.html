@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Brainrot Index options</title>
+  <style>
+    body { margin: 24px; font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    input { width: 360px; }
+  </style>
+</head>
+<body>
+  <h1>Brainrot Index options</h1>
+  <form id="options-form">
+    <label>
+      Server address<br>
+      <input type="url" id="server-address" required>
+    </label>
+    <button type="submit">Save</button>
+    <span id="save-status"></span>
+  </form>
+  <script src="../extension-api.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

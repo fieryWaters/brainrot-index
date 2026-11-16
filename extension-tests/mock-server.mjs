@@ -1,0 +1,117 @@
+// A stand-in for the Brainrot Index backend that follows the extension API contract with fixed,
+// predictable rules, plus a one-page website with a "Connect extension" button.
+//
+// Rules for POST /api/classify/:
+//   The first request for a post answers "pending"; every later request answers "done".
+//   hide  "Engagement bait" when the text contains "AITA" or the post id ends in 0, 1, 2 or 3.
+//   blur  "Ragebait"        when the text is longer than 400 characters or the post id ends in 4, 5, 6 or 7.
+//   allow                   otherwise.
+// The post id rules exist so that any live feed yields some of each action.
+//
+// Run on its own with `node mock-server.mjs` (port 8787), or import startMockServer from tests.
+import http from "node:http";
+
+export const MOCK_TOKEN = "mock-account-token";
+export const MOCK_UNSUBSCRIBED_TOKEN = "mock-unsubscribed-token";
+
+const MOCK_CONFIG = {
+  enabled: true,
+  mode: "adult",
+  pending_action: "blur",
+  allow_reveal: true,
+  platforms: ["reddit", "x"],
+};
+
+const CONNECT_PAGE = `<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Brainrot Index (mock)</title></head>
+<body>
+  <h1>Brainrot Index (mock site)</h1>
+  <button id="connect-button">Connect extension</button>
+  <p id="connect-status">Not connected</p>
+  <script>
+    document.getElementById("connect-button").addEventListener("click", () => {
+      window.postMessage({ type: "brainrot-index-extension-token", token: "${MOCK_TOKEN}" }, window.location.origin);
+    });
+    window.addEventListener("message", (event) => {
+      if (event.origin === window.location.origin && event.data?.type === "brainrot-index-extension-connected") {
+        document.getElementById("connect-status").textContent = "Extension connected";
+      }
+    });
+  </script>
+</body>
+</html>`;
+
+function chooseAnswer(post) {
+  const lastIdCharacter = post.post_id.slice(-1);
+  if (post.text.includes("AITA") || "0123".includes(lastIdCharacter)) {
+    return { action: "hide", reasons: [{ plugin: "Engagement bait", label: "Asks for engagement", score: 90 }] };
+  }
+  if (post.text.length > 400 || "4567".includes(lastIdCharacter)) {
+    return { action: "blur", reasons: [{ plugin: "Ragebait", label: "Written to anger", score: 75 }] };
+  }
+  return { action: "allow", reasons: [] };
+}
+
+function sendJson(response, statusCode, body) {
+  response.writeHead(statusCode, { "Content-Type": "application/json" });
+  response.end(JSON.stringify(body));
+}
+
+async function readJsonBody(request) {
+  let body = "";
+  for await (const chunk of request) {
+    body = body + chunk;
+  }
+  return JSON.parse(body);
+}
+
+export function startMockServer(port) {
+  const requestCountByPost = new Map(); // "platform:post_id" -> classify requests seen
+
+  const server = http.createServer(async (request, response) => {
+    const path = new URL(request.url, "http://mock").pathname;
+    if (path === "/") {
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end(CONNECT_PAGE);
+      return;
+    }
+
+    const token = (request.headers.authorization ?? "").replace("Bearer ", "");
+    if (token === MOCK_UNSUBSCRIBED_TOKEN) {
+      sendJson(response, 402, { error: "no active subscription" });
+      return;
+    }
+    if (token !== MOCK_TOKEN) {
+      sendJson(response, 401, { error: "invalid token" });
+      return;
+    }
+
+    if (path === "/api/extension/config/" && request.method === "GET") {
+      sendJson(response, 200, MOCK_CONFIG);
+      return;
+    }
+    if (path === "/api/classify/" && request.method === "POST") {
+      const { posts } = await readJsonBody(request);
+      const results = posts.map((post) => {
+        const postKey = post.platform + ":" + post.post_id;
+        const requestCount = (requestCountByPost.get(postKey) ?? 0) + 1;
+        requestCountByPost.set(postKey, requestCount);
+        if (requestCount === 1) {
+          return { platform: post.platform, post_id: post.post_id, status: "pending" };
+        }
+        return { platform: post.platform, post_id: post.post_id, status: "done", ...chooseAnswer(post) };
+      });
+      sendJson(response, 200, { results });
+      return;
+    }
+    sendJson(response, 404, { error: "not found" });
+  });
+
+  return new Promise((resolve) => server.listen(port, "127.0.0.1", () => resolve(server)));
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  await startMockServer(8787);
+  console.log("Mock Brainrot Index server on http://127.0.0.1:8787");
+}

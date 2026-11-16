@@ -4,9 +4,32 @@ A browser extension classifies social media posts with an LLM and hides the
 unwanted ones: brainrot, ragebait, and engagement bait. This repository holds
 the website behind it: accounts, subscriptions, and the classification API.
 
-So far it contains the foundation: email/password and Google sign-in with
-email verification and password reset, on a Django + Postgres backend and a
-plain JavaScript frontend.
+It contains email/password and Google sign-in, the classification API the
+extension calls, the worker that runs the model, a dashboard for settings, and
+a feedback button, on a Django + Postgres backend and a plain JavaScript
+frontend.
+
+## How classification works
+
+The extension sends each post it sees to `POST /api/classify/`. Every post is
+stored once (`Post`, with its images downloaded to the `post_images` volume).
+Each plugin (engagement bait, ragebait, brainrot, AI slop) is a rubric prompt
+with immutable versions; a `Classification` row per (post, plugin version) is
+the shared cache, so a post costs one model call per plugin version no matter
+how many users see it. The `worker` service takes pending rows from Postgres
+and calls the model; the endpoint waits up to 1.5 s so most posts come back
+done on the first call. Each user's threshold and blur/hide choice per plugin
+decide the action.
+
+| Endpoint | Auth | Purpose |
+| --- | --- | --- |
+| `GET /api/extension/config/` | extension token | master switch, mode, pending action |
+| `POST /api/classify/` | extension token | up to 25 posts in, allow/blur/hide out |
+| `POST /api/extension/token/` | session | new extension token, returned once |
+| `GET, PATCH /api/settings/` | session | `{enabled, mode, allow_reveal}` |
+| `GET /api/plugins/` | session | `{plugins: [{slug, name, description, enabled, threshold, flagged_action}]}` |
+| `PATCH /api/plugins/<slug>/` | session | change `enabled`, `threshold`, `flagged_action` |
+| `POST /api/feedback/` | session or extension token | a problem report, stamped with the running commit |
 
 ## Layout
 
@@ -14,7 +37,7 @@ plain JavaScript frontend.
 | ----------------------------------- | ----------------------------------------------------------------- |
 | `backend/brainrot_index_service/`   | Django + Django REST Framework API, run by gunicorn. Python via uv. |
 | `frontend/brainrot-index-frontend/` | Vite + Tailwind single-page app, no framework, served by nginx.   |
-| `docker-compose.yml`                | `db` (Postgres 17), `backend`, `web`.                             |
+| `docker-compose.yml`                | `db` (Postgres 17), `backend`, `worker`, `web`.                   |
 | `deploy.sh`                         | Rebuilds and restarts the stack.                                  |
 | `.env.example`                      | Every setting the stack reads, with a one-line description.      |
 | `DEPLOY.md`                         | Ports, addresses, email, and the future public tunnel.           |

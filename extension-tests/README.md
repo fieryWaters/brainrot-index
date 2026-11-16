@@ -48,7 +48,8 @@ Against a real server the runner prints, for each surface (Reddit feed, Reddit c
 X replies): posts sent, how many were done on the first ask, the time from first send to done, the
 flags by plugin, and a few flagged examples.
 
-`BRAINROT_ONLY=4g npm test -- x` runs only the tests whose names start with "4g".
+`BRAINROT_ONLY=4g npm test -- x` runs only the tests whose names start with "4g"; several prefixes
+can be given separated by commas, for example `BRAINROT_ONLY=3a,6,8`.
 
 ## Run live with a fresh account (one command)
 

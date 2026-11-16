@@ -43,10 +43,11 @@ function check(condition, description) {
   console.log("    ok: " + description);
 }
 
-// BRAINROT_ONLY=<prefix> runs only the tests whose names start with that prefix (connect steps always run).
+// BRAINROT_ONLY=<prefix>[,<prefix>...] runs only the tests whose names start with one of those
+// prefixes (connect steps always run).
 async function runTest(name, testFunction) {
-  const onlyPrefix = process.env.BRAINROT_ONLY;
-  if (onlyPrefix !== undefined && !name.startsWith(onlyPrefix) && !name.startsWith("2.")) {
+  const onlyPrefixes = process.env.BRAINROT_ONLY?.split(",");
+  if (onlyPrefixes !== undefined && !onlyPrefixes.some((prefix) => name.startsWith(prefix)) && !name.startsWith("2.")) {
     return;
   }
   console.log("\n== " + name);
@@ -414,7 +415,8 @@ function readPostIdInPage(postElement, platform) {
 }
 
 // Marks the first post shown with this action that offers Show, scrolls it to the middle of the
-// screen, and answers a locator for it. Scrolls further down the feed when there is none yet.
+// screen, and answers a locator for it. Scrolls further down the feed when there is none yet. Against
+// a real server it answers null when there is none, since the server's answers decide the treatments.
 async function findPostToReveal(page, action) {
   for (let step = 0; step < 8; step++) {
     const found = await page.evaluate((action) => {
@@ -435,7 +437,15 @@ async function findPostToReveal(page, action) {
     }
     await scrollDown(page, 1);
   }
+  if (!usingMockServer) {
+    return null;
+  }
   throw new Error(`check failed: a ${action} post offering Show is on the page`);
+}
+
+// The real server's answers decide which treatments a feed has; one that is missing is reported.
+function reportMissingTreatment(action) {
+  console.log(`    info: no ${action} post offering Show on the page, so this case was not checked`);
 }
 
 // Runs in the page: whether the post is drawn, its top, and its blur.
@@ -456,6 +466,10 @@ function noticeOf(postLocator) {
 // Show on a blurred post's label reveals it where it is, and Blur again blurs it again.
 async function testRevealBlurredPost(page) {
   const post = await findPostToReveal(page, "blur");
+  if (post === null) {
+    reportMissingTreatment("blur");
+    return;
+  }
   const notice = noticeOf(post);
   const summary = await notice.locator(".brainrot-index-summary").textContent();
   console.log("    label: " + summary);
@@ -469,9 +483,10 @@ async function testRevealBlurredPost(page) {
   check(Math.abs(shown.top - before.top) <= 2, `the revealed post did not move (${before.top} to ${shown.top})`);
   const blurAgainButton = noticeOf(post).locator(".brainrot-index-reveal");
   check(await blurAgainButton.textContent() === "Blur again", "the label offers Blur again");
-  // Playwright scrolls a button out from under a site's sticky header before clicking it, so the
-  // position is taken after that.
-  await blurAgainButton.hover();
+  // The line above the revealed post can sit under a site's sticky header, where Playwright would
+  // scroll before clicking; the post is brought to the middle of the screen first.
+  await post.evaluate((element) => element.scrollIntoView({ block: "center" }));
+  await page.waitForTimeout(500);
   const beforeBlurAgain = await post.evaluate(readPostLook);
   await blurAgainButton.click();
   const blurredAgain = await post.evaluate(readPostLook);
@@ -487,6 +502,10 @@ async function testRevealBlurredPost(page) {
 // Show on a hidden post's line expands it, and Hide again collapses it. The keyboard reaches Show.
 async function testRevealHiddenPost(page) {
   const post = await findPostToReveal(page, "hide");
+  if (post === null) {
+    reportMissingTreatment("hide");
+    return;
+  }
   check(!(await post.evaluate(readPostLook)).drawn, "the hidden post is collapsed");
   const notice = noticeOf(post);
   check(/^Hidden - .+: .+ \(\d+\/100\)$/.test(await notice.locator(".brainrot-index-summary").textContent()), "the hidden line names the plugin, label and score");
@@ -506,6 +525,10 @@ async function testRevealHiddenPost(page) {
 // open the post.
 async function testClickOnBlurredPost(page) {
   const post = await findPostToReveal(page, "blur");
+  if (post === null) {
+    reportMissingTreatment("blur");
+    return;
+  }
   const urlBefore = page.url();
   const box = await post.boundingBox();
   await page.mouse.click(box.x + box.width / 2, box.y + Math.min(box.height / 2, 300));
@@ -532,6 +555,10 @@ function findTreatedElementInPage(postId) {
 // it again with a new element.
 async function testRevealSurvivesScrolling(page, platform) {
   const post = await findPostToReveal(page, "blur");
+  if (post === null) {
+    reportMissingTreatment("blur");
+    return;
+  }
   const postId = await post.evaluate((element, [platform, readPostIdSource]) => {
     const readPostId = new Function("return " + readPostIdSource)();
     if (element.id.endsWith("-comment-rtjson-content")) {
@@ -612,6 +639,8 @@ async function testReportWrongControl(page, feedbackCalls, platform) {
   await waitUntil(async () => (await form.locator(".brainrot-index-report-status").textContent()) !== "Sending...", 3000);
   check(await form.locator(".brainrot-index-report-status").textContent() === "Recorded, thank you", "the label confirms it was recorded");
   check(page.url() === urlBefore, "using the form did not open the post");
+  await waitUntil(async () => (await form.count()) === 0, 4000);
+  check(await form.count() === 0 && await reportWrongButton.isVisible(), "the form closes and Wrong? comes back");
 }
 
 // The context menu item cannot be clicked from a test, so the test right-clicks a post (a contextmenu

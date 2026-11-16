@@ -43,14 +43,14 @@ export function mountLoginPage() {
     footerEl: footer,
     onSubmit: async ({ email, password }) => {
       const result = await loginWithPassword(email, password)
-      if (result.ok) navigate('/')
+      if (result.ok) navigate('/dashboard')
       return result
     },
   })
 
   // If Google sign-in completes while we're on this page, navigate home.
   const unsubscribe = subscribe((state) => {
-    if (state.isAuthenticated) navigate('/')
+    if (state.isAuthenticated) navigate('/dashboard')
   })
 
   return {

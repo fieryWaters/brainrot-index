@@ -41,7 +41,7 @@ export function mountSignupPage() {
       // If the signup auto-upgraded to a verified login, we're done.
       const { isAuthenticated, emailVerified } = getState()
       if (isAuthenticated && emailVerified) {
-        navigate('/')
+        navigate('/dashboard')
       } else {
         showPendingConfirmation()
       }
@@ -63,7 +63,7 @@ export function mountSignupPage() {
   }
 
   const unsubscribe = subscribe((state) => {
-    if (state.isAuthenticated && state.emailVerified) navigate('/')
+    if (state.isAuthenticated && state.emailVerified) navigate('/dashboard')
   })
 
   return {

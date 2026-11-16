@@ -9,6 +9,7 @@ import { mountForgotPasswordPage } from './pages/ForgotPasswordPage.js'
 import { mountResetPasswordPage } from './pages/ResetPasswordPage.js'
 import { mountVerifyEmailPage } from './pages/VerifyEmailPage.js'
 import { mountAccountPage } from './pages/AccountPage.js'
+import { mountDashboardPage } from './pages/DashboardPage.js'
 
 // Build the persistent shell and mount it into #root
 const layout = createLayout()
@@ -26,6 +27,7 @@ register('/forgot-password', mountForgotPasswordPage)
 register('/reset-password', mountResetPasswordPage)
 register('/verify-email', mountVerifyEmailPage)
 register('/account', mountAccountPage, { requiresAuth: true })
+register('/dashboard', mountDashboardPage, { requiresAuth: true })
 
 // Centralized auth gate: protected routes redirect to '/' when there's no
 // session. Reads live state so a fresh refreshSession() on boot is honored.

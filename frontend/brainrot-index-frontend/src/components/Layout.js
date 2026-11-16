@@ -3,7 +3,11 @@
 
 import { getState, subscribe, logout } from '../lib/auth.js'
 import { el } from '../lib/dom.js'
+import { createFeedbackButton } from './FeedbackButton.js'
 import { onNavigate, navigate } from '../lib/router.js'
+
+// The git commit this build came from, passed in by deploy.sh.
+const GIT_COMMIT = import.meta.env.VITE_GIT_COMMIT || 'unknown'
 
 export function createLayout() {
   // -- Navigation --
@@ -22,6 +26,8 @@ export function createLayout() {
   const emailP = el('p', 'text-sm font-medium truncate')
 
   const dropdownLinkClass = 'block px-3 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-colors'
+  const dashboardLink = el('a', dropdownLinkClass, 'Dashboard')
+  dashboardLink.href = '/dashboard'
   const accountLink = el('a', dropdownLinkClass, 'Account settings')
   accountLink.href = '/account'
 
@@ -36,7 +42,7 @@ export function createLayout() {
 
   const dropdown = el('div', 'absolute right-0 mt-2 w-72 bg-gray-900 border border-white/10 rounded-xl shadow-2xl shadow-black/50 overflow-hidden z-50 hidden',
     el('div', 'px-4 py-3 border-b border-white/10', emailP),
-    el('div', 'p-1', accountLink, signOutBtn))
+    el('div', 'p-1', dashboardLink, accountLink, signOutBtn))
 
   const dropdownWrapper = el('div', 'relative', avatarBtn, dropdown)
 
@@ -62,9 +68,12 @@ export function createLayout() {
     }
   })
 
+  const feedbackButton = createFeedbackButton()
+
   function renderNav() {
     const { isAuthenticated, email } = getState()
 
+    feedbackButton.el.classList.toggle('hidden', !isAuthenticated)
     if (isAuthenticated) {
       emailP.textContent = email || ''
       avatarBtn.textContent = email ? email[0].toUpperCase() : '?'
@@ -102,10 +111,12 @@ export function createLayout() {
   const outlet = el('main', 'flex-1')
   outlet.id = 'page-outlet'
 
-  const footer = el('footer', 'border-t border-white/10 py-6 text-center text-sm text-white/40', 'Brainrot Index')
+  const footer = el('footer', 'border-t border-white/10 py-6 text-center text-sm text-white/40',
+    el('p', '', 'Brainrot Index'),
+    el('p', 'mt-1 text-xs text-white/25', `Version ${GIT_COMMIT}`))
 
   const shell = el('div', 'min-h-screen bg-gray-950 text-white flex flex-col',
-    nav, outlet, footer)
+    nav, outlet, footer, feedbackButton.el)
 
   // Initial render of nav right slot
   renderNav()

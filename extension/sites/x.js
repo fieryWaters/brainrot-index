@@ -19,14 +19,14 @@ function ownStatusPath(tweetElement) {
 // area and as the video's poster, so duplicates are dropped.
 function imageUrls(tweetElement) {
   const urls = new Set();
-  for (const image of tweetElement.querySelectorAll('[data-testid="tweetPhoto"] img')) {
+  for (const image of tweetElement.querySelectorAll('[data-testid="tweetPhoto"] img[src]')) {
     const url = new URL(image.src);
     if (url.pathname.startsWith("/media/")) {
       url.searchParams.set("name", "orig");
     }
     urls.add(url.href);
   }
-  for (const video of tweetElement.querySelectorAll("video[poster]")) {
+  for (const video of tweetElement.querySelectorAll('video[poster]:not([poster=""])')) {
     urls.add(video.poster);
   }
   return [...urls];
@@ -83,7 +83,12 @@ const siteAdapter = {
     };
 
     const openPostMatch = location.pathname.match(/^\/[^/]+\/status\/(\d+)/);
-    if (openPostMatch !== null && openPostMatch[1] !== statusId && !comesAfterReplies(tweetElement)) {
+    // X status ids grow with time, so a reply always has a larger id than the post it answers. Older
+    // tweets on the page are the thread the post itself replies to, or "Discover more" posts that
+    // appeared before their heading did.
+    if (openPostMatch !== null
+        && BigInt(statusId) > BigInt(openPostMatch[1])
+        && !comesAfterReplies(tweetElement)) {
       record.kind = "reply";
       record.parent_post_id = openPostMatch[1];
     }

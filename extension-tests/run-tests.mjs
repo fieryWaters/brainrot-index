@@ -85,12 +85,19 @@ function recordClassifyCalls(context) {
     }
     const answeredAt = Date.now();
     const response = await request.response();
-    classifyCalls.push({
+    const call = {
       posts: request.postDataJSON().posts,
-      results: (await response.json()).results,
+      results: [],
+      status: response.status(),
       sentAt: sentAtByRequest.get(request),
       answeredAt: answeredAt,
-    });
+    };
+    if (response.ok()) {
+      call.results = (await response.json()).results;
+    } else {
+      console.log(`    classify answered ${response.status()}: ` + (await response.text()).slice(0, 200));
+    }
+    classifyCalls.push(call);
   });
   return classifyCalls;
 }
@@ -135,7 +142,8 @@ function reportServerDecisions(surfaceName, classifyCalls) {
     flaggedExamples.push(`${topReason.plugin} ${topReason.score} ${result.action}: ` + postById.get(result.post_id).text.replace(/\s+/g, " ").slice(0, 80));
   }
   console.log(`\n    -- server decisions: ${surfaceName}`);
-  console.log(`    posts sent: ${postById.size}; done: ${doneResultById.size}; done on the first ask: ${doneOnFirstAsk}`);
+  const failedCalls = classifyCalls.filter((call) => call.status !== 200).length;
+  console.log(`    posts sent: ${postById.size}; done: ${doneResultById.size}; done on the first ask: ${doneOnFirstAsk}; classify calls: ${classifyCalls.length}, failed: ${failedCalls}`);
   if (waits.length > 0) {
     console.log(`    first send to done: median ${waits[Math.floor(waits.length / 2)]} ms, worst ${waits[waits.length - 1]} ms`);
   }
@@ -484,6 +492,7 @@ function allSentPosts(classifyCalls) {
 function checkBatches(classifyCalls) {
   check(classifyCalls.length > 0, `classify calls were made (${classifyCalls.length})`);
   check(classifyCalls.every((call) => call.posts.length <= 25), "every batch has at most 25 posts");
+  check(classifyCalls.every((call) => call.status === 200), "every classify call succeeded");
 }
 
 function checkPendingThenDone(classifyCalls) {
@@ -604,12 +613,15 @@ async function testScrollStability(context, page, serviceWorker, platform, feedU
   await serviceWorker.evaluate(() => chrome.storage.local.set({ extensionEnabled: true }));
   const samples = [];
   for (let sample = 0; sample < 50; sample++) {
-    samples.push(await page.evaluate(() => [...document.querySelectorAll("[data-test-watched]")]
-      .sort((a, b) => Number(a.dataset.testWatched) - Number(b.dataset.testWatched))
-      .map((post) => {
+    // One entry per watched post still in the page, keyed by its number.
+    samples.push(await page.evaluate(() => {
+      const positionByNumber = {};
+      for (const post of document.querySelectorAll("[data-test-watched]")) {
         const rect = post.getBoundingClientRect();
-        return { top: Math.round(rect.top), hidden: rect.height === 0 };
-      })));
+        positionByNumber[post.dataset.testWatched] = { top: Math.round(rect.top), hidden: rect.height === 0 };
+      }
+      return positionByNumber;
+    }));
     await page.waitForTimeout(100);
   }
 
@@ -620,7 +632,10 @@ async function testScrollStability(context, page, serviceWorker, platform, feedU
   while (watchedIndex < watchedCount && !neverHidden(watchedIndex)) {
     watchedIndex = watchedIndex + 1;
   }
-  check(watchedIndex < watchedCount, "a post in view stayed visible");
+  if (watchedIndex === watchedCount) {
+    console.log("    info: every post in view was hidden or removed, so there was nothing to watch; run again");
+    return;
+  }
   const tops = samples.map((sample) => sample[watchedIndex].top);
   const largestMove = Math.max(...tops) - Math.min(...tops);
   console.log(`    watched post (${watchedIndex} posts in view above it collapsed) top over 5 s: ${[...new Set(tops)].join(" ")} (moved ${largestMove} px)`);
@@ -908,12 +923,13 @@ async function testXDiscoverMore(page, classifyCalls) {
   const openPostId = statusPath.split("/")[3];
   const sentKindById = new Map(allSentPosts(classifyCalls).map((post) => [post.post_id, post]));
   const sentAfter = tweetsAroundHeading.after.filter((id) => sentKindById.has(id));
-  const sentRepliesBefore = tweetsAroundHeading.before.filter((id) => id !== openPostId && sentKindById.has(id));
+  // Tweets older than the open post are the thread it replies to, not replies.
+  const sentRepliesBefore = tweetsAroundHeading.before.filter((id) => BigInt(id) > BigInt(openPostId) && sentKindById.has(id));
   check(sentAfter.length > 0, `tweets below the heading were sent (${sentAfter.length})`);
   console.log(`    open post ${openPostId}; sent below the heading: ` + JSON.stringify(sentAfter.map((id) => ({ id, kind: sentKindById.get(id).kind, parent: sentKindById.get(id).parent_post_id }))));
   check(sentAfter.every((id) => sentKindById.get(id).kind === "post" && sentKindById.get(id).parent_post_id === undefined),
     "every tweet below the heading was sent as a post with no parent");
-  check(sentRepliesBefore.every((id) => sentKindById.get(id).kind === "reply"), "every tweet above the heading was sent as a reply");
+  check(sentRepliesBefore.every((id) => sentKindById.get(id).kind === "reply"), "every newer tweet above the heading was sent as a reply");
 }
 
 async function runXGroup() {

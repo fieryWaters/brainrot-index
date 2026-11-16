@@ -13,7 +13,8 @@ const POST_MEDIA_IMAGE_SELECTOR = [
   '[slot="thumbnail"] img',
 ].join(", ");
 
-// The widest image a srcset offers, or src when there is no srcset.
+// The widest image a srcset offers, or src when there is no srcset. An image Reddit has not started
+// loading yet has neither, and gives "".
 function bestImageUrl(image) {
   const srcset = image.getAttribute("srcset");
   if (srcset === null || srcset === "") {
@@ -39,7 +40,10 @@ function postImageUrls(postElement) {
   }
   const imageUrls = new Set();
   for (const image of postElement.querySelectorAll(POST_MEDIA_IMAGE_SELECTOR)) {
-    imageUrls.add(bestImageUrl(image));
+    const url = bestImageUrl(image);
+    if (url !== "") {
+      imageUrls.add(url);
+    }
   }
   return [...imageUrls];
 }
@@ -82,7 +86,10 @@ function extractComment(commentElement) {
   const permalink = commentElement.getAttribute("permalink");
   const imageUrls = new Set();
   for (const image of body.querySelectorAll("img")) {
-    imageUrls.add(bestImageUrl(image));
+    const url = bestImageUrl(image);
+    if (url !== "") {
+      imageUrls.add(url);
+    }
   }
   return {
     platform: "reddit",

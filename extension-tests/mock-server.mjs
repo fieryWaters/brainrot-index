@@ -104,6 +104,11 @@ export function startMockServer(port) {
     }
     if (path === "/api/classify/" && request.method === "POST") {
       const { posts } = await readJsonBody(request);
+      // The real server rejects the whole batch when any image URL is blank.
+      if (posts.some((post) => post.image_urls.includes(""))) {
+        sendJson(response, 400, { error: "image_urls may not contain blank values" });
+        return;
+      }
       const results = posts.map((post) => {
         const postKey = post.platform + ":" + post.post_id;
         const requestCount = (requestCountByPost.get(postKey) ?? 0) + 1;

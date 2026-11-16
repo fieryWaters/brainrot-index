@@ -56,7 +56,7 @@ function setUpFeedbackForm() {
       feedbackText.value = "";
       feedbackStatus.textContent = "Sent, thank you";
     } else {
-      feedbackStatus.textContent = "Could not send";
+      feedbackStatus.textContent = "Not sent. " + reply.reason;
     }
   });
 }

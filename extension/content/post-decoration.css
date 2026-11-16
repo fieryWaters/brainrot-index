@@ -1,41 +1,115 @@
 /* Treatments drawn by post-decoration.js. !important because site styles are often very specific. */
 
 [data-brainrot-index-action="pending"],
-[data-brainrot-index-action="blur"] {
+[data-brainrot-index-action="blur"]:not([data-brainrot-index-revealed]) {
   filter: blur(14px) !important;
   cursor: pointer;
 }
 
-[data-brainrot-index-action="hide"] {
+[data-brainrot-index-action="hide"]:not([data-brainrot-index-revealed]) {
   display: none !important;
 }
 
+/* A line of its own above a hidden or revealed post. Translucent grey and inherited text colour read
+   on both light and dark site themes. */
 .brainrot-index-notice {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  box-sizing: border-box;
   margin: 4px 0;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: rgba(128, 128, 128, 0.18); /* reads on both light and dark site themes */
+  padding: 3px 4px 3px 10px;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.12);
   color: inherit;
-  font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 12px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  text-align: left;
+  cursor: default;
 }
 
 /* No top or left: an absolute box with automatic offsets sits where it would have been in the flow,
-   which is the top left corner of the post that follows it, and it takes no space. */
+   which is the top left corner of the post that follows it, and it takes no space. Dark and solid,
+   because what is under it is a blur of anything. */
 .brainrot-index-notice-over-post {
   position: absolute;
-  z-index: 1;
-  margin: 6px 8px;
-  background: rgba(128, 128, 128, 0.85);
-  color: #fff;
+  z-index: 2;
+  max-width: min(560px, calc(100% - 16px));
+  margin: 8px;
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(24, 24, 27, 0.9);
+  color: #f4f4f5;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-.brainrot-index-report-wrong {
-  margin-left: 10px;
-  padding: 0 6px;
-  border: 1px solid currentColor;
-  border-radius: 4px;
+.brainrot-index-summary {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.brainrot-index-notice button {
+  flex: none;
+  box-sizing: border-box;
+  height: 20px;
+  min-height: 0;
+  margin: 0;
+  padding: 0 9px;
+  border: 1px solid rgba(128, 128, 128, 0.5);
+  border-radius: 999px;
   background: transparent;
   color: inherit;
   font: inherit;
+  font-weight: 600;
+  line-height: 18px;
   cursor: pointer;
+}
+
+.brainrot-index-notice button:hover {
+  background: rgba(128, 128, 128, 0.25);
+}
+
+.brainrot-index-notice button:focus-visible,
+.brainrot-index-reason:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 1px;
+}
+
+.brainrot-index-report-form {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin: 2px 0 1px;
+}
+
+.brainrot-index-notice .brainrot-index-choice[aria-pressed="true"] {
+  border-color: #f59e0b;
+  background: #f59e0b;
+  color: #18181b;
+}
+
+.brainrot-index-reason {
+  flex: 1 1 160px;
+  min-width: 120px;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid rgba(128, 128, 128, 0.5);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.brainrot-index-report-status:empty {
+  display: none;
+}
+
+.brainrot-index-notice [hidden] {
+  display: none !important;
 }

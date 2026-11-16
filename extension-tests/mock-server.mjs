@@ -18,7 +18,7 @@ import http from "node:http";
 export const MOCK_TOKEN = "mock-account-token";
 export const MOCK_UNSUBSCRIBED_TOKEN = "mock-unsubscribed-token";
 
-const MOCK_CONFIG = {
+export const MOCK_CONFIG = {
   enabled: true,
   mode: "adult",
   pending_action: "blur",

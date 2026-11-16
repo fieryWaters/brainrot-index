@@ -17,6 +17,8 @@ export function makeFreshProfileDir(name) {
 
 // A profile the owner signed in to by hand keeps its cookies encrypted with the macOS keychain, so
 // for that profile Playwright's stand-in keychain must be left out or the sign-in is unreadable.
+// A profile used before keeps running the background worker it had then, even after the files
+// change, so for that profile the extension is loaded again from disk, as the reload button does.
 export async function launchBrave(profileDir, { signedInProfile = false } = {}) {
   const ignoredDefaultArgs = ["--disable-extensions"];
   if (signedInProfile) {
@@ -29,6 +31,7 @@ export async function launchBrave(profileDir, { signedInProfile = false } = {}) 
     args: [
       `--disable-extensions-except=${EXTENSION_DIR}`,
       `--load-extension=${EXTENSION_DIR}`,
+      "--enable-unsafe-extension-debugging",
     ],
     viewport: { width: 1280, height: 900 },
   });
@@ -36,6 +39,30 @@ export async function launchBrave(profileDir, { signedInProfile = false } = {}) 
   if (serviceWorker === undefined) {
     serviceWorker = await context.waitForEvent("serviceworker", { timeout: 15000 });
   }
+  if (signedInProfile) {
+    const reloadedWorker = context.waitForEvent("serviceworker", { timeout: 15000 });
+    await loadExtensionLater(context);
+    serviceWorker = await reloadedWorker;
+  }
   const extensionId = new URL(serviceWorker.url()).host;
   return { context, serviceWorker, extensionId };
+}
+
+
+// Headed Brave with no extension yet. loadExtensionLater then installs it the way Load unpacked does,
+// so a test can open tabs first, as a person does before installing.
+export async function launchBraveWithoutExtension(profileDir) {
+  return chromium.launchPersistentContext(profileDir, {
+    executablePath: BRAVE_BINARY,
+    headless: false,
+    ignoreDefaultArgs: ["--disable-extensions"],
+    args: ["--enable-unsafe-extension-debugging"],
+    viewport: { width: 1280, height: 900 },
+  });
+}
+
+export async function loadExtensionLater(context) {
+  const browserSession = await context.browser().newBrowserCDPSession();
+  const { id } = await browserSession.send("Extensions.loadUnpacked", { path: EXTENSION_DIR });
+  return id;
 }

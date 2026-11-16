@@ -18,8 +18,8 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { makeFreshProfileDir, launchBrave, EXTENSION_DIR } from "./browser.mjs";
-import { startMockServer, MOCK_TOKEN } from "./mock-server.mjs";
+import { makeFreshProfileDir, launchBrave, launchBraveWithoutExtension, loadExtensionLater, EXTENSION_DIR } from "./browser.mjs";
+import { startMockServer, MOCK_TOKEN, MOCK_CONFIG } from "./mock-server.mjs";
 
 const X_TEST_PROFILE_DIR = "/Users/jacob/git-repos/brainrot-test-profile";
 const DEFAULT_SERVER_ADDRESS = "https://brainrot.jacob-waters.com";
@@ -241,16 +241,48 @@ async function testThresholdTakesEffect(page, serviceWorker, classifyCalls, feed
   }
 
   const before = await filteredOnFreshLoad();
+  const callsBeforeChange = classifyCalls.length;
   await callWebsiteApi("PATCH", `/api/plugins/${plugin.slug}/`, { threshold: 20 });
   let after;
   try {
     after = await filteredOnFreshLoad();
+    // Posts the server had already classified must be re-judged from stored scores: done on the first ask.
+    const actionBeforeById = new Map();
+    for (const call of classifyCalls.slice(0, callsBeforeChange)) {
+      for (const result of call.results) {
+        if (result.status === "done") {
+          actionBeforeById.set(result.post_id, result.action);
+        }
+      }
+    }
+    let alreadyClassified = 0;
+    let doneOnFirstAsk = 0;
+    let newlyFiltered = 0;
+    const askedAfter = new Set();
+    for (const call of classifyCalls.slice(callsBeforeChange)) {
+      for (const result of call.results) {
+        if (askedAfter.has(result.post_id) || !actionBeforeById.has(result.post_id)) {
+          askedAfter.add(result.post_id);
+          continue;
+        }
+        askedAfter.add(result.post_id);
+        alreadyClassified = alreadyClassified + 1;
+        if (result.status === "done") {
+          doneOnFirstAsk = doneOnFirstAsk + 1;
+          if (actionBeforeById.get(result.post_id) === "allow" && result.action !== "allow") {
+            newlyFiltered = newlyFiltered + 1;
+          }
+        }
+      }
+    }
+    console.log(`    already-classified posts asked again: ${alreadyClassified}, done on the first ask: ${doneOnFirstAsk}, newly filtered: ${newlyFiltered}`);
+    check(doneOnFirstAsk === alreadyClassified, "already-classified posts were re-judged at once, without new inference");
   } finally {
     await callWebsiteApi("PATCH", `/api/plugins/${plugin.slug}/`, { threshold: plugin.threshold });
   }
   console.log(`    ${plugin.slug} at ${plugin.threshold}: ${before.filteredCount} of ${before.answeredCount} filtered; at 20: ${after.filteredCount} of ${after.answeredCount}`);
-  check(after.filteredCount / Math.max(after.answeredCount, 1) > before.filteredCount / Math.max(before.answeredCount, 1),
-    "a lower threshold filters a larger share of posts");
+  // Which posts the feed shows changes between loads, so the share is reported rather than judged.
+  console.log("    info: compare the filtered shares above; the feed's posts differ between loads");
 }
 
 // Child mode: pending posts are blurred and blurred posts cannot be revealed.
@@ -261,15 +293,20 @@ async function testChildMode(page, serviceWorker, classifyCalls, feedUrl) {
     const status = await serviceWorker.evaluate(() => getStatus());
     console.log("    config in child mode: " + JSON.stringify(status.config));
     check(status.config.pending_action === "blur" && status.config.allow_reveal === false, "the server config says blur while pending and no reveal");
+    const callsBefore = classifyCalls.length;
     await page.goto(feedUrl, { waitUntil: "domcontentloaded" });
     const sawPending = await waitUntil(async () => (await page.locator('[data-brainrot-index-action="pending"]').count()) > 0, 10000);
-    check(sawPending, "posts are blurred while pending");
+    const serverSaidPending = classifyCalls.slice(callsBefore).some((call) => call.results.some((result) => result.status === "pending"));
+    if (serverSaidPending) {
+      check(sawPending, "posts are blurred while pending");
+    } else {
+      console.log("    info: the server answered every post at once (already classified), so nothing was pending");
+    }
     await waitForAnswersToSettle(page, classifyCalls);
     await scrollDown(page, 3);
     await waitForAnswersToSettle(page, classifyCalls);
-    const blurLabels = await page.locator(".brainrot-index-notice-over-post").allTextContents();
-    console.log(`    blur labels in child mode: ${blurLabels.length}`);
-    check(blurLabels.every((label) => !label.includes("click to show")), "no blur label offers click to show");
+    console.log(`    labels in child mode: ${await page.locator(".brainrot-index-notice").count()}`);
+    check(await page.locator(".brainrot-index-reveal").count() === 0, "no label offers Show");
     const blurredPost = page.locator('[data-brainrot-index-action="blur"]').first();
     if (await blurredPost.count() === 1) {
       await blurredPost.click({ position: { x: 40, y: 60 } });
@@ -299,10 +336,30 @@ async function connectExtension(context, serviceWorker, extensionId, groupName) 
   }
 }
 
+// BRAINROT_SCREENSHOTS_DIR=<folder> saves a picture of each surface centred on a filtered post.
+async function saveScreenshotOfFilteredPost(page, fileName) {
+  const screenshotsDir = process.env.BRAINROT_SCREENSHOTS_DIR;
+  if (screenshotsDir === undefined) {
+    return;
+  }
+  const notice = page.locator(".brainrot-index-notice").first();
+  if (await notice.count() === 0) {
+    console.log("    info: no filtered post on the page to photograph");
+    return;
+  }
+  await notice.evaluate((element) => element.scrollIntoView({ block: "center" }));
+  await page.waitForTimeout(1000);
+  fs.mkdirSync(screenshotsDir, { recursive: true });
+  await page.screenshot({ path: path.join(screenshotsDir, fileName) });
+}
+
 // Runs one surface's test and, against a real server, prints what the server decided during it.
-async function runSurfaceTest(name, classifyCalls, testFunction) {
+async function runSurfaceTest(name, classifyCalls, testFunction, page) {
   const callsBefore = classifyCalls.length;
-  await runTest(name, testFunction);
+  await runTest(name, async () => {
+    await testFunction();
+    await saveScreenshotOfFilteredPost(page, name.replace(/[^a-z0-9]+/gi, "-").toLowerCase() + ".png");
+  });
   if (!usingMockServer) {
     reportServerDecisions(name, classifyCalls.slice(callsBefore));
   }
@@ -356,31 +413,210 @@ function readPostIdInPage(postElement, platform) {
   return postElement.querySelector("a[href*='/status/'] time").closest("a").getAttribute("href").split("/")[3];
 }
 
-// One click on a blurred or hidden post's "Wrong?" control reports it as wrongly filtered.
+// Marks the first post shown with this action that offers Show, scrolls it to the middle of the
+// screen, and answers a locator for it. Scrolls further down the feed when there is none yet.
+async function findPostToReveal(page, action) {
+  for (let step = 0; step < 8; step++) {
+    const found = await page.evaluate((action) => {
+      document.querySelector("[data-test-reveal-target]")?.removeAttribute("data-test-reveal-target");
+      for (const element of document.querySelectorAll(`[data-brainrot-index-action="${action}"]:not([data-brainrot-index-revealed])`)) {
+        const notice = element.previousElementSibling;
+        if (notice !== null && notice.classList.contains("brainrot-index-notice") && notice.querySelector(".brainrot-index-reveal") !== null) {
+          element.setAttribute("data-test-reveal-target", "");
+          (action === "hide" ? notice : element).scrollIntoView({ block: "center" });
+          return true;
+        }
+      }
+      return false;
+    }, action);
+    if (found) {
+      await page.waitForTimeout(800);
+      return page.locator("[data-test-reveal-target]");
+    }
+    await scrollDown(page, 1);
+  }
+  throw new Error(`check failed: a ${action} post offering Show is on the page`);
+}
+
+// Runs in the page: whether the post is drawn, its top, and its blur.
+function readPostLook(postElement) {
+  return {
+    drawn: postElement.getClientRects().length > 0,
+    top: postElement.getBoundingClientRect().top,
+    filter: getComputedStyle(postElement).filter,
+    revealed: postElement.dataset.brainrotIndexRevealed === "true",
+    scrollY: window.scrollY,
+  };
+}
+
+function noticeOf(postLocator) {
+  return postLocator.locator("xpath=preceding-sibling::*[1]");
+}
+
+// Show on a blurred post's label reveals it where it is, and Blur again blurs it again.
+async function testRevealBlurredPost(page) {
+  const post = await findPostToReveal(page, "blur");
+  const notice = noticeOf(post);
+  const summary = await notice.locator(".brainrot-index-summary").textContent();
+  console.log("    label: " + summary);
+  check(/^Blurred - .+: .+ \(\d+\/100\)$/.test(summary), "the label names what was done, the plugin, its label and score");
+  check((await notice.boundingBox()).height <= 30, "the label is one line");
+  await notice.locator(".brainrot-index-reveal").hover();
+  const before = await post.evaluate(readPostLook);
+  await notice.locator(".brainrot-index-reveal").click();
+  const shown = await post.evaluate(readPostLook);
+  check(shown.revealed && shown.filter === "none", "Show reveals the post at once");
+  check(Math.abs(shown.top - before.top) <= 2, `the revealed post did not move (${before.top} to ${shown.top})`);
+  const blurAgainButton = noticeOf(post).locator(".brainrot-index-reveal");
+  check(await blurAgainButton.textContent() === "Blur again", "the label offers Blur again");
+  // Playwright scrolls a button out from under a site's sticky header before clicking it, so the
+  // position is taken after that.
+  await blurAgainButton.hover();
+  const beforeBlurAgain = await post.evaluate(readPostLook);
+  await blurAgainButton.click();
+  const blurredAgain = await post.evaluate(readPostLook);
+  check(!blurredAgain.revealed && blurredAgain.filter.includes("blur"), "Blur again blurs it");
+  // Near the top of the page there is no room to scroll up by the height of the removed line.
+  if (beforeBlurAgain.scrollY >= 40) {
+    check(Math.abs(blurredAgain.top - beforeBlurAgain.top) <= 2, `the post did not move when blurred again (${beforeBlurAgain.top} to ${blurredAgain.top})`);
+  } else {
+    console.log("    info: the page is at its top, so the post moves up by the removed line");
+  }
+}
+
+// Show on a hidden post's line expands it, and Hide again collapses it. The keyboard reaches Show.
+async function testRevealHiddenPost(page) {
+  const post = await findPostToReveal(page, "hide");
+  check(!(await post.evaluate(readPostLook)).drawn, "the hidden post is collapsed");
+  const notice = noticeOf(post);
+  check(/^Hidden - .+: .+ \(\d+\/100\)$/.test(await notice.locator(".brainrot-index-summary").textContent()), "the hidden line names the plugin, label and score");
+  const noticeTopBefore = (await notice.boundingBox()).y;
+  await notice.locator(".brainrot-index-reveal").focus();
+  await page.keyboard.press("Enter");
+  const shown = await post.evaluate(readPostLook);
+  check(shown.drawn && shown.revealed, "Show (pressed with the keyboard) expands the hidden post");
+  check(Math.abs((await noticeOf(post).boundingBox()).y - noticeTopBefore) <= 2, "the line stayed where it was");
+  const hideAgainButton = noticeOf(post).locator(".brainrot-index-reveal");
+  check(await hideAgainButton.textContent() === "Hide again", "the line offers Hide again");
+  await hideAgainButton.click();
+  check(!(await post.evaluate(readPostLook)).drawn, "Hide again collapses it");
+}
+
+// A click anywhere on a blurred post, also on the site's own link over it, reveals it and does not
+// open the post.
+async function testClickOnBlurredPost(page) {
+  const post = await findPostToReveal(page, "blur");
+  const urlBefore = page.url();
+  const box = await post.boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + Math.min(box.height / 2, 300));
+  await page.waitForTimeout(1500);
+  check(page.url() === urlBefore, "the click did not open the post");
+  check((await post.evaluate(readPostLook)).revealed, "the click revealed the post");
+}
+
+// Runs in the page: the element the extension treats for the post with this id, or null.
+function findTreatedElementInPage(postId) {
+  for (const element of document.querySelectorAll("[data-brainrot-index-action]")) {
+    if (element.id === postId || element.id === postId + "-comment-rtjson-content") {
+      return element.dataset.brainrotIndexRevealed ?? "no";
+    }
+    const timeLink = element.querySelector("a[href*='/status/'] time")?.closest("a");
+    if (timeLink && timeLink.getAttribute("href").split("/status/")[1].split("/")[0] === postId) {
+      return element.dataset.brainrotIndexRevealed ?? "no";
+    }
+  }
+  return null;
+}
+
+// A revealed post is still revealed after it scrolls far away and back, even when the site draws
+// it again with a new element.
+async function testRevealSurvivesScrolling(page, platform) {
+  const post = await findPostToReveal(page, "blur");
+  const postId = await post.evaluate((element, [platform, readPostIdSource]) => {
+    const readPostId = new Function("return " + readPostIdSource)();
+    if (element.id.endsWith("-comment-rtjson-content")) {
+      return element.id.replace("-comment-rtjson-content", "");
+    }
+    return readPostId(element, platform);
+  }, [platform, readPostIdInPage.toString()]);
+  await noticeOf(post).locator(".brainrot-index-reveal").click();
+  check((await post.evaluate(readPostLook)).revealed, "the post is revealed");
+  const scrollYBefore = await page.evaluate(() => window.scrollY);
+  await scrollDown(page, 8);
+  await page.evaluate((scrollY) => window.scrollTo(0, scrollY), scrollYBefore);
+  let revealedState = null;
+  await waitUntil(async () => {
+    revealedState = await page.evaluate(findTreatedElementInPage, postId);
+    return revealedState !== null;
+  }, 8000);
+  check(revealedState === "true", `the post is still revealed after scrolling away and back (${revealedState})`);
+}
+
+// With allow_reveal off (child mode on the real server), no label offers Show and a click on a
+// blurred post leaves it blurred. Mock server only; the real server's case is test 7b.
+async function testNoRevealWhenNotAllowed(page, classifyCalls, feedUrl) {
+  MOCK_CONFIG.allow_reveal = false;
+  try {
+    await page.goto(feedUrl, { waitUntil: "domcontentloaded" });
+    await waitForAnswersToSettle(page, classifyCalls);
+    const blurredPost = page.locator('[data-brainrot-index-action="blur"]').first();
+    check(await page.locator(".brainrot-index-notice").count() > 0, "filtered posts have labels");
+    check(await page.locator(".brainrot-index-reveal").count() === 0, "no label offers Show");
+    if (await blurredPost.count() === 1) {
+      const urlBefore = page.url();
+      await blurredPost.scrollIntoViewIfNeeded();
+      await blurredPost.click({ position: { x: 40, y: 60 } });
+      await page.waitForTimeout(1000);
+      check(!(await blurredPost.evaluate(readPostLook)).revealed && page.url() === urlBefore, "a click on a blurred post neither reveals nor opens it");
+    }
+  } finally {
+    MOCK_CONFIG.allow_reveal = true;
+  }
+}
+
+// "Wrong?" on a blurred or hidden post's label opens a form: what it should have been (Shown is
+// chosen), an optional reason, Send. The label then says the report was recorded.
 async function testReportWrongControl(page, feedbackCalls, platform) {
   const reportWrongButton = page.locator(".brainrot-index-report-wrong").first();
   check(await reportWrongButton.count() === 1, "a filtered post shows a Wrong? control");
   const reportedPost = await reportWrongButton.evaluate((button, [platform, readPostIdSource]) => {
     const readPostId = new Function("return " + readPostIdSource)();
-    const postElement = button.parentElement.nextElementSibling;
+    const postElement = button.closest(".brainrot-index-notice").nextElementSibling;
     return { id: readPostId(postElement, platform), action: postElement.dataset.brainrotIndexAction };
   }, [platform, readPostIdInPage.toString()]);
-  const callsBefore = feedbackCalls.length;
+  const notice = page.locator(".brainrot-index-notice", { has: reportWrongButton });
   await reportWrongButton.scrollIntoViewIfNeeded();
+  const urlBefore = page.url();
   await reportWrongButton.click();
+  const form = notice.locator(".brainrot-index-report-form");
+  check(await form.count() === 1, "Wrong? opens the report form on the label");
+  check(await form.locator('.brainrot-index-choice[aria-pressed="true"]').textContent() === "Shown", "Shown is chosen");
+  // Real key presses on Reddit check that they stay in the form. On X, where single keys like and
+  // repost, the text is filled in without key presses so the test account can never act.
+  if (platform === "reddit") {
+    await form.locator(".brainrot-index-reason").pressSequentially("automated test: fine post");
+  } else {
+    await form.locator(".brainrot-index-reason").fill("automated test: fine post");
+  }
+  const callsBefore = feedbackCalls.length;
+  await form.locator(".brainrot-index-send").click();
   await waitUntil(() => feedbackCalls.length > callsBefore, 5000);
   checkFeedbackCall(feedbackCalls[callsBefore], {
     platform: platform,
     post_id: reportedPost.id,
     shown_action: reportedPost.action,
     expected_action: "allow",
-    page_url: page.url(),
+    text: "automated test: fine post",
+    page_url: urlBefore,
   });
-  check(await reportWrongButton.textContent() === "Recorded", "the label confirms it was recorded");
+  await waitUntil(async () => (await form.locator(".brainrot-index-report-status").textContent()) !== "Sending...", 3000);
+  check(await form.locator(".brainrot-index-report-status").textContent() === "Recorded, thank you", "the label confirms it was recorded");
+  check(page.url() === urlBefore, "using the form did not open the post");
 }
 
 // The context menu item cannot be clicked from a test, so the test right-clicks a post (a contextmenu
-// event) and then runs the worker function the menu item calls.
+// event) and then runs the worker function the menu item calls. It opens the report form over the
+// post with Hidden chosen.
 async function testMissedPostMenuItem(page, serviceWorker, feedbackCalls, platform) {
   const unfilteredPost = page.locator(UNFILTERED_POST_SELECTOR[platform]).first();
   for (let step = 0; step < 6 && (await unfilteredPost.count()) === 0; step++) {
@@ -389,19 +625,29 @@ async function testMissedPostMenuItem(page, serviceWorker, feedbackCalls, platfo
   check(await unfilteredPost.count() === 1, "an unfiltered post is on the page");
   const postId = await unfilteredPost.evaluate(readPostIdInPage, platform);
   await unfilteredPost.dispatchEvent("contextmenu");
-  const callsBefore = feedbackCalls.length;
   await serviceWorker.evaluate(async (pageUrl) => {
     const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     return reportMissedPost(activeTab.id, 0, pageUrl);
   }, page.url());
+  const form = page.locator(".brainrot-index-report-form").last();
+  await form.waitFor({ timeout: 3000 });
+  check(await form.locator('.brainrot-index-choice[aria-pressed="true"]').textContent() === "Hidden", "the form opens with Hidden chosen");
+  await form.locator(".brainrot-index-choice", { hasText: "Blurred" }).click();
+  await form.locator(".brainrot-index-reason").fill("automated test: new kind of bait");
+  const callsBefore = feedbackCalls.length;
+  await form.locator(".brainrot-index-send").click();
   await waitUntil(() => feedbackCalls.length > callsBefore, 5000);
   checkFeedbackCall(feedbackCalls[callsBefore], {
     platform: platform,
     post_id: postId,
     shown_action: "allow",
-    expected_action: "hide",
+    expected_action: "blur",
+    text: "automated test: new kind of bait",
   });
+  await waitUntil(async () => (await form.count()) === 0, 4000);
+  check(await form.count() === 0, "the form closes after it was recorded");
 }
+
 
 async function testPopupFeedbackBox(context, extensionId, feedbackCalls) {
   const popupPage = await context.newPage();
@@ -757,6 +1003,48 @@ async function testConnectFlow(serviceWorker, extensionId, context) {
   check(await readPopupStatus(context, extensionId) === "Connected to your account", "popup shows connected");
 }
 
+// The website hands over the token with window.postMessage; answers whether the extension replied.
+async function sendTokenFromPage(sitePage) {
+  return sitePage.evaluate(() => new Promise((resolve) => {
+    function onMessage(event) {
+      if (event.data?.type === "brainrot-index-extension-connected") {
+        window.removeEventListener("message", onMessage);
+        resolve(true);
+      }
+    }
+    window.addEventListener("message", onMessage);
+    window.postMessage({ type: "brainrot-index-extension-token", token: "test-token-from-open-tab" }, window.location.origin);
+    setTimeout(() => resolve(false), 3000);
+  }));
+}
+
+// A person usually has the website open before installing the extension, and reloads the extension
+// after pulling new code. The browser gives content scripts only to pages loaded afterwards, so the
+// extension must add its connect listener to website tabs that are already open.
+async function testConnectFromTabOpenedFirst() {
+  const context = await launchBraveWithoutExtension(makeFreshProfileDir("open-tab"));
+  try {
+    const sitePage = context.pages()[0] ?? (await context.newPage());
+    await sitePage.goto(DEFAULT_SERVER_ADDRESS + "/", { waitUntil: "domcontentloaded" });
+    const extensionId = await loadExtensionLater(context);
+    await sitePage.waitForTimeout(2000);
+    const popupPage = await context.newPage();
+    await popupPage.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+    await popupPage.fill("#feedback-text", "Automated test feedback before connecting");
+    await popupPage.click("#feedback-form button");
+    await waitUntil(async () => (await popupPage.textContent("#feedback-status")) !== "", 3000);
+    check(await popupPage.textContent("#feedback-status") === "Not sent. Not connected. Open Brainrot Index and press Connect extension.",
+      "popup feedback before connecting says why it was not sent");
+    await popupPage.close();
+    check(await sendTokenFromPage(sitePage), "a website tab opened before installing gets an answer from the extension");
+    await loadExtensionLater(context);
+    await sitePage.waitForTimeout(2000);
+    check(await sendTokenFromPage(sitePage), "the same tab still gets an answer after the extension is reloaded");
+  } finally {
+    await context.close();
+  }
+}
+
 // Samples the page's JavaScript while scrolling and adds up time spent in the extension's code,
 // including the browser functions it calls. Also records the page's long tasks (over 50 ms).
 async function testScrollPerformance(context, serviceWorker, extensionId, classifyCalls, feedUrl) {
@@ -845,10 +1133,18 @@ async function runRedditGroup() {
       testExtensionLoads(serviceWorker, extensionId, context));
     await connectExtension(context, serviceWorker, extensionId, "Reddit profile");
     await runSurfaceTest("3a. Reddit feed", classifyCalls, () =>
-      checkFeed(page, serviceWorker, classifyCalls, "reddit", "https://www.reddit.com/r/popular/"));
+      checkFeed(page, serviceWorker, classifyCalls, "reddit", "https://www.reddit.com/r/popular/"), page);
     await runTest("6a. feedback: Wrong? control on a filtered post", () => testReportWrongControl(page, feedbackCalls, "reddit"));
     await runTest("6b. feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "reddit"));
     await runTest("6c. feedback: popup text box", () => testPopupFeedbackBox(context, extensionId, feedbackCalls));
+    await runTest("8a. reveal: Show and Blur again on a blurred Reddit post", () => testRevealBlurredPost(page));
+    await runTest("8b. reveal: Show and Hide again on a hidden Reddit post", () => testRevealHiddenPost(page));
+    await runTest("8c. reveal: a click on a blurred Reddit post reveals it without opening it", () => testClickOnBlurredPost(page));
+    await runTest("8d. reveal: a revealed Reddit post stays revealed after scrolling away and back", () => testRevealSurvivesScrolling(page, "reddit"));
+    if (usingMockServer) {
+      await runTest("8e. reveal: no Show when the server does not allow it", () =>
+        testNoRevealWhenNotAllowed(page, classifyCalls, "https://www.reddit.com/r/popular/"));
+    }
     await runSurfaceTest("3b. Reddit comments", classifyCalls, async () => {
       await page.goto("https://www.reddit.com/r/AskReddit/", { waitUntil: "domcontentloaded" });
       await page.locator("shreddit-post").first().waitFor({ timeout: 30000 });
@@ -859,12 +1155,14 @@ async function runRedditGroup() {
         return posts[0].getAttribute("permalink");
       });
       await checkReplies(page, serviceWorker, classifyCalls, "reddit", "https://www.reddit.com" + threadPath);
-    });
+    }, page);
+    await runTest("8f. reveal: Show and Blur again in a Reddit comment thread", () => testRevealBlurredPost(page));
+    await runTest("8g. reveal: Show and Hide again in a Reddit comment thread", () => testRevealHiddenPost(page));
     await runTest("3c. Reddit scroll stability", () =>
       testScrollStability(context, page, serviceWorker, "reddit", "https://www.reddit.com/r/popular/"));
     await runTest("5. scroll performance on Reddit", () => testScrollPerformance(context, serviceWorker, extensionId, classifyCalls, "https://www.reddit.com/r/popular/"));
     if (!usingMockServer && sessionCookie !== undefined) {
-      await runTest("7a. a lower plugin threshold filters more", () =>
+      await runTest("7a. a plugin threshold change is applied at once from stored scores", () =>
         testThresholdTakesEffect(page, serviceWorker, classifyCalls, "https://www.reddit.com/r/popular/"));
       await runTest("7b. child mode blurs pending posts and removes reveal", () =>
         testChildMode(page, serviceWorker, classifyCalls, "https://www.reddit.com/r/popular/"));
@@ -904,7 +1202,11 @@ async function testXRecycledTweets(page, serviceWorker, classifyCalls) {
   const recreatedAnswered = recreated.filter((tweet) => answerById.has(tweet.id));
   console.log(`    recreated tweet elements: ${recreated.length}, of which answered before: ${recreatedAnswered.length}`);
   check(recreatedAnswered.length > 0, "some answered tweets were removed and created again by X");
-  const wrong = recreatedAnswered.filter((tweet) => answerById.get(tweet.id).action !== tweet.action);
+  // A tweet answered "hide" while above the viewport is blurred instead.
+  const wrong = recreatedAnswered.filter((tweet) => {
+    const answeredAction = answerById.get(tweet.id).action;
+    return answeredAction !== tweet.action && !(answeredAction === "hide" && tweet.action === "blur");
+  });
   check(wrong.length === 0, "every recreated tweet shows its answer again " + JSON.stringify(wrong.slice(0, 3)));
   const resent = allSentPosts(classifyCalls.slice(callsBefore)).filter((post) => answeredBeforeScroll.has(post.post_id));
   check(resent.length === 0, "no answered tweet was sent again while scrolling back");
@@ -996,8 +1298,12 @@ async function runXGroup() {
     const page = context.pages()[0] ?? (await context.newPage());
 
     await runSurfaceTest("4a. X home feed", classifyCalls, () =>
-      checkFeed(page, serviceWorker, classifyCalls, "x", "https://x.com/home"));
+      checkFeed(page, serviceWorker, classifyCalls, "x", "https://x.com/home"), page);
     await runTest("4c. X recycled tweets", () => testXRecycledTweets(page, serviceWorker, classifyCalls));
+    await runTest("4i. X reveal: Show and Blur again on a blurred tweet", () => testRevealBlurredPost(page));
+    await runTest("4j. X reveal: Show and Hide again on a hidden tweet", () => testRevealHiddenPost(page));
+    await runTest("4k. X reveal: a click on a blurred tweet reveals it without opening it", () => testClickOnBlurredPost(page));
+    await runTest("4l. X reveal: a revealed tweet stays revealed after X redraws it", () => testRevealSurvivesScrolling(page, "x"));
     await runTest("4d. X feedback: Wrong? control", () => testReportWrongControl(page, feedbackCalls, "x"));
     await runTest("4e. X feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "x"));
     await runSurfaceTest("4b. X replies", classifyCalls, async () => {
@@ -1018,7 +1324,8 @@ async function runXGroup() {
         return bestPath;
       });
       await checkReplies(page, serviceWorker, classifyCalls, "x", "https://x.com" + statusPath);
-    });
+    }, page);
+    await runTest("4m. X reveal: Show and Blur again among replies", () => testRevealBlurredPost(page));
     await runTest("4g. X Discover more posts are not replies", () => testXDiscoverMore(page, classifyCalls));
     await runTest("4h. X scroll stability", () => testScrollStability(context, page, serviceWorker, "x", "https://x.com/home"));
     await runTest("4f. scroll performance on X", () =>
@@ -1037,10 +1344,13 @@ function pgrepFinds(pattern) {
 }
 
 const requestedGroups = process.argv.slice(2);
-const groupsToRun = requestedGroups.length > 0 ? requestedGroups : ["reddit", "x"];
+const groupsToRun = requestedGroups.length > 0 ? requestedGroups : ["connect", "reddit", "x"];
 const mockServer = usingMockServer ? await startMockServer(MOCK_PORT) : null;
 console.log("server: " + serverAddress + (usingMockServer ? " (mock)" : ""));
 try {
+  if (groupsToRun.includes("connect")) {
+    await runTest("0. connect from a website tab opened before the extension", testConnectFromTabOpenedFirst);
+  }
   if (groupsToRun.includes("x")) {
     if (pgrepFinds(X_TEST_PROFILE_DIR)) {
       testResults.push({ name: "4. X", passed: false, error: "the X test profile is open in another Brave window" });

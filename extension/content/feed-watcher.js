@@ -18,7 +18,7 @@ let config = null;  // server config while watching; null while stopped
 
 const answerByPostId = new Map();          // answers received in this page
 const requestedPostIds = new Set();        // posts sent to the server, answered or not
-const revealedPostIds = new Set();         // blurred posts the reader clicked open
+const revealedPostIds = new Set();         // blurred or hidden posts the reader chose to see
 const waitingElementsByPostId = new Map(); // elements showing a post whose answer has not arrived
 const postIdByElement = new WeakMap();     // the post each element showed when last seen
 
@@ -34,32 +34,41 @@ let reaskInFlight = false;
 const nearViewportObserver = new IntersectionObserver(onPostsNearViewport, { rootMargin: "1000px 0px" });
 const pageChangeObserver = new MutationObserver(onPageChanges);
 
-// The server orders reasons by score, highest first.
-function pluginThatFlagged(answer) {
-  return answer.reasons[0].plugin;
+function sendPostFeedback(postId, shownAction, expectedAction, text) {
+  return extensionApi.runtime.sendMessage({
+    type: "send-feedback",
+    feedback: {
+      page_url: location.href,
+      platform: siteAdapter.platform,
+      post_id: postId,
+      shown_action: shownAction,
+      expected_action: expectedAction,
+      text: text,
+    },
+  });
 }
 
-// shownAction is normally answer.action; receiveAnswer passes "blur" for a hidden post above the viewport.
+// shownAction is normally answer.action; receiveAnswer passes "blur" for a hidden post on or above
+// the screen. A revealed post stays revealed in this page, also when the site draws it again.
 function showAnswer(postElement, postId, answer, shownAction = answer.action) {
-  if (revealedPostIds.has(postId) || shownAction === "allow") {
+  if (shownAction === "allow") {
     siteAdapter.applyAction(postElement, { action: "allow" });
     return;
   }
   siteAdapter.applyAction(postElement, {
     action: shownAction,
-    pluginName: pluginThatFlagged(answer),
+    reason: answer.reasons[0], // the server orders reasons by score, highest first
     allowReveal: config.allow_reveal,
-    onReveal: () => revealedPostIds.add(postId),
-    onReportWrong: () => extensionApi.runtime.sendMessage({
-      type: "send-feedback",
-      feedback: {
-        page_url: location.href,
-        platform: siteAdapter.platform,
-        post_id: postId,
-        shown_action: shownAction,
-        expected_action: "allow",
-      },
-    }),
+    revealed: config.allow_reveal && revealedPostIds.has(postId),
+    onToggleReveal: () => {
+      if (revealedPostIds.has(postId)) {
+        revealedPostIds.delete(postId);
+      } else {
+        revealedPostIds.add(postId);
+      }
+      showAnswer(postElement, postId, answer, shownAction);
+    },
+    onReport: (expectedAction, text) => sendPostFeedback(postId, shownAction, expectedAction, text),
   });
 }
 
@@ -235,16 +244,16 @@ async function reaskPendingPosts() {
   scheduleReask();
 }
 
-// Collapsing a post above the top of the viewport would move everything the reader is looking at,
-// so such a post is blurred instead (blurring does not change its height). It is collapsed the next
-// time the site renders it.
+// Collapsing a post that is on screen or above it would move what the reader is looking at, so such a
+// post is blurred instead (blurring does not change its height). Answers can take many seconds, so this
+// is common. The post is collapsed the next time the site renders it.
 function receiveAnswer(postId, answer) {
   answerByPostId.set(postId, answer);
   for (const postElement of waitingElementsByPostId.get(postId) ?? []) {
     if (postIdByElement.get(postElement) !== postId) {
       continue;
     }
-    if (answer.action === "hide" && postElement.getBoundingClientRect().top < 0) {
+    if (answer.action === "hide" && postElement.getBoundingClientRect().top < window.innerHeight) {
       showAnswer(postElement, postId, answer, "blur");
     } else {
       showAnswer(postElement, postId, answer);
@@ -291,21 +300,25 @@ document.addEventListener("contextmenu", (event) => {
   rightClickedPostElement = [...postsAroundTarget].find((postElement) => postElement.contains(event.target)) ?? null;
 }, true);
 
+// The "this should have been filtered" menu item opens the report form over the post the reader
+// right-clicked. Answers false when the right-click was not inside a post.
 extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type !== "get-right-clicked-post") {
+  if (message.type !== "open-report-form") {
     return;
   }
   if (rightClickedPostElement === null) {
-    sendResponse(null);
+    sendResponse(false);
     return;
   }
   const post = siteAdapter.extractPost(rightClickedPostElement);
   const answer = answerByPostId.get(post.post_id);
-  sendResponse({
-    platform: post.platform,
-    post_id: post.post_id,
-    shown_action: answer === undefined ? "allow" : answer.action,
-  });
+  let shownAction = "allow";
+  if (answer !== undefined) {
+    shownAction = answer.action;
+  }
+  showReportFormAbovePost(rightClickedPostElement, shownAction, (expectedAction, text) =>
+    sendPostFeedback(post.post_id, shownAction, expectedAction, text));
+  sendResponse(true);
 });
 
 extensionApi.storage.onChanged.addListener((changes, areaName) => {

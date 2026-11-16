@@ -10,7 +10,7 @@ const MISSED_POST_MENU_ITEM_ID = "should-have-been-filtered";
 extensionApi.runtime.onInstalled.addListener(async () => {
   extensionApi.contextMenus.create({
     id: MISSED_POST_MENU_ITEM_ID,
-    title: "Brainrot Index: this should have been filtered",
+    title: "Brainrot Index: report this post",
     contexts: ["all"],
     documentUrlPatterns: ["https://www.reddit.com/*", "https://x.com/*"],
   });
@@ -22,7 +22,24 @@ extensionApi.runtime.onInstalled.addListener(async () => {
   if (stored.extensionEnabled === undefined) {
     await extensionApi.storage.local.set({ extensionEnabled: true });
   }
+  await addConnectListenerToOpenSiteTabs();
 });
+
+// The browser gives content scripts only to pages loaded after the extension was installed or
+// reloaded, so a website tab that was already open could not hand over its token. This adds the
+// connect listener to such tabs.
+async function addConnectListenerToOpenSiteTabs() {
+  const { serverAddress } = await extensionApi.storage.local.get("serverAddress");
+  // Match patterns cannot name a port; connect-listener.js checks the full origin itself.
+  const siteUrl = new URL(serverAddress);
+  const siteTabs = await extensionApi.tabs.query({ url: siteUrl.protocol + "//" + siteUrl.hostname + "/*" });
+  for (const siteTab of siteTabs) {
+    await extensionApi.scripting.executeScript({
+      target: { tabId: siteTab.id },
+      files: ["extension-api.js", "content/connect-listener.js"],
+    });
+  }
+}
 
 extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "get-status") {
@@ -153,27 +170,35 @@ async function extensionCommit() {
 }
 
 // feedback holds any of text, page_url, platform, post_id, shown_action and expected_action.
-// Answers { sent: true } when the server recorded it.
+// Answers { sent: true } when the server recorded it, otherwise { sent: false, reason } where reason
+// is a sentence for the reader.
 async function sendFeedback(feedback) {
-  const body = { ...feedback, source: "extension", extension_commit: await extensionCommit() };
-  try {
-    const response = await callServer("POST", "/api/feedback/", body);
-    return { sent: response.ok };
-  } catch (networkError) {
-    return { sent: false };
+  const { token } = await extensionApi.storage.local.get("token");
+  if (token === undefined) {
+    return { sent: false, reason: "Not connected. Open Brainrot Index and press Connect extension." };
   }
+  const body = { ...feedback, source: "extension", extension_commit: await extensionCommit() };
+  let response;
+  try {
+    response = await callServer("POST", "/api/feedback/", body);
+  } catch (networkError) {
+    return { sent: false, reason: "Cannot reach the server." };
+  }
+  if (response.ok) {
+    return { sent: true };
+  }
+  if (response.status === 401) {
+    return { sent: false, reason: "The connection was refused. Open Brainrot Index and press Connect extension again." };
+  }
+  return { sent: false, reason: "The server answered with error " + response.status + "." };
 }
 
-// Sends feedback for the post the reader last right-clicked in that tab. When the right-click was not
-// inside a post, only the page address is attached; expected_action is still sent because the server
-// requires text or expected_action.
+// Opens the report form over the post the reader last right-clicked in that tab. When the right-click
+// was not inside a post, the page itself is reported as one that should have been filtered.
 async function reportMissedPost(tabId, frameId, pageUrl) {
-  const clickedPost = await extensionApi.tabs.sendMessage(tabId, { type: "get-right-clicked-post" }, { frameId: frameId });
-  const feedback = { page_url: pageUrl, expected_action: "hide" };
-  if (clickedPost !== null) {
-    feedback.platform = clickedPost.platform;
-    feedback.post_id = clickedPost.post_id;
-    feedback.shown_action = clickedPost.shown_action;
+  const openedForm = await extensionApi.tabs.sendMessage(tabId, { type: "open-report-form" }, { frameId: frameId });
+  if (openedForm) {
+    return;
   }
-  return sendFeedback(feedback);
+  return sendFeedback({ page_url: pageUrl, expected_action: "hide" });
 }

@@ -11,9 +11,13 @@ Chrome ignores `--load-extension`.
 
 ## Run against the mock server
 
-    npm test              # both groups
-    npm test -- reddit    # Reddit only: load, connect, feed, comments, performance
-    npm test -- x         # X only: home feed, recycled tweets, feedback, replies, performance
+    npm test              # all groups
+    npm test -- connect   # connecting from a website tab opened before the extension was installed
+    npm test -- reddit    # Reddit only: load, connect, feed, comments, feedback, reveal, performance
+    npm test -- x         # X only: home feed, recycled tweets, feedback, reveal, replies, performance
+
+The connect group opens https://brainrot.jacob-waters.com without signing in, even with the mock
+server, because the extension's default address is the only one it adds its listener to on install.
 
 `npm test` first runs `stamp-build-info.mjs`, which writes `extension/build-info.json` (git-ignored)
 with the short commit hash and whether the tree has uncommitted changes. The extension attaches that

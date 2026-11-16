@@ -3,10 +3,10 @@
 //
 // Rules for POST /api/classify/:
 //   The first request for a post answers "pending"; every later request answers "done".
-//   hide  "Engagement bait" when the text contains "AITA" or the post id ends in 0, 1, 2 or 3.
-//   blur  "Ragebait"        when the text is longer than 400 characters or the post id ends in 4, 5, 6 or 7.
+//   hide  "Engagement bait" when the text contains "AITA" or the post id's character sum leaves 0 mod 3.
+//   blur  "Ragebait"        when the text is longer than 400 characters or that sum leaves 1 mod 3.
 //   allow                   otherwise.
-// The post id rules exist so that any live feed yields some of each action.
+// The post id rule exists so that any live feed yields about a third of each action.
 //
 // POST /api/feedback/ checks the required fields and answers 201 with a new id.
 //
@@ -44,12 +44,20 @@ const CONNECT_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+function postIdCharacterSum(postId) {
+  let sum = 0;
+  for (const character of postId) {
+    sum = sum + character.charCodeAt(0);
+  }
+  return sum;
+}
+
 function chooseAnswer(post) {
-  const lastIdCharacter = post.post_id.slice(-1);
-  if (post.text.includes("AITA") || "0123".includes(lastIdCharacter)) {
+  const postIdGroup = postIdCharacterSum(post.post_id) % 3;
+  if (post.text.includes("AITA") || postIdGroup === 0) {
     return { action: "hide", reasons: [{ plugin: "Engagement bait", label: "Asks for engagement", score: 90 }] };
   }
-  if (post.text.length > 400 || "4567".includes(lastIdCharacter)) {
+  if (post.text.length > 400 || postIdGroup === 1) {
     return { action: "blur", reasons: [{ plugin: "Ragebait", label: "Written to anger", score: 75 }] };
   }
   return { action: "allow", reasons: [] };

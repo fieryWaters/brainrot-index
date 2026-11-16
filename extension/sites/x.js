@@ -14,18 +14,22 @@ function ownStatusPath(tweetElement) {
   return timestamp.closest("a").getAttribute("href");
 }
 
-// Photo URLs at full size: X serves resized copies chosen by the "name" parameter, and "orig" is the upload.
+// Image URLs at the best size X offers. Photos ("/media/" URLs) come in sizes chosen by the "name"
+// parameter, and "orig" is the upload. Video and GIF thumbnails appear both as an <img> in the photo
+// area and as the video's poster, so duplicates are dropped.
 function imageUrls(tweetElement) {
-  const urls = [];
+  const urls = new Set();
   for (const image of tweetElement.querySelectorAll('[data-testid="tweetPhoto"] img')) {
     const url = new URL(image.src);
-    url.searchParams.set("name", "orig");
-    urls.push(url.href);
+    if (url.pathname.startsWith("/media/")) {
+      url.searchParams.set("name", "orig");
+    }
+    urls.add(url.href);
   }
   for (const video of tweetElement.querySelectorAll("video[poster]")) {
-    urls.push(video.poster);
+    urls.add(video.poster);
   }
-  return urls;
+  return [...urls];
 }
 
 const siteAdapter = {
@@ -41,8 +45,9 @@ const siteAdapter = {
     return found;
   },
 
-  // The record sent to the server, or null while the tweet has no timestamp link yet. On a post's own
-  // page every other tweet is treated as a reply to that post.
+  // The record sent to the server, or null when the tweet has no timestamp link: either it is not
+  // rendered yet, or it is a promoted tweet (ads show "Ad" instead of a time), which is never sent.
+  // On a post's own page every other tweet is treated as a reply to that post.
   extractPost(tweetElement) {
     const statusPath = ownStatusPath(tweetElement);
     if (statusPath === null) {

@@ -1,4 +1,17 @@
-node_modules/
-server/ingest-log/
-.DS_Store
+# Environment variables and secrets
 .env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Node.js
+node_modules/
+dist/
+
+# System
+.DS_Store
+
+# Prototype server logs
+legacy/server/ingest-log/

@@ -1,0 +1,77 @@
+# Brainrot Index stack: Postgres, the Django API, and nginx serving the built frontend.
+# All config comes from .env, which compose reads natively.
+# Deploy: bash deploy.sh    Down: docker compose down
+
+name: brainrot-index
+
+services:
+  db:
+    image: postgres:17.12-alpine@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7
+    environment:
+      POSTGRES_DB: brainrot_index
+      POSTGRES_USER: brainrot_index
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brainrot_index -d brainrot_index"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend/brainrot_index_service
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      GUNICORN_WORKERS: "1"
+      GUNICORN_THREADS: "4"
+    restart: unless-stopped
+    expose:
+      - "8000"
+    ports:
+      - "127.0.0.1:8400:8000"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request;
+          req=urllib.request.Request('http://127.0.0.1:8000/api/health/',
+          headers={'X-Forwarded-Proto':'https'});
+          urllib.request.urlopen(req, timeout=5).read()"
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 120s
+    volumes:
+      - backend_static:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./frontend/brainrot-index-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_APP_ENV: ${APP_ENV:-deployment}
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+        VITE_STRIPE_PUBLISHABLE_KEY: ${STRIPE_TEST_PUBLISHABLE_KEY:-}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    expose:
+      - "80"
+    ports:
+      - "127.0.0.1:3400:80"
+    volumes:
+      - backend_static:/srv/static:ro
+
+volumes:
+  postgres_data:
+  backend_static:

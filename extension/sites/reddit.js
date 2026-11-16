@@ -44,14 +44,11 @@ function postImageUrls(postElement) {
   return [...imageUrls];
 }
 
-// The comment's own text element. A comment element also contains its replies' text elements.
+// The comment's own text element, found by the comment's id because a comment element also
+// contains the text elements of its replies.
 function ownCommentBody(commentElement) {
-  for (const body of commentElement.querySelectorAll('[slot="comment"]')) {
-    if (body.closest("shreddit-comment") === commentElement) {
-      return body;
-    }
-  }
-  return null;
+  const commentId = commentElement.getAttribute("thingid");
+  return commentElement.querySelector(`[id="${commentId}-comment-rtjson-content"]`);
 }
 
 function extractFeedPost(postElement) {

@@ -1,4 +1,5 @@
-# Brainrot Index stack: Postgres, the Django API, and nginx serving the built frontend.
+# Brainrot Index stack: Postgres, the Django API, the classification worker,
+# and nginx serving the built frontend.
 # All config comes from .env, which compose reads natively.
 # Deploy: bash deploy.sh    Down: docker compose down
 
@@ -24,11 +25,16 @@ services:
     build:
       context: ./backend/brainrot_index_service
       dockerfile: Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: brainrot-index-backend
     env_file:
       - .env
     environment:
-      GUNICORN_WORKERS: "1"
-      GUNICORN_THREADS: "4"
+      # Threaded workers: /api/classify/ waits up to 1.5 s for pending posts,
+      # and a waiting request must not hold up the others.
+      GUNICORN_WORKERS: "2"
+      GUNICORN_THREADS: "16"
     restart: unless-stopped
     expose:
       - "8000"
@@ -48,8 +54,38 @@ services:
       start_period: 120s
     volumes:
       - backend_static:/app/staticfiles
+      - post_images:/app/media
     depends_on:
       db:
+        condition: service_healthy
+
+  # Downloads post images and runs pending classifications. Same image as
+  # backend; it starts once backend is healthy, so migrations have run.
+  worker:
+    build:
+      context: ./backend/brainrot_index_service
+      dockerfile: Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: brainrot-index-backend
+    entrypoint: ["python", "manage.py", "run_classification_worker"]
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import os, time; assert time.time() - os.path.getmtime('/tmp/classification-worker-heartbeat') < 15"
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    volumes:
+      - post_images:/app/media
+    depends_on:
+      backend:
         condition: service_healthy
 
   web:
@@ -61,6 +97,7 @@ services:
         VITE_APP_ENV: ${APP_ENV:-deployment}
         VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
         VITE_STRIPE_PUBLISHABLE_KEY: ${STRIPE_TEST_PUBLISHABLE_KEY:-}
+        VITE_GIT_COMMIT: ${GIT_COMMIT:-unknown}
     restart: unless-stopped
     depends_on:
       backend:
@@ -75,3 +112,4 @@ services:
 volumes:
   postgres_data:
   backend_static:
+  post_images:

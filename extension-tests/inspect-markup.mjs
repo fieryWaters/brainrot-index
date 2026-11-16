@@ -6,8 +6,13 @@
 import { makeFreshProfileDir, launchBrave } from "./browser.mjs";
 
 const url = process.argv[2];
-const profileDir = process.argv[3] ?? makeFreshProfileDir("inspect");
-const { context } = await launchBrave(profileDir);
+const signedInProfileDir = process.argv[3];
+let context;
+if (signedInProfileDir === undefined) {
+  ({ context } = await launchBrave(makeFreshProfileDir("inspect")));
+} else {
+  ({ context } = await launchBrave(signedInProfileDir, { signedInProfile: true }));
+}
 try {
   const page = context.pages()[0] ?? (await context.newPage());
   await page.goto(url, { waitUntil: "domcontentloaded" });

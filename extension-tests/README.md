@@ -1,0 +1,41 @@
+# Extension tests
+
+End-to-end tests for the browser extension in `../extension/`, run in headed Brave against live
+Reddit and X. Headed because Reddit and X block headless browsers; Brave because branded Google
+Chrome ignores `--load-extension`.
+
+## Setup
+
+    cd extension-tests
+    npm install
+
+## Run against the mock server
+
+    npm test              # both groups
+    npm test -- reddit    # Reddit only: load, connect, feed, comments, performance
+    npm test -- x         # X only: home feed and replies
+
+The runner starts `mock-server.mjs` on http://127.0.0.1:8787 and points the extension at it. The
+mock follows the API contract with fixed rules (see the top of `mock-server.mjs`).
+
+## Run against the real backend
+
+    BRAINROT_SERVER=https://brainrot.jacob-waters.com BRAINROT_TOKEN=<extension token> npm test
+
+The connect test is skipped (the real site needs a login), and the checks that depend on the mock's
+rules (pending first, at least one blur and one hide) are printed instead of asserted. The server
+address must be one the manifest grants: `https://brainrot.jacob-waters.com`, `http://localhost`
+or `http://127.0.0.1`.
+
+## Profiles
+
+- Reddit tests use a new empty profile in `.profiles/` (git-ignored) on every run.
+- X tests use the signed-in profile `/Users/jacob/git-repos/brainrot-test-profile`. They are read
+  only. If a Brave window already has that profile open, the X group is reported as failed rather
+  than run.
+
+## Other scripts
+
+- `node inspect-markup.mjs <url> [signed-in profile dir]` prints what a feed or thread page's markup
+  looks like, for writing or fixing a site adapter.
+- `node make-icons.mjs` rewrites the extension's icon PNGs.

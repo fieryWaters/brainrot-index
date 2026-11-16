@@ -15,11 +15,17 @@ export function makeFreshProfileDir(name) {
   return fs.mkdtempSync(path.join(profilesDir, name + "-"));
 }
 
-export async function launchBrave(profileDir) {
+// A profile the owner signed in to by hand keeps its cookies encrypted with the macOS keychain, so
+// for that profile Playwright's stand-in keychain must be left out or the sign-in is unreadable.
+export async function launchBrave(profileDir, { signedInProfile = false } = {}) {
+  const ignoredDefaultArgs = ["--disable-extensions"];
+  if (signedInProfile) {
+    ignoredDefaultArgs.push("--use-mock-keychain");
+  }
   const context = await chromium.launchPersistentContext(profileDir, {
     executablePath: BRAVE_BINARY,
     headless: false,
-    ignoreDefaultArgs: ["--disable-extensions"],
+    ignoreDefaultArgs: ignoredDefaultArgs,
     args: [
       `--disable-extensions-except=${EXTENSION_DIR}`,
       `--load-extension=${EXTENSION_DIR}`,

@@ -1,1 +1,76 @@
-const siteAdapter = { platform: "x", findPostElements(rootNode) { return []; }, extractPost() { return null; }, applyAction() {} };
+// Site adapter for x.com (signed in). Every X selector the extension uses is in this file.
+// Each post on the home timeline, and each reply on a post's page (/<user>/status/<id>), is an
+// <article data-testid="tweet">. Its own link to itself is the one wrapping its timestamp.
+
+const TWEET_SELECTOR = 'article[data-testid="tweet"]';
+
+// "/<user>/status/<id>" for the tweet itself. Quoted tweets come later in the article, so the first
+// timestamp link is the tweet's own.
+function ownStatusPath(tweetElement) {
+  const timestamp = tweetElement.querySelector('a[href*="/status/"] time');
+  if (timestamp === null) {
+    return null;
+  }
+  return timestamp.closest("a").getAttribute("href");
+}
+
+// Photo URLs at full size: X serves resized copies chosen by the "name" parameter, and "orig" is the upload.
+function imageUrls(tweetElement) {
+  const urls = [];
+  for (const image of tweetElement.querySelectorAll('[data-testid="tweetPhoto"] img')) {
+    const url = new URL(image.src);
+    url.searchParams.set("name", "orig");
+    urls.push(url.href);
+  }
+  for (const video of tweetElement.querySelectorAll("video[poster]")) {
+    urls.push(video.poster);
+  }
+  return urls;
+}
+
+const siteAdapter = {
+  platform: "x",
+
+  // The tweets under rootNode, plus the tweet containing it.
+  findPostElements(rootNode) {
+    const found = [...rootNode.querySelectorAll(TWEET_SELECTOR)];
+    const enclosing = rootNode.closest(TWEET_SELECTOR);
+    if (enclosing !== null) {
+      found.push(enclosing);
+    }
+    return found;
+  },
+
+  // The record sent to the server, or null while the tweet has no timestamp link yet. On a post's own
+  // page every other tweet is treated as a reply to that post.
+  extractPost(tweetElement) {
+    const statusPath = ownStatusPath(tweetElement);
+    if (statusPath === null) {
+      return null;
+    }
+    const [, author, , statusId] = statusPath.split("/");
+    const textElement = tweetElement.querySelector('[data-testid="tweetText"]');
+    const record = {
+      platform: "x",
+      kind: "post",
+      post_id: statusId,
+      url: new URL(statusPath, location.origin).href,
+      author: author,
+      community: "",
+      text: textElement === null ? "" : textElement.textContent,
+      image_urls: imageUrls(tweetElement),
+    };
+
+    const openPostMatch = location.pathname.match(/^\/[^/]+\/status\/(\d+)/);
+    if (openPostMatch !== null && openPostMatch[1] !== statusId) {
+      record.kind = "reply";
+      record.parent_post_id = openPostMatch[1];
+    }
+    return record;
+  },
+
+  // treatment is described in content/post-decoration.js. The whole tweet is treated.
+  applyAction(tweetElement, treatment) {
+    decoratePost(tweetElement, treatment);
+  },
+};

@@ -26,6 +26,7 @@ page says Connected and the extension's popup says "Connected to your account".
 - Flagged posts are blurred, with a label naming the plugin, or collapsed to one line reading
   "Hidden by Brainrot Index: <plugin>". Click a blurred post to show it (not in child mode).
 - While the server is still deciding about a post it is shown normally, or blurred in child mode.
+  The extension keeps asking for up to 2 minutes while the post is on the page, then leaves it shown.
 - A hidden post that was already above the top of the screen when its answer arrived is blurred
   instead, so the page never jumps under you. It is collapsed the next time the site redraws it.
 - On Reddit, a hidden comment shows only its author line and the one-line notice; its replies stay

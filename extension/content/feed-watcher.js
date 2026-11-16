@@ -7,7 +7,11 @@
 
 const BATCH_QUIET_MS = 150;
 const BATCH_MAX_POSTS = 25;
-const PENDING_RETRY_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
+// Posts the server is still working on are asked about again: quickly at first, then every 8 seconds,
+// for up to 2 minutes after they were first sent, and only while they are still in the page.
+const FAST_REASK_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
+const SLOW_REASK_DELAY_MS = 8000;
+const GIVE_UP_AFTER_MS = 120000;
 const ALLOW_ANSWER = { status: "done", action: "allow", reasons: [] };
 
 let config = null;  // server config while watching; null while stopped
@@ -20,6 +24,12 @@ const postIdByElement = new WeakMap();     // the post each element showed when 
 
 let postsForNextBatch = [];
 let batchTimer = null;
+
+// Posts the server answered "pending": post_id -> { post, firstSentAt, reaskCount, nextAskAt }.
+// One timer serves them all, and at most one re-ask request is in flight.
+const pendingByPostId = new Map();
+let reaskTimer = null;
+let reaskInFlight = false;
 
 const nearViewportObserver = new IntersectionObserver(onPostsNearViewport, { rootMargin: "1000px 0px" });
 const pageChangeObserver = new MutationObserver(onPageChanges);
@@ -135,19 +145,19 @@ function addToNextBatch(post) {
 function sendNextBatch() {
   const batch = postsForNextBatch;
   postsForNextBatch = [];
-  requestAnswers(batch, 0);
+  requestAnswers(batch);
 }
 
-// Sends posts to the server through the background worker. Posts the server is still working on are
-// asked about again after 0.5, 1, 2, 4 and 8 seconds, then treated as allowed. The server itself waits
-// up to about 1.5 seconds inside each call, so most posts are done by the first or second ask.
-async function requestAnswers(posts, retryCount) {
+// Sends posts to the server through the background worker and applies the answers.
+async function requestAnswers(posts) {
+  const sentAt = Date.now();
   const reply = await extensionApi.runtime.sendMessage({ type: "classify", posts: posts });
   if (config === null) {
     return;
   }
   if (reply.state !== "connected") {
     for (const post of posts) {
+      pendingByPostId.delete(post.post_id);
       receiveAnswer(post.post_id, ALLOW_ANSWER);
     }
     if (reply.state === "not-connected" || reply.state === "no-subscription") {
@@ -157,25 +167,72 @@ async function requestAnswers(posts, retryCount) {
   }
 
   const postById = new Map(posts.map((post) => [post.post_id, post]));
-  const stillPendingPosts = [];
   for (const result of reply.results) {
     if (result.status === "done") {
+      pendingByPostId.delete(result.post_id);
       receiveAnswer(result.post_id, result);
-    } else {
-      stillPendingPosts.push(postById.get(result.post_id));
+      continue;
     }
+    let pending = pendingByPostId.get(result.post_id);
+    if (pending === undefined) {
+      pending = { post: postById.get(result.post_id), firstSentAt: sentAt, reaskCount: 0 };
+      pendingByPostId.set(result.post_id, pending);
+    }
+    pending.nextAskAt = Date.now() + (FAST_REASK_DELAYS_MS[pending.reaskCount] ?? SLOW_REASK_DELAY_MS);
+    pending.reaskCount = pending.reaskCount + 1;
   }
-  if (stillPendingPosts.length === 0) {
+  scheduleReask();
+}
+
+function scheduleReask() {
+  clearTimeout(reaskTimer);
+  if (pendingByPostId.size === 0 || reaskInFlight) {
     return;
   }
-
-  if (retryCount === PENDING_RETRY_DELAYS_MS.length) {
-    for (const post of stillPendingPosts) {
-      receiveAnswer(post.post_id, ALLOW_ANSWER);
-    }
-  } else {
-    setTimeout(() => requestAnswers(stillPendingPosts, retryCount + 1), PENDING_RETRY_DELAYS_MS[retryCount]);
+  let earliestAskAt = Infinity;
+  for (const pending of pendingByPostId.values()) {
+    earliestAskAt = Math.min(earliestAskAt, pending.nextAskAt);
   }
+  reaskTimer = setTimeout(reaskPendingPosts, Math.max(0, earliestAskAt - Date.now()));
+}
+
+function isPostInPage(postId) {
+  for (const postElement of waitingElementsByPostId.get(postId) ?? []) {
+    if (postElement.isConnected && postIdByElement.get(postElement) === postId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Asks again, in one request, about every pending post that is due. A post that has left the page is
+// forgotten, so it is sent afresh if the site shows it again; one pending for 2 minutes is allowed.
+async function reaskPendingPosts() {
+  const now = Date.now();
+  const duePosts = [];
+  for (const [postId, pending] of pendingByPostId) {
+    if (!isPostInPage(postId)) {
+      pendingByPostId.delete(postId);
+      requestedPostIds.delete(postId);
+      waitingElementsByPostId.delete(postId);
+    } else if (now - pending.firstSentAt >= GIVE_UP_AFTER_MS) {
+      pendingByPostId.delete(postId);
+      receiveAnswer(postId, ALLOW_ANSWER);
+    } else if (pending.nextAskAt <= now && duePosts.length < BATCH_MAX_POSTS) {
+      duePosts.push(pending.post);
+    }
+  }
+  if (duePosts.length === 0) {
+    scheduleReask();
+    return;
+  }
+  reaskInFlight = true;
+  try {
+    await requestAnswers(duePosts);
+  } finally {
+    reaskInFlight = false;
+  }
+  scheduleReask();
 }
 
 // Collapsing a post above the top of the viewport would move everything the reader is looking at,
@@ -215,7 +272,9 @@ function stopWatching() {
   pageChangeObserver.disconnect();
   nearViewportObserver.disconnect();
   clearTimeout(batchTimer);
+  clearTimeout(reaskTimer);
   postsForNextBatch = [];
+  pendingByPostId.clear();
   answerByPostId.clear();
   requestedPostIds.clear();
   waitingElementsByPostId.clear();

@@ -2,7 +2,9 @@
 // predictable rules, plus a one-page website with a "Connect extension" button.
 //
 // Rules for POST /api/classify/:
-//   The first request for a post answers "pending"; every later request answers "done".
+//   The first request for a post answers "pending"; every later request answers "done". A slow post
+//   (one whose id's character sum leaves 3 mod 4) stays "pending" for its first 6 requests, which
+//   takes the extension past its fast re-asks into the every-8-seconds phase.
 //   hide  "Engagement bait" when the text contains "AITA" or the post id's character sum leaves 0 mod 3.
 //   blur  "Ragebait"        when the text is longer than 400 characters or that sum leaves 1 mod 3.
 //   allow                   otherwise.
@@ -113,7 +115,8 @@ export function startMockServer(port) {
         const postKey = post.platform + ":" + post.post_id;
         const requestCount = (requestCountByPost.get(postKey) ?? 0) + 1;
         requestCountByPost.set(postKey, requestCount);
-        if (requestCount === 1) {
+        const pendingRequestCount = postIdCharacterSum(post.post_id) % 4 === 3 ? 6 : 1;
+        if (requestCount <= pendingRequestCount) {
           return { platform: post.platform, post_id: post.post_id, status: "pending" };
         }
         return { platform: post.platform, post_id: post.post_id, status: "done", ...chooseAnswer(post) };

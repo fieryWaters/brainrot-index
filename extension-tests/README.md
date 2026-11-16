@@ -46,6 +46,18 @@ flags by plugin, and a few flagged examples.
 
 `BRAINROT_ONLY=4g npm test -- x` runs only the tests whose names start with "4g".
 
+## Run live with a fresh account (one command)
+
+    node run-live-tests.mjs              # both groups
+    node run-live-tests.mjs reddit       # or x
+    node run-live-tests.mjs --probe-only # just check that real inference flags an obvious post
+
+It signs up a new `e2e+<random>@brainrotindex.com` account with a random password, reads the
+verification link from the backend log over `ssh spark`, logs in, creates an extension token, sends
+one obvious engagement-bait post and waits up to 60 seconds for it to be flagged, then runs the whole
+suite against https://brainrot.jacob-waters.com with the real dashboard Connect button. No password or
+token is printed or saved. It needs `ssh spark` to work from this Mac.
+
 ## Profiles
 
 - Reddit tests use a new empty profile in `.profiles/` (git-ignored) on every run.

@@ -130,6 +130,7 @@ function reportServerDecisions(surfaceName, classifyCalls) {
     }
   }
   const waits = [...doneAtById.entries()].map(([postId, doneAt]) => doneAt - firstSentAtById.get(postId)).sort((a, b) => a - b);
+  const answeredWithin = (limitMs) => waits.filter((wait) => wait <= limitMs).length;
   const flaggedCountByPlugin = {};
   const flaggedExamples = [];
   for (const result of doneResultById.values()) {
@@ -146,10 +147,18 @@ function reportServerDecisions(surfaceName, classifyCalls) {
   console.log(`    posts sent: ${postById.size}; done: ${doneResultById.size}; done on the first ask: ${doneOnFirstAsk}; classify calls: ${classifyCalls.length}, failed: ${failedCalls}`);
   if (waits.length > 0) {
     console.log(`    first send to done: median ${waits[Math.floor(waits.length / 2)]} ms, worst ${waits[waits.length - 1]} ms`);
+    console.log(`    answered within 3 s: ${answeredWithin(3000)}, 10 s: ${answeredWithin(10000)}, 30 s: ${answeredWithin(30000)}, 2 min: ${answeredWithin(120000)}`);
   }
   console.log(`    flagged: ${JSON.stringify(flaggedCountByPlugin)}`);
-  for (const example of flaggedExamples.slice(0, 4)) {
+  for (const example of flaggedExamples.slice(0, 6)) {
     console.log("      " + example);
+  }
+  console.log("    some allowed posts, with their strongest reason:");
+  const allowedResults = [...doneResultById.values()].filter((result) => result.action === "allow");
+  for (const result of allowedResults.slice(0, 8)) {
+    const topReason = result.reasons[0];
+    const reasonText = topReason === undefined ? "no reasons" : `${topReason.plugin} ${topReason.score}`;
+    console.log(`      ${reasonText}: ` + postById.get(result.post_id).text.replace(/\s+/g, " ").slice(0, 80));
   }
 }
 
@@ -227,6 +236,7 @@ async function testThresholdTakesEffect(page, serviceWorker, classifyCalls, feed
     await waitForAnswersToSettle(page, classifyCalls);
     await scrollDown(page, 2);
     await waitForAnswersToSettle(page, classifyCalls);
+    reportServerDecisions(`feed reload, ${plugin.slug} threshold as set`, classifyCalls.slice(callsBefore));
     return countFilteredAnswers(classifyCalls.slice(callsBefore));
   }
 
@@ -236,7 +246,7 @@ async function testThresholdTakesEffect(page, serviceWorker, classifyCalls, feed
   try {
     after = await filteredOnFreshLoad();
   } finally {
-    await callWebsiteApi("PATCH", `/api/plugins/${plugin.slug}/`, { threshold: 60 });
+    await callWebsiteApi("PATCH", `/api/plugins/${plugin.slug}/`, { threshold: plugin.threshold });
   }
   console.log(`    ${plugin.slug} at ${plugin.threshold}: ${before.filteredCount} of ${before.answeredCount} filtered; at 20: ${after.filteredCount} of ${after.answeredCount}`);
   check(after.filteredCount / Math.max(after.answeredCount, 1) > before.filteredCount / Math.max(before.answeredCount, 1),
@@ -495,6 +505,22 @@ function checkBatches(classifyCalls) {
   check(classifyCalls.every((call) => call.status === 200), "every classify call succeeded");
 }
 
+// A re-ask carries only posts sent before; at most one may be in flight at a time.
+function checkReasksDoNotOverlap(classifyCalls) {
+  const sentIds = new Set();
+  const reasks = [];
+  for (const call of [...classifyCalls].sort((a, b) => a.sentAt - b.sentAt)) {
+    if (call.posts.every((post) => sentIds.has(post.post_id))) {
+      reasks.push(call);
+    }
+    for (const post of call.posts) {
+      sentIds.add(post.post_id);
+    }
+  }
+  const overlapping = reasks.filter((call, index) => index > 0 && call.sentAt < reasks[index - 1].answeredAt);
+  check(overlapping.length === 0, `re-asks never overlap (${reasks.length} re-asks)`);
+}
+
 function checkPendingThenDone(classifyCalls) {
   const firstStatusById = new Map();
   let pendingThenDoneCount = 0;
@@ -507,8 +533,21 @@ function checkPendingThenDone(classifyCalls) {
       }
     }
   }
+  const askCountById = new Map();
+  for (const call of classifyCalls) {
+    for (const post of call.posts) {
+      askCountById.set(post.post_id, (askCountById.get(post.post_id) ?? 0) + 1);
+    }
+  }
+  const askedSevenTimes = [...askCountById.values()].filter((askCount) => askCount >= 7).length;
+  const askCountHistogram = {};
+  for (const askCount of askCountById.values()) {
+    askCountHistogram[askCount] = (askCountHistogram[askCount] ?? 0) + 1;
+  }
+  console.log("    asks per post: " + JSON.stringify(askCountHistogram));
   if (usingMockServer) {
     check(pendingThenDoneCount > 0, `pending posts were asked again and answered (${pendingThenDoneCount})`);
+    check(askedSevenTimes > 0, `slow posts were still asked about after the fast re-asks (${askedSevenTimes})`);
   } else {
     console.log(`    info: ${pendingThenDoneCount} posts went from pending to done`);
   }
@@ -543,10 +582,23 @@ function checkActedOn(actionCounts, what) {
   }
 }
 
+// Post ids whose most recent answer was "pending".
+function stillPendingIds(classifyCalls) {
+  const latestStatusById = new Map();
+  for (const call of classifyCalls) {
+    for (const result of call.results) {
+      latestStatusById.set(result.post_id, result.status);
+    }
+  }
+  return [...latestStatusById].filter(([, status]) => status === "pending").map(([postId]) => postId);
+}
+
 async function waitForAnswersToSettle(page, classifyCalls) {
   await waitUntil(() => classifyCalls.length > 0, 20000);
-  // The mock answers pending first and the extension asks again after half a second.
-  await waitUntil(async () => (await page.locator('[data-brainrot-index-action="pending"]').count()) === 0, 20000);
+  // The extension keeps asking about pending posts for up to 2 minutes.
+  await waitUntil(() => stillPendingIds(classifyCalls).length === 0, usingMockServer ? 40000 : 125000);
+  // The mock's slow posts are answered about 24 seconds after they are first sent.
+  await waitUntil(async () => (await page.locator('[data-brainrot-index-action="pending"]').count()) === 0, 40000);
   await page.waitForTimeout(1000);
 }
 
@@ -565,7 +617,6 @@ async function checkFeed(page, serviceWorker, classifyCalls, platform, feedUrl) 
   }
   console.log("    sample record: " + JSON.stringify(feedPosts[0]).slice(0, 400));
   checkBatches(classifyCalls);
-  checkPendingThenDone(classifyCalls);
   const beforeScroll = await checkPageMatchesAnswers(page, serviceWorker, platform);
 
   const sentBeforeScroll = new Set(allSentPosts(classifyCalls).map((post) => post.post_id));
@@ -573,6 +624,8 @@ async function checkFeed(page, serviceWorker, classifyCalls, platform, feedUrl) 
   await waitForAnswersToSettle(page, classifyCalls);
   const newlySent = allSentPosts(classifyCalls).filter((post) => !sentBeforeScroll.has(post.post_id));
   check(newlySent.length > 0, `scrolling sent new posts (${newlySent.length})`);
+  checkPendingThenDone(classifyCalls);
+  checkReasksDoNotOverlap(classifyCalls);
   const afterScroll = await checkPageMatchesAnswers(page, serviceWorker, platform);
   checkActedOn({
     blur: beforeScroll.actionCounts.blur + afterScroll.actionCounts.blur,
@@ -798,7 +851,8 @@ async function runRedditGroup() {
     await runTest("6c. feedback: popup text box", () => testPopupFeedbackBox(context, extensionId, feedbackCalls));
     await runSurfaceTest("3b. Reddit comments", classifyCalls, async () => {
       await page.goto("https://www.reddit.com/r/AskReddit/", { waitUntil: "domcontentloaded" });
-      await page.waitForTimeout(4000);
+      await page.locator("shreddit-post").first().waitFor({ timeout: 30000 });
+      await page.waitForTimeout(2000);
       const threadPath = await page.evaluate(() => {
         const posts = [...document.querySelectorAll("shreddit-post")];
         posts.sort((a, b) => Number(b.getAttribute("comment-count")) - Number(a.getAttribute("comment-count")));

@@ -115,6 +115,8 @@ def build_results(posts, plugins_to_apply):
             if ACTION_SEVERITY[user_plugin.flagged_action] > ACTION_SEVERITY[action]:
                 action = user_plugin.flagged_action
 
+        # The extension shows the first reason, so the strongest comes first.
+        reasons.sort(key=lambda reason: reason['score'], reverse=True)
         result['status'] = 'done'
         result['action'] = action
         result['reasons'] = reasons

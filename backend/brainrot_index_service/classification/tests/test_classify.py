@@ -105,6 +105,16 @@ class ClassifyEndpointTests(TestCase):
         result = self.classify([seen_post('p1')]).json()['results'][0]
         self.assertEqual(result['action'], 'hide')
 
+    def test_reasons_are_ordered_by_score_highest_first(self):
+        self.classify([seen_post('p1')])
+        self.set_score('p1', 'engagement-bait', 65)
+        self.set_score('p1', 'ragebait', 90)
+        self.set_score('p1', 'brainrot', 75)
+        self.set_score('p1', 'ai-slop', 10)
+
+        reasons = self.classify([seen_post('p1')]).json()['results'][0]['reasons']
+        self.assertEqual([reason['score'] for reason in reasons], [90, 75, 65])
+
     def test_failed_classification_counts_as_finished_without_flag(self):
         self.classify([seen_post('p1')])
         for slug in ['engagement-bait', 'ragebait', 'brainrot']:

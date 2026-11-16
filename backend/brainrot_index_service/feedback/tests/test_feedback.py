@@ -62,6 +62,15 @@ class FeedbackEndpointTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(Feedback.objects.count(), 0)
 
+    def test_missed_post_report_needs_only_page_and_expected_action(self):
+        response = self.client.post(
+            reverse('create_feedback'),
+            {'source': 'extension', 'page_url': 'https://x.com/home', 'expected_action': 'hide'},
+            content_type='application/json',
+            **bearer(self.token),
+        )
+        self.assertEqual(response.status_code, 201)
+
     def test_text_or_expected_action_is_required(self):
         response = self.client.post(
             reverse('create_feedback'), {'source': 'extension'}, content_type='application/json', **bearer(self.token))

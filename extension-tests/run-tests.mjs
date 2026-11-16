@@ -105,20 +105,35 @@ function checkFeedbackCall(feedbackCall, expectedFields) {
   }
 }
 
+// Unfiltered post elements on each site, for the tests. Selectors repeat the adapters' on purpose.
+const UNFILTERED_POST_SELECTOR = {
+  reddit: "shreddit-post:not([data-brainrot-index-action])",
+  x: 'article[data-testid="tweet"]:not([data-brainrot-index-action]):has(a[href*="/status/"] time)',
+};
+
+// Runs in the page: the site's id for a post element.
+function readPostIdInPage(postElement, platform) {
+  if (platform === "reddit") {
+    return postElement.id;
+  }
+  return postElement.querySelector("a[href*='/status/'] time").closest("a").getAttribute("href").split("/")[3];
+}
+
 // One click on a blurred or hidden post's "Wrong?" control reports it as wrongly filtered.
-async function testReportWrongControl(page, feedbackCalls) {
+async function testReportWrongControl(page, feedbackCalls, platform) {
   const reportWrongButton = page.locator(".brainrot-index-report-wrong").first();
   check(await reportWrongButton.count() === 1, "a filtered post shows a Wrong? control");
-  const reportedPost = await reportWrongButton.evaluate((button) => {
+  const reportedPost = await reportWrongButton.evaluate((button, [platform, readPostIdSource]) => {
+    const readPostId = new Function("return " + readPostIdSource)();
     const postElement = button.parentElement.nextElementSibling;
-    return { id: postElement.id, action: postElement.dataset.brainrotIndexAction };
-  });
+    return { id: readPostId(postElement, platform), action: postElement.dataset.brainrotIndexAction };
+  }, [platform, readPostIdInPage.toString()]);
   const callsBefore = feedbackCalls.length;
   await reportWrongButton.scrollIntoViewIfNeeded();
   await reportWrongButton.click();
   await waitUntil(() => feedbackCalls.length > callsBefore, 5000);
   checkFeedbackCall(feedbackCalls[callsBefore], {
-    platform: "reddit",
+    platform: platform,
     post_id: reportedPost.id,
     shown_action: reportedPost.action,
     expected_action: "allow",
@@ -129,9 +144,9 @@ async function testReportWrongControl(page, feedbackCalls) {
 
 // The context menu item cannot be clicked from a test, so the test right-clicks a post (a contextmenu
 // event) and then runs the worker function the menu item calls.
-async function testMissedPostMenuItem(page, serviceWorker, feedbackCalls) {
-  const unfilteredPost = page.locator("shreddit-post:not([data-brainrot-index-action])").first();
-  const postId = await unfilteredPost.getAttribute("id");
+async function testMissedPostMenuItem(page, serviceWorker, feedbackCalls, platform) {
+  const unfilteredPost = page.locator(UNFILTERED_POST_SELECTOR[platform]).first();
+  const postId = await unfilteredPost.evaluate(readPostIdInPage, platform);
   await unfilteredPost.dispatchEvent("contextmenu");
   const callsBefore = feedbackCalls.length;
   await serviceWorker.evaluate(async (pageUrl) => {
@@ -140,7 +155,7 @@ async function testMissedPostMenuItem(page, serviceWorker, feedbackCalls) {
   }, page.url());
   await waitUntil(() => feedbackCalls.length > callsBefore, 5000);
   checkFeedbackCall(feedbackCalls[callsBefore], {
-    platform: "reddit",
+    platform: platform,
     post_id: postId,
     shown_action: "allow",
     expected_action: "hide",
@@ -392,7 +407,7 @@ async function testConnectFlow(serviceWorker, extensionId, context) {
 
 // Samples the page's JavaScript while scrolling and adds up time spent in the extension's code,
 // including the browser functions it calls. Also records the page's long tasks (over 50 ms).
-async function testScrollPerformance(context, serviceWorker, extensionId, classifyCalls) {
+async function testScrollPerformance(context, serviceWorker, extensionId, classifyCalls, feedUrl) {
   // Empty the answer cache so every post in this page goes through the full path.
   await serviceWorker.evaluate(() => chrome.storage.session.clear());
   const page = await context.newPage();
@@ -404,7 +419,7 @@ async function testScrollPerformance(context, serviceWorker, extensionId, classi
       }
     }).observe({ type: "longtask", buffered: true });
   });
-  await page.goto("https://www.reddit.com/r/popular/", { waitUntil: "domcontentloaded" });
+  await page.goto(feedUrl, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(5000);
 
   const cdp = await context.newCDPSession(page);
@@ -484,8 +499,8 @@ async function runRedditGroup() {
     }
     await runTest("3a. Reddit feed", () =>
       checkFeed(page, serviceWorker, classifyCalls, "reddit", "https://www.reddit.com/r/popular/"));
-    await runTest("6a. feedback: Wrong? control on a filtered post", () => testReportWrongControl(page, feedbackCalls));
-    await runTest("6b. feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls));
+    await runTest("6a. feedback: Wrong? control on a filtered post", () => testReportWrongControl(page, feedbackCalls, "reddit"));
+    await runTest("6b. feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "reddit"));
     await runTest("6c. feedback: popup text box", () => testPopupFeedbackBox(context, extensionId, feedbackCalls));
     await runTest("3b. Reddit comments", async () => {
       await page.goto("https://www.reddit.com/r/AskReddit/", { waitUntil: "domcontentloaded" });
@@ -497,22 +512,63 @@ async function runRedditGroup() {
       });
       await checkReplies(page, serviceWorker, classifyCalls, "reddit", "https://www.reddit.com" + threadPath);
     });
-    await runTest("5. scroll performance on Reddit", () => testScrollPerformance(context, serviceWorker, extensionId, classifyCalls));
+    await runTest("5. scroll performance on Reddit", () => testScrollPerformance(context, serviceWorker, extensionId, classifyCalls, "https://www.reddit.com/r/popular/"));
   } finally {
     await context.close();
   }
 }
 
+// X removes tweets far from the viewport and creates new elements when they scroll back. The test marks
+// the elements it saw, scrolls far down and back up, and checks that newly created elements for
+// already-answered tweets show their answers again without a new request.
+async function testXRecycledTweets(page, serviceWorker, classifyCalls) {
+  await page.evaluate(() => {
+    for (const tweet of document.querySelectorAll('article[data-testid="tweet"]')) {
+      tweet.dataset.testSeenBefore = "yes";
+    }
+  });
+  const answeredBeforeScroll = await readCachedAnswers(serviceWorker);
+  const callsBefore = classifyCalls.length;
+  for (let step = 0; step < 12; step++) {
+    await page.mouse.wheel(0, 1500);
+    await page.waitForTimeout(700);
+  }
+  for (let step = 0; step < 14; step++) {
+    await page.mouse.wheel(0, -1500);
+    await page.waitForTimeout(700);
+  }
+  await page.waitForTimeout(2000);
+  const answerById = await readCachedAnswers(serviceWorker);
+  const recreated = await page.evaluate(() => [...document.querySelectorAll('article[data-testid="tweet"]:not([data-test-seen-before])')]
+    .filter((tweet) => tweet.querySelector("a[href*='/status/'] time") !== null)
+    .map((tweet) => ({
+      id: tweet.querySelector("a[href*='/status/'] time").closest("a").getAttribute("href").split("/")[3],
+      action: tweet.dataset.brainrotIndexAction ?? "allow",
+    })));
+  const recreatedAnswered = recreated.filter((tweet) => answerById.has(tweet.id));
+  console.log(`    recreated tweet elements: ${recreated.length}, of which answered before: ${recreatedAnswered.length}`);
+  check(recreatedAnswered.length > 0, "some answered tweets were removed and created again by X");
+  const wrong = recreatedAnswered.filter((tweet) => answerById.get(tweet.id).action !== tweet.action);
+  check(wrong.length === 0, "every recreated tweet shows its answer again " + JSON.stringify(wrong.slice(0, 3)));
+  const resent = allSentPosts(classifyCalls.slice(callsBefore)).filter((post) => answeredBeforeScroll.has(post.post_id));
+  check(resent.length === 0, "no answered tweet was sent again while scrolling back");
+  await checkPageMatchesAnswers(page, serviceWorker, "x");
+}
+
 async function runXGroup() {
-  const { context, serviceWorker } = await launchBrave(X_TEST_PROFILE_DIR, { signedInProfile: true });
+  const { context, serviceWorker, extensionId } = await launchBrave(X_TEST_PROFILE_DIR, { signedInProfile: true });
   try {
     await configureExtension(serviceWorker);
     await serviceWorker.evaluate(() => chrome.storage.session.clear());
     const classifyCalls = recordClassifyCalls(context);
+    const feedbackCalls = recordFeedbackCalls(context);
     const page = context.pages()[0] ?? (await context.newPage());
 
     await runTest("4a. X home feed", () =>
       checkFeed(page, serviceWorker, classifyCalls, "x", "https://x.com/home"));
+    await runTest("4c. X recycled tweets", () => testXRecycledTweets(page, serviceWorker, classifyCalls));
+    await runTest("4d. X feedback: Wrong? control", () => testReportWrongControl(page, feedbackCalls, "x"));
+    await runTest("4e. X feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "x"));
     await runTest("4b. X replies", async () => {
       await page.goto("https://x.com/home", { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(5000);
@@ -532,6 +588,8 @@ async function runXGroup() {
       });
       await checkReplies(page, serviceWorker, classifyCalls, "x", "https://x.com" + statusPath);
     });
+    await runTest("4f. scroll performance on X", () =>
+      testScrollPerformance(context, serviceWorker, extensionId, classifyCalls, "https://x.com/home"));
   } finally {
     await context.close();
   }

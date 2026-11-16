@@ -13,7 +13,7 @@ Chrome ignores `--load-extension`.
 
     npm test              # both groups
     npm test -- reddit    # Reddit only: load, connect, feed, comments, performance
-    npm test -- x         # X only: home feed and replies
+    npm test -- x         # X only: home feed, recycled tweets, feedback, replies, performance
 
 `npm test` first runs `stamp-build-info.mjs`, which writes `extension/build-info.json` (git-ignored)
 with the short commit hash and whether the tree has uncommitted changes. The extension attaches that

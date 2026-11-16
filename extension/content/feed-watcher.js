@@ -24,14 +24,9 @@ let batchTimer = null;
 const nearViewportObserver = new IntersectionObserver(onPostsNearViewport, { rootMargin: "1000px 0px" });
 const pageChangeObserver = new MutationObserver(onPageChanges);
 
+// The server orders reasons by score, highest first.
 function pluginThatFlagged(answer) {
-  let strongestReason = answer.reasons[0];
-  for (const reason of answer.reasons) {
-    if (reason.score > strongestReason.score) {
-      strongestReason = reason;
-    }
-  }
-  return strongestReason.plugin;
+  return answer.reasons[0].plugin;
 }
 
 function showAnswer(postElement, postId, answer) {

@@ -11,8 +11,9 @@ from classification.models import (
     CLASSIFICATION_DONE,
     CLASSIFICATION_FAILED,
     IMAGE_DOWNLOADED,
+    IMAGE_PENDING,
     Classification,
-    PluginVersion,
+    Plugin,
     PostImage,
 )
 from classification.views import store_post
@@ -40,7 +41,7 @@ def image_download_response(image_bytes):
 class WorkerTests(TestCase):
     def queue(self, post_data, plugin_slug='ragebait'):
         post = store_post(post_data)
-        plugin_version = PluginVersion.objects.get(plugin__slug=plugin_slug)
+        plugin_version = Plugin.objects.get(slug=plugin_slug).latest_version()
         return Classification.objects.create(post=post, plugin_version=plugin_version)
 
     def test_valid_answer_is_saved(self):
@@ -99,14 +100,34 @@ class WorkerTests(TestCase):
         self.assertEqual(classification.status, CLASSIFICATION_FAILED)
         self.assertIsNone(classification.score)
 
-    def test_images_are_downloaded_first_and_sent_downscaled(self):
+    def test_classification_uses_a_small_rendition_without_waiting_for_the_archive(self):
+        x_photo_url = 'https://pbs.twimg.com/media/garden?format=png&name=orig'
+        classification = self.queue(seen_post('p1', platform='x', image_urls=[x_photo_url]))
+
+        with (
+            patch('classification.inference.requests.post', side_effect=fake_model_scoring(10)) as model_call,
+            patch('classification.images.requests.get', return_value=image_download_response(png_bytes(680, 340))) as fetch,
+        ):
+            self.assertTrue(classify_next_pending())
+
+        self.assertEqual(fetch.call_args.args[0], 'https://pbs.twimg.com/media/garden?format=png&name=small')
+        sent_image_url = model_call.call_args.kwargs['json']['messages'][1]['content'][1]['image_url']['url']
+        self.assertTrue(sent_image_url.startswith('data:image/jpeg;base64,'))
+        classification.refresh_from_db()
+        self.assertEqual(classification.status, CLASSIFICATION_DONE)
+        # The original is archived afterwards, at the URL the extension sent.
+        self.assertEqual(PostImage.objects.get(post=classification.post).status, IMAGE_PENDING)
+        with patch('classification.images.requests.get', return_value=image_download_response(png_bytes(2000, 1000))) as fetch:
+            self.assertTrue(download_next_pending_image())
+        self.assertEqual(fetch.call_args.args[0], x_photo_url)
+        self.assertEqual(PostImage.objects.get(post=classification.post).status, IMAGE_DOWNLOADED)
+
+    def test_archived_images_are_sent_downscaled(self):
         classification = self.queue(seen_post('p1', image_urls=['https://i.redd.it/garden.png']))
 
+        with patch('classification.images.requests.get', return_value=image_download_response(png_bytes(2000, 1000))):
+            self.assertTrue(download_next_pending_image())
         with patch('classification.inference.requests.post', side_effect=fake_model_scoring(10)) as model_call:
-            # The classification waits while its post still has an image to download.
-            self.assertFalse(classify_next_pending())
-            with patch('classification.images.requests.get', return_value=image_download_response(png_bytes(2000, 1000))):
-                self.assertTrue(download_next_pending_image())
             self.assertTrue(classify_next_pending())
 
         post_image = PostImage.objects.get(post=classification.post)

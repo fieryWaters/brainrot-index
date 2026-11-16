@@ -18,7 +18,7 @@ from .images import model_image_data_url
 from .models import (
     CLASSIFICATION_DONE,
     CLASSIFICATION_FAILED,
-    IMAGE_DOWNLOADED,
+    IMAGE_REJECTED,
     POST_KIND_REPLY,
     Post,
 )
@@ -214,7 +214,7 @@ def run_classification(classification):
     post = classification.post
 
     images_with_data = []
-    for post_image in post.images.filter(status=IMAGE_DOWNLOADED).order_by('id')[:MAX_IMAGES_PER_POST]:
+    for post_image in post.images.exclude(status=IMAGE_REJECTED).order_by('id')[:MAX_IMAGES_PER_POST]:
         data_url = model_image_data_url(post_image)
         if data_url is not None:
             images_with_data.append((post_image, data_url))

@@ -16,7 +16,8 @@ class SeenPostSerializer(serializers.Serializer):
     author = serializers.CharField(max_length=255, allow_blank=True, default='')
     community = serializers.CharField(max_length=255, allow_blank=True, default='')
     text = serializers.CharField(allow_blank=True, default='', trim_whitespace=False)
-    image_urls = serializers.ListField(child=serializers.CharField(), default=list)
+    # Blank entries are accepted here and dropped by store_post with the other unusable URLs.
+    image_urls = serializers.ListField(child=serializers.CharField(allow_blank=True), default=list)
 
 
 class ClassifyRequestSerializer(serializers.Serializer):

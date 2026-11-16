@@ -1,5 +1,5 @@
 # Brainrot Index stack: Postgres, the Django API, the classification worker,
-# and nginx serving the built frontend.
+# the local model server, and nginx serving the built frontend.
 # All config comes from .env, which compose reads natively.
 # Deploy: bash deploy.sh    Down: docker compose down
 
@@ -87,6 +87,49 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      inference:
+        condition: service_healthy
+
+  # The local vision-language model, used when INFERENCE_SOURCE=local, behind
+  # an OpenAI-compatible API at http://inference:8000/v1 on the compose network
+  # only. vLLM batches concurrent requests and caches each rubric's shared
+  # prompt prefix; multi-token prediction (MTP) speeds up decoding. Thinking
+  # is off: the classifier answers straight in JSON.
+  inference:
+    image: nvcr.io/nvidia/vllm:26.10.pre1-py3
+    command:
+      - vllm
+      - serve
+      - Qwen/Qwen3.5-9B
+      # Weights quantized to FP8 when loaded, so the name the API and the
+      # Classification rows show says so.
+      - --served-model-name=Qwen/Qwen3.5-9B-FP8
+      - --host=0.0.0.0
+      - --port=8000
+      - --gpu-memory-utilization=0.35
+      - --max-model-len=8192
+      - --max-num-seqs=64
+      - --enable-prefix-caching
+      - --quantization=fp8
+      - --speculative-config={"method":"mtp","num_speculative_tokens":3}
+      - --limit-mm-per-prompt={"image":4,"video":0}
+      - --default-chat-template-kwargs={"enable_thinking":false}
+    environment:
+      HF_HOME: /models
+    gpus: all
+    shm_size: 16g
+    restart: unless-stopped
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      # Loading the weights and compiling takes several minutes.
+      start_period: 900s
+    volumes:
+      - inference_models:/models
 
   web:
     build:
@@ -113,3 +156,4 @@ volumes:
   postgres_data:
   backend_static:
   post_images:
+  inference_models:

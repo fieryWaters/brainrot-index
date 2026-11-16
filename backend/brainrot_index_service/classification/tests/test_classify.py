@@ -54,6 +54,11 @@ class ClassifyEndpointTests(TestCase):
             'platform': 'reddit', 'post_id': 'p1', 'status': 'done', 'action': 'allow', 'reasons': [],
         }]})
 
+    def test_new_classifications_use_rubric_version_2(self):
+        self.classify([seen_post('p1')])
+        versions = set(Classification.objects.filter(post__post_id='p1').values_list('plugin_version__version', flat=True))
+        self.assertEqual(versions, {2})
+
     def test_second_user_seeing_the_same_post_triggers_no_new_inference(self):
         self.classify([seen_post('p1')])
         with patch('classification.inference.requests.post', side_effect=fake_model_scoring(10)) as model_call:
@@ -143,6 +148,27 @@ class ClassifyEndpointTests(TestCase):
         response = self.classify([seen_post(f'p{number}') for number in range(25)])
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()['results']), 25)
+
+    def test_blank_and_off_host_image_urls_are_dropped_and_the_post_classified(self):
+        response = self.classify([seen_post('p1', image_urls=[
+            '', 'https://example.com/a.jpg', 'https://i.redd.it/kept.jpg',
+        ])])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['results'][0]['status'], 'pending')
+        post = Post.objects.get(post_id='p1')
+        self.assertEqual(post.image_urls, ['https://i.redd.it/kept.jpg'])
+        self.assertEqual([image.source_url for image in post.images.all()], ['https://i.redd.it/kept.jpg'])
+
+    def test_malformed_post_is_rejected_naming_which_one(self):
+        malformed_post = seen_post('p2')
+        del malformed_post['kind']
+
+        response = self.classify([seen_post('p1'), malformed_post])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {'posts': {'1': {'kind': ['This field is required.']}}})
+        self.assertEqual(Post.objects.count(), 0)
 
     def test_reply_keeps_its_parent_and_post_drops_it(self):
         self.classify([

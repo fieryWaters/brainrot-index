@@ -29,7 +29,8 @@ docker compose run --rm --no-deps --user "$(id -u):$(id -g)" -v "$PWD/eval:/app/
 - `--plugin ragebait` evaluates one plugin; add `--rubric-version 2` to pick a
   version other than the latest.
 - `--inference-source local` sends the same requests to `LOCAL_INFERENCE_BASE_URL`
-  with the `--model` name given.
+  with the `--model` name given; for the stack's own model server that is
+  `--model Qwen/Qwen3.5-9B-FP8` (see `DEPLOY.md`), free to run.
 - `--concurrency` sets how many requests are in flight (default 8).
 
 The prompt building, the request, the one retry, and the answer parsing are

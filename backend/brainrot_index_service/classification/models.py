@@ -109,6 +109,11 @@ class Plugin(models.Model):
         related_name='authored_plugins',
     )
     is_baseline = models.BooleanField(default=False)
+    # The threshold a user starts with when the plugin is installed.
+    default_threshold = models.PositiveSmallIntegerField(
+        default=60,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def latest_version(self):

@@ -29,15 +29,13 @@ def download_next_pending_image():
 
 
 def classify_next_pending():
-    """Runs one pending classification whose post has no images still
-    downloading. Returns False when there was none."""
+    """Runs one pending classification. Returns False when there was none."""
     with transaction.atomic():
         classification = (
             Classification.objects
             # Lock only the classification row, so other plugins can run on the same post.
             .select_for_update(skip_locked=True, of=('self',))
             .filter(status=CLASSIFICATION_PENDING)
-            .exclude(post__images__status=IMAGE_PENDING)
             .select_related('post', 'plugin_version')
             .order_by('id')
             .first()

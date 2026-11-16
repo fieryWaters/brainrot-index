@@ -10,7 +10,8 @@ from classification.worker import classify_next_pending, download_next_pending_i
 
 logger = logging.getLogger(__name__)
 
-WORKER_THREADS = 16
+# Enough requests in flight for the local model server to batch them well.
+WORKER_THREADS = 48
 IDLE_POLL_SECONDS = 0.2
 ERROR_PAUSE_SECONDS = 1
 # Touched after every successful poll; the compose healthcheck reads its age.
@@ -20,7 +21,8 @@ HEARTBEAT_PATH = Path('/tmp/classification-worker-heartbeat')
 def work_forever():
     while True:
         try:
-            found_work = download_next_pending_image() or classify_next_pending()
+            # Classifying comes first: archiving an original never delays a post.
+            found_work = classify_next_pending() or download_next_pending_image()
             HEARTBEAT_PATH.touch()
         except Exception:
             # Usually the database restarting; drop the broken connection and try again.
@@ -33,7 +35,7 @@ def work_forever():
 
 
 class Command(BaseCommand):
-    help = "Downloads post images and runs pending classifications, 16 at a time."
+    help = "Runs pending classifications, then archives post images, 48 at a time."
 
     def handle(self, *args, **options):
         threads = [threading.Thread(target=work_forever, daemon=True) for _ in range(WORKER_THREADS)]

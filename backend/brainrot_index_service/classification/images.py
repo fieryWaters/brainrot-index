@@ -1,11 +1,11 @@
-"""Post images: downloading the originals from the platforms' media hosts, and
-preparing small copies to send to the model."""
+"""Post images: small copies for the model, fetched when a post is classified,
+and the originals, downloaded afterwards for the archive."""
 
 import base64
 import io
 import logging
 import mimetypes
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import requests
 from django.core.files.base import ContentFile
@@ -89,8 +89,40 @@ def download_image(post_image):
     post_image.save(update_fields=['file', 'byte_size', 'status'])
 
 
+def model_rendition_url(url):
+    """A URL of the image small enough for the model. X photos come in sizes
+    chosen by the "name" parameter, and the extension asks for "orig", often
+    several megabytes, so the model gets "small" instead. Other URLs are used
+    as sent: Reddit's resized copies are signed URLs that cannot be derived
+    from the original."""
+    parsed_url = urlparse(url)
+    if parsed_url.hostname != 'pbs.twimg.com' or not parsed_url.path.startswith('/media/'):
+        return url
+    query = dict(parse_qsl(parsed_url.query))
+    query['name'] = 'small'
+    return urlunparse(parsed_url._replace(query=urlencode(query)))
+
+
 def model_image_data_url(post_image):
-    """The stored image as a JPEG data URL whose longest side is at most 768
+    """The image for the model as a JPEG data URL, or None when it cannot be
+    had: the archived original when it is stored already, otherwise a small
+    rendition fetched now, so classification never waits for the archive."""
+    if post_image.status == IMAGE_DOWNLOADED:
+        return stored_image_data_url(post_image)
+
+    fetched = fetch_image(model_rendition_url(post_image.source_url))
+    if fetched is None:
+        return None
+    image_bytes, _ = fetched
+    try:
+        return image_file_data_url(io.BytesIO(image_bytes))
+    except OSError as error:
+        logger.warning("Cannot decode the model rendition of post image %s: %s", post_image.id, error)
+        return None
+
+
+def stored_image_data_url(post_image):
+    """The stored original as a JPEG data URL whose longest side is at most 768
     pixels, or None when the stored bytes are not an image Pillow can read."""
     try:
         with post_image.file.open('rb') as image_file:

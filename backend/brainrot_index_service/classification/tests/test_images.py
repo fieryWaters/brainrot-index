@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
 
-from classification.images import MAX_IMAGE_BYTES, download_image, image_url_is_allowed
+from classification.images import MAX_IMAGE_BYTES, download_image, image_url_is_allowed, model_rendition_url
 from classification.models import IMAGE_FAILED, IMAGE_REJECTED, PostImage
 from classification.views import store_post
 
@@ -33,6 +33,22 @@ class ImageHostAllowlistTests(TestCase):
             self.assertFalse(image_url_is_allowed(url), url)
 
 
+class ModelRenditionTests(TestCase):
+    def test_x_photos_are_fetched_at_small_size(self):
+        self.assertEqual(
+            model_rendition_url('https://pbs.twimg.com/media/ABC?format=jpg&name=orig'),
+            'https://pbs.twimg.com/media/ABC?format=jpg&name=small',
+        )
+
+    def test_other_urls_are_used_as_sent(self):
+        for url in [
+            'https://pbs.twimg.com/ext_tw_video_thumb/1/pu/img/ABC.jpg',
+            'https://i.redd.it/abc.jpg',
+            'https://preview.redd.it/abc.png?width=1080&s=signature',
+        ]:
+            self.assertEqual(model_rendition_url(url), url)
+
+
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
 class ImageDownloadTests(TestCase):
     def pending_image(self, url):
@@ -40,7 +56,9 @@ class ImageDownloadTests(TestCase):
         return PostImage.objects.get(post=post)
 
     def test_disallowed_host_is_never_fetched(self):
-        post_image = self.pending_image('https://example.com/abc.jpg')
+        # store_post drops such URLs; images stored before that still exist.
+        post = store_post(seen_post('p1'))
+        post_image = PostImage.objects.create(post=post, source_url='https://example.com/abc.jpg')
         with patch('classification.images.requests.get') as fetch:
             download_image(post_image)
         fetch.assert_not_called()

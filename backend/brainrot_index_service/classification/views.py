@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from api.auth_tokens import generate_raw_token, hash_token
 
 from .authentication import ExtensionTokenAuthentication
+from .images import image_url_is_allowed
 from .models import (
     ACTION_ALLOW,
     ACTION_BLUR,
@@ -48,7 +49,10 @@ def settings_for_user(user):
     user_settings, created = UserSettings.objects.get_or_create(user=user)
     if created:
         UserPlugin.objects.bulk_create(
-            [UserPlugin(user=user, plugin=plugin) for plugin in Plugin.objects.filter(is_baseline=True)],
+            [
+                UserPlugin(user=user, plugin=plugin, threshold=plugin.default_threshold)
+                for plugin in Plugin.objects.filter(is_baseline=True)
+            ],
             ignore_conflicts=True,
         )
     return user_settings
@@ -61,7 +65,9 @@ def store_post(seen_post):
     else:
         parent_post_id = ''
 
-    image_urls = list(dict.fromkeys(seen_post['image_urls']))
+    # A blank URL or one off the platforms' media hosts is dropped, and the post
+    # is classified on its text and remaining images.
+    image_urls = [url for url in dict.fromkeys(seen_post['image_urls']) if image_url_is_allowed(url)]
 
     post, created = Post.objects.get_or_create(
         platform=seen_post['platform'],

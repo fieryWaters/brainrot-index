@@ -12,7 +12,8 @@ automatically in the backend entrypoint; wait for `docker compose ps` to show
 | --------- | ----------------------------------------------- | ---------------- |
 | `db`      | Postgres 17, data in the `postgres_data` volume | none             |
 | `backend` | Django API under gunicorn (2 workers x 16 threads) | `127.0.0.1:8400` |
-| `worker`  | Same image; downloads post images and runs classifications, 16 at a time | none |
+| `worker`  | Same image; runs classifications, then archives post images, 48 at a time | none |
+| `inference` | vLLM serving the local model (`Qwen/Qwen3.5-9B`, FP8) on the GPU, weights in the `inference_models` volume | none |
 | `web`     | nginx: built frontend, proxies `/api/` to backend | `127.0.0.1:3400` |
 
 All configuration lives in `.env` (see `.env.example`). Post images live in
@@ -24,6 +25,19 @@ the `post_images` volume, mounted at `/app/media` in `backend` and `worker`.
 (default `google/gemini-2.5-flash-lite`). `INFERENCE_SOURCE=local` sends the
 same requests to `LOCAL_INFERENCE_BASE_URL` (an OpenAI-compatible server, URL
 ending in `/v1`) with `LOCAL_INFERENCE_MODEL`. Redeploy after changing them.
+
+The `inference` service is that local server: NVIDIA's vLLM container
+(`nvcr.io/nvidia/vllm:26.10.pre1-py3`) serving `Qwen/Qwen3.5-9B` from Hugging
+Face, quantized to FP8 at load and named `Qwen/Qwen3.5-9B-FP8`, with thinking
+off. Use it with `LOCAL_INFERENCE_BASE_URL=http://inference:8000/v1` and
+`LOCAL_INFERENCE_MODEL=Qwen/Qwen3.5-9B-FP8`. It has no host port; the worker
+reaches it on the compose network and starts only once it is healthy, which
+takes about three minutes after a deploy. It budgets 35% of the GPU's unified
+memory (about 43 GB). The weights (18 GB) download into the `inference_models`
+volume on first start.
+
+To go back to OpenRouter, set `INFERENCE_SOURCE=openrouter` in `.env` and run
+`bash deploy.sh`.
 
 ## Private address
 
@@ -69,5 +83,6 @@ user settings, and feedback. Make an account staff once:
 - Backend tests: `docker compose exec backend python manage.py test api classification feedback`
 - Evaluate a model against `eval/dataset.jsonl` (the folder is mounted, not built in; see `eval/README.md`): `docker compose run --rm --no-deps --user "$(id -u):$(id -g)" -v "$PWD/eval:/app/eval" --entrypoint python backend manage.py evaluate_plugins --dataset /app/eval/dataset.jsonl --inference-source openrouter --model google/gemini-2.5-flash-lite`
 - Worker logs: `docker compose logs -f worker`
+- Local model logs: `docker compose logs -f inference`
 - Frontend tests: `docker build --target build -t brainrot-index-frontend-test frontend/brainrot-index-frontend && docker run --rm brainrot-index-frontend-test npx vitest run`
 - Django shell: `docker compose exec backend python manage.py shell`

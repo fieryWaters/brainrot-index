@@ -296,7 +296,9 @@ async function testConnectFlow(serviceWorker, extensionId, context) {
 
 // Samples the page's JavaScript while scrolling and adds up time spent in the extension's code,
 // including the browser functions it calls. Also records the page's long tasks (over 50 ms).
-async function testScrollPerformance(context, extensionId) {
+async function testScrollPerformance(context, serviceWorker, extensionId, classifyCalls) {
+  // Empty the answer cache so every post in this page goes through the full path.
+  await serviceWorker.evaluate(() => chrome.storage.session.clear());
   const page = await context.newPage();
   await page.addInitScript(() => {
     window.longTasksSeen = [];
@@ -313,13 +315,13 @@ async function testScrollPerformance(context, extensionId) {
   await cdp.send("Profiler.enable");
   await cdp.send("Profiler.setSamplingInterval", { interval: 100 }); // microseconds
   await cdp.send("Profiler.start");
-  const postsBefore = await page.locator("shreddit-post").count();
+  const callsBefore = classifyCalls.length;
   for (let step = 0; step < 15; step++) {
     await page.mouse.wheel(0, 900);
     await page.waitForTimeout(700);
   }
   await page.waitForTimeout(16000); // let pending retries finish inside the profile
-  const postsAfter = await page.locator("shreddit-post").count();
+  const postsSent = new Set(allSentPosts(classifyCalls.slice(callsBefore)).map((post) => post.post_id)).size;
   const { profile } = await cdp.send("Profiler.stop");
   const longTasks = await page.evaluate(() => window.longTasksSeen);
   await page.close();
@@ -360,8 +362,8 @@ async function testScrollPerformance(context, extensionId) {
     }
   }
 
-  const postsHandled = Math.max(postsAfter, 1);
-  console.log(`    posts in page: ${postsBefore} before scrolling, ${postsAfter} after`);
+  const postsHandled = Math.max(postsSent, 1);
+  console.log(`    posts sent while profiling: ${postsSent}`);
   console.log(`    extension JavaScript time: ${(extensionMicroseconds / 1000).toFixed(1)} ms total, `
     + `${(extensionMicroseconds / 1000 / postsHandled).toFixed(2)} ms per post`);
   console.log(`    longest uninterrupted stretch in extension code: ${(longestExtensionStretch / 1000).toFixed(1)} ms`);
@@ -395,14 +397,14 @@ async function runRedditGroup() {
       });
       await checkReplies(page, serviceWorker, classifyCalls, "reddit", "https://www.reddit.com" + threadPath);
     });
-    await runTest("5. scroll performance on Reddit", () => testScrollPerformance(context, extensionId));
+    await runTest("5. scroll performance on Reddit", () => testScrollPerformance(context, serviceWorker, extensionId, classifyCalls));
   } finally {
     await context.close();
   }
 }
 
 async function runXGroup() {
-  const { context, serviceWorker } = await launchBrave(X_TEST_PROFILE_DIR);
+  const { context, serviceWorker } = await launchBrave(X_TEST_PROFILE_DIR, { signedInProfile: true });
   try {
     await configureExtension(serviceWorker);
     await serviceWorker.evaluate(() => chrome.storage.session.clear());

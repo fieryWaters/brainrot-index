@@ -1,9 +1,11 @@
 // Draws the Brainrot Index treatment on a post element: nothing, a blur with a label above it,
 // or a single line in place of the post. Site adapters call decoratePost with the element to treat.
 //
-// treatment = { action, pluginName, allowReveal, onReveal }
+// treatment = { action, pluginName, allowReveal, onReveal, onReportWrong }
 //   action is "allow", "pending" (blurred while the server decides), "blur" or "hide".
 //   onReveal is called after the reader clicks a blurred post open.
+//   onReportWrong is called from the label's "Wrong?" control on a blurred or hidden post; it returns
+//   a promise of { sent }.
 
 const NOTICE_CLASS = "brainrot-index-notice";
 
@@ -42,6 +44,9 @@ function decoratePost(postElement, treatment) {
   notice.className = NOTICE_CLASS;
   notice.textContent = noticeText(treatment);
   notice.addEventListener("click", () => revealIfAllowed(postElement));
+  if (treatment.action === "blur" || treatment.action === "hide") {
+    notice.append(makeReportWrongControl(treatment));
+  }
   // A post element placed into a slot of a web component needs its notice in the same slot to be shown.
   notice.slot = postElement.slot;
   postElement.before(notice);
@@ -54,6 +59,29 @@ function decoratePost(postElement, treatment) {
     postElement.addEventListener("click", onPostClick, true);
     postsWithClickListener.add(postElement);
   }
+}
+
+// A small "Wrong?" button that sends feedback in one click and briefly says whether it was recorded.
+function makeReportWrongControl(treatment) {
+  const reportWrongButton = document.createElement("button");
+  reportWrongButton.className = "brainrot-index-report-wrong";
+  reportWrongButton.textContent = "Wrong?";
+  reportWrongButton.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    event.preventDefault();
+    reportWrongButton.disabled = true;
+    const reply = await treatment.onReportWrong();
+    if (reply.sent) {
+      reportWrongButton.textContent = "Recorded";
+    } else {
+      reportWrongButton.textContent = "Not sent";
+    }
+    setTimeout(() => {
+      reportWrongButton.textContent = "Wrong?";
+      reportWrongButton.disabled = false;
+    }, 2500);
+  });
+  return reportWrongButton;
 }
 
 function removeDecoration(postElement) {

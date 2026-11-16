@@ -15,6 +15,12 @@ Chrome ignores `--load-extension`.
     npm test -- reddit    # Reddit only: load, connect, feed, comments, performance
     npm test -- x         # X only: home feed and replies
 
+`npm test` first runs `stamp-build-info.mjs`, which writes `extension/build-info.json` (git-ignored)
+with the short commit hash and whether the tree has uncommitted changes. The extension attaches that
+value to every feedback report as `extension_commit`, and shows it at the bottom of the popup; without
+the file it reports "unstamped". Run `node stamp-build-info.mjs` yourself after pulling new code if you
+load the extension for daily use.
+
 The runner starts `mock-server.mjs` on http://127.0.0.1:8787 and points the extension at it. The
 mock follows the API contract with fixed rules (see the top of `mock-server.mjs`).
 
@@ -23,7 +29,8 @@ mock follows the API contract with fixed rules (see the top of `mock-server.mjs`
     BRAINROT_SERVER=https://brainrot.jacob-waters.com BRAINROT_TOKEN=<extension token> npm test
 
 The connect test is skipped (the real site needs a login), and the checks that depend on the mock's
-rules (pending first, at least one blur and one hide) are printed instead of asserted. The server
+rules (pending first, at least one blur and one hide) are printed instead of asserted. The feedback
+tests send three real feedback reports (marked as automated in the popup text). The server
 address must be one the manifest grants: `https://brainrot.jacob-waters.com`, `http://localhost`
 or `http://127.0.0.1`.
 

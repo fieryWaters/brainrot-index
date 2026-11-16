@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node run-tests.mjs",
+    "test": "node stamp-build-info.mjs && node run-tests.mjs",
     "mock-server": "node mock-server.mjs"
   },
   "dependencies": {

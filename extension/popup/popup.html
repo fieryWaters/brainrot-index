@@ -15,6 +15,12 @@
   <p>Checked this session: <span id="checked-count">0</span></p>
   <p>Blurred or hidden: <span id="acted-on-count">0</span></p>
   <p><a id="site-link" target="_blank">Open Brainrot Index</a></p>
+  <form id="feedback-form">
+    <textarea id="feedback-text" rows="3" placeholder="Something wrong? Tell us." required></textarea>
+    <button type="submit">Send</button>
+    <span id="feedback-status"></span>
+  </form>
+  <p class="commit-line">Version <span id="extension-commit"></span></p>
   <script src="../extension-api.js"></script>
   <script src="popup.js"></script>
 </body>

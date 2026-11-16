@@ -11,7 +11,9 @@
 // The reddit group uses a fresh profile in .profiles/. The x group uses the signed-in test profile
 // below and only reads: it never posts, likes, follows or changes anything.
 import { execFileSync } from "node:child_process";
-import { makeFreshProfileDir, launchBrave } from "./browser.mjs";
+import fs from "node:fs";
+import path from "node:path";
+import { makeFreshProfileDir, launchBrave, EXTENSION_DIR } from "./browser.mjs";
 import { startMockServer, MOCK_TOKEN } from "./mock-server.mjs";
 
 const X_TEST_PROFILE_DIR = "/Users/jacob/git-repos/brainrot-test-profile";
@@ -67,6 +69,97 @@ function recordClassifyCalls(context) {
     classifyCalls.push({ posts: request.postDataJSON().posts, results: (await response.json()).results });
   });
   return classifyCalls;
+}
+
+// Every POST /api/feedback/ body the extension sends, with the response status.
+function recordFeedbackCalls(context) {
+  const feedbackCalls = [];
+  context.on("requestfinished", async (request) => {
+    if (!request.url().endsWith("/api/feedback/")) {
+      return;
+    }
+    const response = await request.response();
+    feedbackCalls.push({ body: request.postDataJSON(), status: response.status() });
+  });
+  return feedbackCalls;
+}
+
+// The commit string the extension should attach, from the build-info.json written by stamp-build-info.mjs.
+function expectedExtensionCommit() {
+  const buildInfoPath = path.join(EXTENSION_DIR, "build-info.json");
+  if (!fs.existsSync(buildInfoPath)) {
+    return "unstamped";
+  }
+  const buildInfo = JSON.parse(fs.readFileSync(buildInfoPath, "utf8"));
+  return buildInfo.dirty ? buildInfo.commit + "-dirty" : buildInfo.commit;
+}
+
+function checkFeedbackCall(feedbackCall, expectedFields) {
+  check(feedbackCall !== undefined, "a feedback request was sent");
+  console.log("    feedback sent: " + JSON.stringify(feedbackCall.body));
+  check(feedbackCall.status === 201, "server answered 201");
+  check(feedbackCall.body.source === "extension", "source is extension");
+  check(feedbackCall.body.extension_commit === expectedExtensionCommit(), "extension_commit is " + expectedExtensionCommit());
+  for (const [field, value] of Object.entries(expectedFields)) {
+    check(feedbackCall.body[field] === value, `${field} is ${value}`);
+  }
+}
+
+// One click on a blurred or hidden post's "Wrong?" control reports it as wrongly filtered.
+async function testReportWrongControl(page, feedbackCalls) {
+  const reportWrongButton = page.locator(".brainrot-index-report-wrong").first();
+  check(await reportWrongButton.count() === 1, "a filtered post shows a Wrong? control");
+  const reportedPost = await reportWrongButton.evaluate((button) => {
+    const postElement = button.parentElement.nextElementSibling;
+    return { id: postElement.id, action: postElement.dataset.brainrotIndexAction };
+  });
+  const callsBefore = feedbackCalls.length;
+  await reportWrongButton.scrollIntoViewIfNeeded();
+  await reportWrongButton.click();
+  await waitUntil(() => feedbackCalls.length > callsBefore, 5000);
+  checkFeedbackCall(feedbackCalls[callsBefore], {
+    platform: "reddit",
+    post_id: reportedPost.id,
+    shown_action: reportedPost.action,
+    expected_action: "allow",
+    page_url: page.url(),
+  });
+  check(await reportWrongButton.textContent() === "Recorded", "the label confirms it was recorded");
+}
+
+// The context menu item cannot be clicked from a test, so the test right-clicks a post (a contextmenu
+// event) and then runs the worker function the menu item calls.
+async function testMissedPostMenuItem(page, serviceWorker, feedbackCalls) {
+  const unfilteredPost = page.locator("shreddit-post:not([data-brainrot-index-action])").first();
+  const postId = await unfilteredPost.getAttribute("id");
+  await unfilteredPost.dispatchEvent("contextmenu");
+  const callsBefore = feedbackCalls.length;
+  await serviceWorker.evaluate(async (pageUrl) => {
+    const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    return reportMissedPost(activeTab.id, 0, pageUrl);
+  }, page.url());
+  await waitUntil(() => feedbackCalls.length > callsBefore, 5000);
+  checkFeedbackCall(feedbackCalls[callsBefore], {
+    platform: "reddit",
+    post_id: postId,
+    shown_action: "allow",
+    expected_action: "hide",
+  });
+}
+
+async function testPopupFeedbackBox(context, extensionId, feedbackCalls) {
+  const popupPage = await context.newPage();
+  await popupPage.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+  await popupPage.waitForTimeout(1000);
+  check(await popupPage.textContent("#extension-commit") === expectedExtensionCommit(), "popup shows the extension commit");
+  const callsBefore = feedbackCalls.length;
+  await popupPage.fill("#feedback-text", "Automated test feedback from the popup");
+  await popupPage.click("#feedback-form button");
+  await waitUntil(() => feedbackCalls.length > callsBefore, 5000);
+  checkFeedbackCall(feedbackCalls[callsBefore], { text: "Automated test feedback from the popup" });
+  await waitUntil(async () => (await popupPage.textContent("#feedback-status")) !== "", 3000);
+  check(await popupPage.textContent("#feedback-status") === "Sent, thank you", "popup confirms it was sent");
+  await popupPage.close();
 }
 
 async function configureExtension(serviceWorker) {
@@ -224,15 +317,18 @@ async function checkFeed(page, serviceWorker, classifyCalls, platform, feedUrl) 
   console.log("    sample record: " + JSON.stringify(feedPosts[0]).slice(0, 400));
   checkBatches(classifyCalls);
   checkPendingThenDone(classifyCalls);
-  const { actionCounts } = await checkPageMatchesAnswers(page, serviceWorker, platform);
-  checkActedOn(actionCounts, "post");
+  const beforeScroll = await checkPageMatchesAnswers(page, serviceWorker, platform);
 
   const sentBeforeScroll = new Set(allSentPosts(classifyCalls).map((post) => post.post_id));
   await scrollDown(page, 6);
   await waitForAnswersToSettle(page, classifyCalls);
   const newlySent = allSentPosts(classifyCalls).filter((post) => !sentBeforeScroll.has(post.post_id));
   check(newlySent.length > 0, `scrolling sent new posts (${newlySent.length})`);
-  await checkPageMatchesAnswers(page, serviceWorker, platform);
+  const afterScroll = await checkPageMatchesAnswers(page, serviceWorker, platform);
+  checkActedOn({
+    blur: beforeScroll.actionCounts.blur + afterScroll.actionCounts.blur,
+    hide: beforeScroll.actionCounts.hide + afterScroll.actionCounts.hide,
+  }, "post");
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(6000);
@@ -375,6 +471,7 @@ async function runRedditGroup() {
   const { context, serviceWorker, extensionId } = await launchBrave(makeFreshProfileDir("reddit"));
   try {
     const classifyCalls = recordClassifyCalls(context);
+    const feedbackCalls = recordFeedbackCalls(context);
     const page = context.pages()[0] ?? (await context.newPage());
 
     await runTest("1. extension loads, service worker starts, default options", () =>
@@ -387,6 +484,9 @@ async function runRedditGroup() {
     }
     await runTest("3a. Reddit feed", () =>
       checkFeed(page, serviceWorker, classifyCalls, "reddit", "https://www.reddit.com/r/popular/"));
+    await runTest("6a. feedback: Wrong? control on a filtered post", () => testReportWrongControl(page, feedbackCalls));
+    await runTest("6b. feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls));
+    await runTest("6c. feedback: popup text box", () => testPopupFeedbackBox(context, extensionId, feedbackCalls));
     await runTest("3b. Reddit comments", async () => {
       await page.goto("https://www.reddit.com/r/AskReddit/", { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(4000);

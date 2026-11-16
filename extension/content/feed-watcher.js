@@ -44,6 +44,16 @@ function showAnswer(postElement, postId, answer) {
     pluginName: pluginThatFlagged(answer),
     allowReveal: config.allow_reveal,
     onReveal: () => revealedPostIds.add(postId),
+    onReportWrong: () => extensionApi.runtime.sendMessage({
+      type: "send-feedback",
+      feedback: {
+        page_url: location.href,
+        platform: siteAdapter.platform,
+        post_id: postId,
+        shown_action: answer.action,
+        expected_action: "allow",
+      },
+    }),
   });
 }
 
@@ -208,6 +218,31 @@ function stopWatching() {
     siteAdapter.applyAction(postElement, { action: "allow" });
   }
 }
+
+// The post the reader last right-clicked, for the "this should have been filtered" menu item.
+let rightClickedPostElement = null;
+
+document.addEventListener("contextmenu", (event) => {
+  const postsAroundTarget = siteAdapter.findPostElements(event.target);
+  rightClickedPostElement = [...postsAroundTarget].find((postElement) => postElement.contains(event.target)) ?? null;
+}, true);
+
+extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type !== "get-right-clicked-post") {
+    return;
+  }
+  if (rightClickedPostElement === null) {
+    sendResponse(null);
+    return;
+  }
+  const post = siteAdapter.extractPost(rightClickedPostElement);
+  const answer = answerByPostId.get(post.post_id);
+  sendResponse({
+    platform: post.platform,
+    post_id: post.post_id,
+    shown_action: answer === undefined ? "allow" : answer.action,
+  });
+});
 
 extensionApi.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local" || changes.extensionEnabled === undefined) {

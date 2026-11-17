@@ -19,7 +19,15 @@ from rest_framework.response import Response
 
 from .access import account_has_access, subscription_for_user
 from .models import STATUS_ACTIVE, STATUS_PAST_DUE, STATUS_TRIALING, StripeEvent
-from .stripe_sync import monthly_price, portal_configuration_id, refresh_subscription, stripe_client
+from .stripe_sync import (
+    existing_customer_id,
+    forget_stripe_ids,
+    is_missing,
+    monthly_price,
+    portal_configuration_id,
+    refresh_subscription,
+    stripe_client,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +104,9 @@ def create_checkout_session(request):
         return payments_not_set_up()
 
     subscription = subscription_for_user(request.user)
+    if subscription.stripe_subscription_id != '':
+        refresh_subscription(subscription.stripe_subscription_id)
+        subscription = subscription_for_user(request.user)
     if subscription.stripe_subscription_id != '' and subscription.status in {STATUS_TRIALING, STATUS_ACTIVE, STATUS_PAST_DUE}:
         return Response({'error': 'You are already subscribed.'}, status=status.HTTP_409_CONFLICT)
 
@@ -104,7 +115,7 @@ def create_checkout_session(request):
         return payments_not_set_up()
 
     client = stripe_client()
-    if subscription.stripe_customer_id == '':
+    if existing_customer_id(subscription) == '':
         customer = client.v1.customers.create({
             'email': request.user.email,
             'metadata': {'user_id': str(request.user.id)},
@@ -159,11 +170,17 @@ def create_portal_session(request):
     if not settings.STRIPE_SECRET_KEY or subscription.stripe_customer_id == '':
         return Response({'error': 'No subscription to manage.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    portal_session = stripe_client().v1.billing_portal.sessions.create({
-        'customer': subscription.stripe_customer_id,
-        'configuration': portal_configuration_id(),
-        'return_url': f'{site_address(request)}/dashboard',
-    })
+    try:
+        portal_session = stripe_client().v1.billing_portal.sessions.create({
+            'customer': subscription.stripe_customer_id,
+            'configuration': portal_configuration_id(),
+            'return_url': f'{site_address(request)}/dashboard',
+        })
+    except stripe.InvalidRequestError as error:
+        if not is_missing(error):
+            raise
+        forget_stripe_ids(subscription)
+        return Response({'error': 'No subscription to manage.'}, status=status.HTTP_400_BAD_REQUEST)
     return Response({'url': portal_session['url']})
 
 

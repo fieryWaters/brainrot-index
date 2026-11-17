@@ -8,6 +8,9 @@ With --webhook-url: also the webhook endpoint. Stripe shows its signing secret
 only once, when it is created, and it is the only thing written to standard
 output, so it can be piped into .env without appearing on screen. Standard
 output must therefore be a pipe; every message goes to standard error.
+
+With a live key (STRIPE_SECRET_KEY starting sk_live_ or rk_live_) the command
+runs only with --live, so live objects are never created by accident.
 """
 
 import sys
@@ -21,6 +24,7 @@ from billing.stripe_sync import (
     PRICE_CENTS,
     PRICE_LOOKUP_KEY,
     PRODUCT_NAME,
+    STATEMENT_DESCRIPTOR,
     monthly_price,
     portal_configuration_id,
     stripe_client,
@@ -35,15 +39,22 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--webhook-url', help='Public address of /api/stripe/webhook/')
+        parser.add_argument('--live', action='store_true', help='Required when the Stripe key is a live key')
 
     def say(self, message):
         self.stderr.write(message)
 
     def handle(self, *args, **options):
         if not settings.STRIPE_SECRET_KEY:
-            raise CommandError('STRIPE_TEST_SECRET_KEY is not set')
-        if not settings.STRIPE_SECRET_KEY.startswith('sk_test_'):
-            raise CommandError('Only a Stripe test-mode key is expected here')
+            raise CommandError('Neither STRIPE_SECRET_KEY nor STRIPE_TEST_SECRET_KEY is set')
+        if settings.STRIPE_LIVE_MODE and not options['live']:
+            raise CommandError('The Stripe key is a live key; pass --live to create live objects')
+        if options['live'] and not settings.STRIPE_LIVE_MODE:
+            raise CommandError('--live was given but the Stripe key is a test key')
+        if settings.STRIPE_LIVE_MODE:
+            self.say('Stripe live mode')
+        else:
+            self.say('Stripe test mode')
         webhook_url = options['webhook_url']
         if webhook_url and sys.stdout.isatty():
             raise CommandError('With --webhook-url, pipe standard output into .env (see DEPLOY.md)')
@@ -64,7 +75,7 @@ class Command(BaseCommand):
             'unit_amount': PRICE_CENTS,
             'recurring': {'interval': 'month'},
             'lookup_key': PRICE_LOOKUP_KEY,
-            'product_data': {'name': PRODUCT_NAME},
+            'product_data': {'name': PRODUCT_NAME, 'statement_descriptor': STATEMENT_DESCRIPTOR},
         })
         self.say(f'Created product {price["product"]} and price {PRICE_LOOKUP_KEY}: {price["id"]}')
 

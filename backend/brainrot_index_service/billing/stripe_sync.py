@@ -5,15 +5,18 @@ from datetime import datetime, timezone as dt_timezone
 
 import stripe
 from django.conf import settings
+from django.utils import timezone
 
 from .models import STATUS_ACTIVE, STATUS_CANCELED, STATUS_NONE, STATUS_PAST_DUE, STATUS_TRIALING, Subscription
 
 PRODUCT_NAME = 'Brainrot Index'
+# What card statements show for the charge.
+STATEMENT_DESCRIPTOR = 'BRAINROT INDEX'
 PRICE_LOOKUP_KEY = 'brainrot_index_monthly'
 PRICE_CENTS = 500
 
-# Tags the Customer Portal configuration this site creates, since the Stripe
-# account is shared with another site.
+# Tags the Customer Portal configuration this site creates, so it is found
+# again even in a Stripe account shared with another site.
 PORTAL_CONFIGURATION_SITE = 'brainrot_index'
 
 # Stripe's subscription statuses mapped onto ours. unpaid and paused mean
@@ -74,11 +77,58 @@ def apply_stripe_subscription(subscription, stripe_subscription):
     subscription.save()
 
 
+def is_missing(error):
+    """The Stripe object does not exist in the account the key belongs to, for
+    example an id saved while the site used a different Stripe account."""
+    return isinstance(error, stripe.InvalidRequestError) and error.code == 'resource_missing'
+
+
+def forget_stripe_ids(subscription):
+    """Drops Stripe ids that the current Stripe account does not know, so the
+    account is treated as one that never subscribed: its trial still counts."""
+    subscription.stripe_customer_id = ''
+    subscription.stripe_subscription_id = ''
+    subscription.current_period_end = None
+    subscription.cancel_at_period_end = False
+    if subscription.trial_end is not None and subscription.trial_end > timezone.now():
+        subscription.status = STATUS_TRIALING
+    else:
+        subscription.status = STATUS_NONE
+    subscription.save()
+
+
+def existing_customer_id(subscription):
+    """The account's Stripe customer id, or '' when it has none in the current
+    Stripe account."""
+    if subscription.stripe_customer_id == '':
+        return ''
+    try:
+        customer = stripe_client().v1.customers.retrieve(subscription.stripe_customer_id)
+    except stripe.InvalidRequestError as error:
+        if not is_missing(error):
+            raise
+        forget_stripe_ids(subscription)
+        return ''
+    if 'deleted' in customer and customer['deleted']:
+        forget_stripe_ids(subscription)
+        return ''
+    return subscription.stripe_customer_id
+
+
 def refresh_subscription(stripe_subscription_id):
     """Fetches a subscription from Stripe and updates the account it belongs to.
     Answers the updated Subscription, or None when the Stripe customer is not
-    one of ours (the Stripe account is shared with another site)."""
-    stripe_subscription = stripe_client().v1.subscriptions.retrieve(stripe_subscription_id)
+    one of ours. A subscription unknown to the current Stripe account leaves
+    its account with no Stripe subscription."""
+    try:
+        stripe_subscription = stripe_client().v1.subscriptions.retrieve(stripe_subscription_id)
+    except stripe.InvalidRequestError as error:
+        if not is_missing(error):
+            raise
+        subscription = Subscription.objects.filter(stripe_subscription_id=stripe_subscription_id).first()
+        if subscription is not None:
+            forget_stripe_ids(subscription)
+        return subscription
     subscription = Subscription.objects.filter(stripe_customer_id=stripe_subscription['customer']).first()
     if subscription is None:
         return None

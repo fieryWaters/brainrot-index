@@ -99,8 +99,15 @@ LOCAL_AUTH_BYPASS = APP_ENV == 'local'
 LOCAL_AUTH_USERNAME = 'local_dev'
 LOCAL_AUTH_EMAIL = 'local@brainrotindex.local'
 
-# Payments (Stripe test mode) and LLM classification (OpenRouter).
-STRIPE_SECRET_KEY = config('STRIPE_TEST_SECRET_KEY', default='').strip()
+# Payments (Stripe) and LLM classification (OpenRouter).
+# STRIPE_SECRET_KEY is the Brainrot Index account's key; without it the shared
+# test account's STRIPE_TEST_SECRET_KEY is used.
+STRIPE_SECRET_KEY = (
+    config('STRIPE_SECRET_KEY', default='').strip()
+    or config('STRIPE_TEST_SECRET_KEY', default='').strip()
+)
+# True when the key takes real money (secret or restricted live key).
+STRIPE_LIVE_MODE = STRIPE_SECRET_KEY.startswith(('sk_live_', 'rk_live_'))
 STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='').strip()
 OPENROUTER_API_KEY = config('OPENROUTER_API_KEY', default='').strip()
 

@@ -116,7 +116,7 @@ error page.
 - Throttle counters live in the database cache table `django_cache`, made by
   the backend entrypoint (`createcachetable`).
 
-## Payments (Stripe, test mode)
+## Payments (Stripe)
 
 Every account gets a 7-day free trial when it is created, with no card. When
 the trial ends, `/api/extension/config/` and `/api/classify/` answer 402 and
@@ -125,18 +125,26 @@ continue." Subscribing goes through Stripe Checkout ($5/month); the dashboard's
 Manage subscription button opens the Stripe Customer Portal (cancel, change card,
 invoices). A cancellation keeps access until the end of the paid month.
 
-Stripe uses `STRIPE_TEST_SECRET_KEY` from `.env`. Only test-mode keys are
-accepted by `setup_stripe`. The Stripe account is shared with YouArt Studios,
-so Checkout and the portal show that account's business name until Brainrot
-Index has its own account or the name is changed in the Stripe dashboard.
+Which Stripe account: `STRIPE_SECRET_KEY` in `.env` (the Brainrot Index
+account) when it is set, otherwise `STRIPE_TEST_SECRET_KEY` (the test mode of
+the account shared with YouArt Studios). A key starting `sk_live_` or
+`rk_live_` means live mode: real cards are charged.
+
+Subscriptions keep the Stripe customer and subscription ids of the account
+they were made in. After switching accounts, an id the new account does not
+know is dropped the first time it is used, and that person counts as never
+having subscribed (their 7-day trial still applies if it has not run out).
 
 ### First setup (once per Stripe account)
 
-    docker compose exec backend python manage.py setup_stripe
+    docker compose exec backend python manage.py setup_stripe          # test key
+    docker compose exec backend python manage.py setup_stripe --live   # live key
 
-It creates the "Brainrot Index" product with its $5/month price (lookup key
+It creates the "Brainrot Index" product (card statements read
+"BRAINROT INDEX") with its $5/month price (lookup key
 `brainrot_index_monthly`) and this site's Customer Portal configuration. It is
-safe to run again; whatever exists is left alone.
+safe to run again; whatever exists is left alone. With a live key it refuses
+to run without `--live`, and `--live` with a test key is refused too.
 
 Until the webhook exists, the site still works: the page Checkout returns to
 asks the backend to read the finished payment from Stripe, the dashboard reads
@@ -158,10 +166,13 @@ Stripe can only deliver webhooks to a public address, so this waits for
 
 1. Finish "Going public" above. Checkout and the portal send people back to
    whichever site address they started from.
-2. Create the webhook endpoint and put its signing secret into `.env` without
-   it appearing on screen. Run from this checkout on spark:
+2. Create the webhook endpoint in the account the key belongs to and put its
+   signing secret into `.env` without it appearing on screen. A secret from
+   another Stripe account does not work, so after switching accounts this is
+   run again. Run from this checkout on spark (live key; drop `--live` for a
+   test key):
 
-       secret=$(docker compose exec -T backend python manage.py setup_stripe --webhook-url https://brainrotindex.com/api/stripe/webhook/) && sed -i "s|^STRIPE_WEBHOOK_SECRET=.*|STRIPE_WEBHOOK_SECRET=${secret}|" .env; unset secret
+       secret=$(docker compose exec -T backend python manage.py setup_stripe --live --webhook-url https://brainrotindex.com/api/stripe/webhook/) && sed -i "s|^STRIPE_WEBHOOK_SECRET=.*|STRIPE_WEBHOOK_SECRET=${secret}|" .env; unset secret
 
    With `--webhook-url` the command writes only the secret to standard output
    (messages go to standard error) and refuses to run unless standard output is
@@ -170,16 +181,16 @@ Stripe can only deliver webhooks to a public address, so this waits for
 3. Check that the line is filled without printing it:
    `grep -c '^STRIPE_WEBHOOK_SECRET=whsec_' .env` prints `1`.
 4. `bash deploy.sh`, so the backend reads the new secret.
-5. In the Stripe dashboard (test mode), Developers -> Webhooks -> the new
-   endpoint -> Send test event. A `customer.subscription.updated` test event
-   for a customer that is not ours is answered 200 and ignored.
+5. In the Stripe dashboard, Developers -> Webhooks -> the new endpoint should
+   show as enabled. Events for customers that are not ours are answered 200
+   and ignored.
 
-### Go-live: live payments (not done)
+### Go-live: live payments
 
-No live keys exist. Taking real money needs a live secret key in `.env` (the
-backend reads only `STRIPE_TEST_SECRET_KEY` today, and `setup_stripe` refuses
-non-test keys), then `setup_stripe` and the webhook steps above run again
-against the live account.
+1. Put the Brainrot Index account's live secret key in `.env` as
+   `STRIPE_SECRET_KEY=` (by hand; nothing prints it).
+2. `bash deploy.sh`, then `setup_stripe --live` (First setup above).
+3. The webhook steps above, with `--live`.
 
 ## Email
 

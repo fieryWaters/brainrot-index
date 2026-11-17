@@ -7,7 +7,8 @@ from datetime import timedelta
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
-from django.core.management import call_command
+import stripe
+from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -23,6 +24,11 @@ SUBSCRIPTION_ID = 'sub_reader'
 
 def unix(moment):
     return int(moment.timestamp())
+
+
+def missing_in_this_account(*args, **kwargs):
+    """What Stripe answers for an id saved while the site used another Stripe account."""
+    raise stripe.InvalidRequestError('No such object', 'id', code='resource_missing', http_status=404)
 
 
 def stripe_subscription(status='active', period_end=None, cancel_at_period_end=False, customer=CUSTOMER_ID):
@@ -247,6 +253,56 @@ class BillingTests(TestCase):
         self.assertTrue(billing['cancel_at_period_end'])
         self.assertTrue(billing['has_access'])
 
+    def save_ids_from_old_stripe_account(self, period_end):
+        Subscription.objects.filter(user=self.user).update(
+            status=STATUS_ACTIVE,
+            stripe_customer_id='cus_old_account',
+            stripe_subscription_id='sub_old_account',
+            current_period_end=period_end,
+        )
+
+    def test_ids_from_old_stripe_account_mean_no_stripe_subscription(self):
+        self.save_ids_from_old_stripe_account(timezone.now() + timedelta(days=20))
+        client = MagicMock()
+        client.v1.subscriptions.retrieve.side_effect = missing_in_this_account
+        self.client.force_login(self.user)
+
+        with fake_stripe(client):
+            billing = self.client.get(reverse('billing_status')).json()
+
+        subscription = self.subscription()
+        self.assertEqual((subscription.stripe_customer_id, subscription.stripe_subscription_id), ('', ''))
+        self.assertEqual(billing['status'], STATUS_TRIALING)
+        self.assertEqual(billing['trial_days_left'], 7)
+        self.assertFalse(billing['can_manage'])
+
+    def test_expired_period_from_old_stripe_account_gives_402_not_free_access(self):
+        self.save_ids_from_old_stripe_account(timezone.now() - timedelta(minutes=1))
+        end_trial(self.user)
+        client = MagicMock()
+        client.v1.subscriptions.retrieve.side_effect = missing_in_this_account
+
+        with fake_stripe(client):
+            self.assertEqual(self.client.get(reverse('extension_config'), **bearer(self.token)).status_code, 402)
+            self.assertEqual(self.client.get(reverse('extension_config'), **bearer(self.token)).status_code, 402)
+        self.assertEqual(client.v1.subscriptions.retrieve.call_count, 1)
+
+    def test_checkout_replaces_customer_from_old_stripe_account(self):
+        Subscription.objects.filter(user=self.user).update(stripe_customer_id='cus_old_account')
+        client = MagicMock()
+        client.v1.customers.retrieve.side_effect = missing_in_this_account
+        client.v1.customers.create.return_value = {'id': 'cus_new_account'}
+        client.v1.prices.list.return_value = {'data': [{'id': 'price_monthly'}]}
+        client.v1.checkout.sessions.create.return_value = {'url': 'https://checkout.stripe.com/c/pay/cs_live'}
+        self.client.force_login(self.user)
+
+        with fake_stripe(client):
+            response = self.client.post(reverse('billing_checkout'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(client.v1.checkout.sessions.create.call_args.args[0]['customer'], 'cus_new_account')
+        self.assertEqual(self.subscription().stripe_customer_id, 'cus_new_account')
+
     def test_renewal_without_webhook_keeps_access(self):
         self.link_stripe_customer()
         Subscription.objects.filter(user=self.user).update(
@@ -285,6 +341,8 @@ class SetupStripeTests(TestCase):
             call_command('setup_stripe', stderr=StringIO())
         self.assertEqual(client.v1.prices.create.call_args.args[0]['lookup_key'], 'brainrot_index_monthly')
         self.assertEqual(client.v1.prices.create.call_args.args[0]['unit_amount'], 500)
+        self.assertEqual(
+            client.v1.prices.create.call_args.args[0]['product_data']['statement_descriptor'], 'BRAINROT INDEX')
         client.v1.billing_portal.configurations.create.assert_called_once()
 
         client.reset_mock()
@@ -311,3 +369,24 @@ class SetupStripeTests(TestCase):
 
         self.assertEqual(standard_output.getvalue(), 'whsec_created')
         self.assertNotIn('whsec_created', messages.getvalue())
+
+    @override_settings(STRIPE_SECRET_KEY='sk_live_fake', STRIPE_LIVE_MODE=True)
+    def test_live_key_needs_the_live_flag(self):
+        client = MagicMock()
+        client.v1.prices.list.return_value = {'data': [{'id': 'price_live'}]}
+        client.v1.billing_portal.configurations.list.return_value = {
+            'data': [{'id': 'bpc_live', 'metadata': {'site': 'brainrot_index'}}]}
+
+        with fake_stripe(client):
+            with self.assertRaises(CommandError):
+                call_command('setup_stripe', stderr=StringIO())
+            client.v1.prices.list.assert_not_called()
+
+            messages = StringIO()
+            call_command('setup_stripe', live=True, stderr=messages)
+        self.assertIn('live mode', messages.getvalue())
+        client.v1.prices.list.assert_called_once()
+
+    def test_live_flag_with_a_test_key_is_refused(self):
+        with self.assertRaises(CommandError):
+            call_command('setup_stripe', live=True, stderr=StringIO())

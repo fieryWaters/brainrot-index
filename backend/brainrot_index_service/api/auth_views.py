@@ -7,6 +7,7 @@ from django.contrib.auth import (
     authenticate,
     get_user_model,
     logout as django_logout,
+    update_session_auth_hash,
 )
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
@@ -302,6 +303,10 @@ def verify_email(request):
     if token_row.pending_password_hash:
         user.password = token_row.pending_password_hash
         user.save(update_fields=['password'])
+        # A new password hash ends every session of the account. The browser
+        # that signed up and now opened the link stays signed in.
+        if request.user.is_authenticated and request.user.id == user.id:
+            update_session_auth_hash(request, user)
 
     token_row.consumed_at = timezone.now()
     token_row.pending_password_hash = ''

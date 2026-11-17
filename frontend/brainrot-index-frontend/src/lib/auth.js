@@ -72,7 +72,8 @@ export async function refreshSession() {
     applySession(data)
     return
   }
-  if (response.status === 401) {
+  // The API answers 403 to a request without a valid session.
+  if (response.status === 401 || response.status === 403) {
     clearState()
   }
 }

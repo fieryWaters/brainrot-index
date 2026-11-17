@@ -108,6 +108,17 @@ class EmailPasswordAuthSecurityTests(TestCase):
             {'email': 'parked@example.com', 'password': self.PASSWORD})
         self.assertEqual(after_verify.status_code, 200)
 
+    def test_the_browser_that_signed_up_stays_signed_in_after_verifying(self):
+        signup_client = Client()
+        _, raw_token = self._signup_and_capture_token(signup_client, 'newcomer@example.com')
+
+        verify = signup_client.post(reverse('auth_verify_email'), {'token': raw_token})
+
+        self.assertEqual(verify.status_code, 200)
+        session = signup_client.get(reverse('current_session'))
+        self.assertEqual(session.status_code, 200)
+        self.assertTrue(session.json()['email_verified'])
+
     def test_password_reset_invalidates_other_sessions(self):
         self._create_verified_account('victim@example.com')
         credentials = {'email': 'victim@example.com', 'password': self.PASSWORD}

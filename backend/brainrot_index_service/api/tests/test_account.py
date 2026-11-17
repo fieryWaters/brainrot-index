@@ -8,7 +8,15 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from billing.models import STATUS_ACTIVE, STATUS_TRIALING, Subscription
-from classification.models import Classification, ExtensionToken, Plugin, Post, UserPlugin, UserSettings
+from classification.models import (
+    Classification,
+    ExtensionToken,
+    Plugin,
+    Post,
+    PostSubmission,
+    UserPlugin,
+    UserSettings,
+)
 from classification.tests.helpers import bearer, create_user_with_token, create_verified_user, seen_post
 from families.models import ROLE_CHILD, ROLE_SUPERADMIN, Family, FamilyMember
 from feedback.models import Feedback
@@ -126,6 +134,25 @@ class ExportTests(TestCase):
         self.assertEqual([report['text'] for report in data['feedback']], ['The ragebait filter missed one.'])
         self.assertEqual(data['subscription']['status'], STATUS_TRIALING)
 
+    @patch('classification.views.PENDING_WAIT_SECONDS', 0)
+    def test_download_lists_the_posts_the_extension_sent(self):
+        user, raw_token = create_user_with_token('reader@example.com')
+        someone_else, other_token = create_user_with_token('other@example.com')
+        for token, post_id in ((raw_token, 't3_mine'), (other_token, 't3_theirs')):
+            Client().post(reverse('classify'), {'posts': [seen_post(post_id)]},
+                          content_type='application/json', **bearer(token))
+        client = Client()
+        client.force_login(user)
+
+        data = json.loads(client.get(reverse('account_export')).content)
+
+        self.assertEqual(len(data['sent_posts']), 1)
+        sent = data['sent_posts'][0]
+        self.assertEqual(
+            {key: sent[key] for key in ('platform', 'post_id', 'url')},
+            {'platform': 'reddit', 'post_id': 't3_mine', 'url': 'https://www.reddit.com/r/gardening/comments/t3_mine/'})
+        self.assertEqual(sent['first_seen_at'], sent['last_seen_at'])
+
     def test_needs_a_session(self):
         self.assertEqual(Client().get(reverse('account_export')).status_code, 403)
 
@@ -150,13 +177,14 @@ class DeleteAccountTests(TestCase):
                          content_type='application/json', **bearer(self.token))
         Feedback.objects.create(user=self.user, source='site', text='Hello.', site_commit='abc1234')
         user_id = self.user.id
+        self.assertTrue(PostSubmission.objects.filter(user_id=user_id).exists())
 
         response = self.client.post(reverse('account_delete'), {'email': 'Reader@Example.com'},
                                     content_type='application/json')
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(User.objects.filter(id=user_id).exists())
-        for model in (Subscription, UserSettings, UserPlugin, ExtensionToken, Feedback):
+        for model in (Subscription, UserSettings, UserPlugin, ExtensionToken, Feedback, PostSubmission):
             self.assertFalse(model.objects.filter(user_id=user_id).exists(), model.__name__)
         self.assertTrue(Post.objects.filter(post_id='t3_shared').exists())
         self.assertTrue(Classification.objects.filter(post__post_id='t3_shared').exists())

@@ -39,6 +39,14 @@ TRANSCRIPT_STATUS_CHOICES = [
     (TRANSCRIPT_MISSING, 'Missing'),
 ]
 
+# Who supplied a transcript: a reader's browser, or the worker's own download.
+TRANSCRIPT_SOURCE_BROWSER = 'browser'
+TRANSCRIPT_SOURCE_SERVER = 'server'
+TRANSCRIPT_SOURCE_CHOICES = [
+    (TRANSCRIPT_SOURCE_BROWSER, 'Browser'),
+    (TRANSCRIPT_SOURCE_SERVER, 'Server'),
+]
+
 CLASSIFICATION_PENDING = 'pending'
 CLASSIFICATION_DONE = 'done'
 CLASSIFICATION_FAILED = 'failed'
@@ -107,15 +115,20 @@ class PostImage(models.Model):
 
 
 class VideoTranscript(models.Model):
-    """The transcript of a YouTube video, fetched once, before the video is
-    classified. A video whose transcript cannot be had is classified on its
-    title and thumbnail, and missing_reason says why."""
+    """The transcript of a YouTube video, settled once, before the video is
+    classified: sent by the first reader's browser that reports on it, or
+    downloaded by the worker when YOUTUBE_SERVER_TRANSCRIPTS is on. A video
+    whose transcript cannot be had is classified on its title and thumbnail,
+    and missing_reason says why."""
 
     post = models.OneToOneField(Post, on_delete=models.CASCADE, related_name='transcript')
     status = models.CharField(max_length=16, choices=TRANSCRIPT_STATUS_CHOICES, default=TRANSCRIPT_PENDING)
+    # Blank while pending.
+    source = models.CharField(max_length=16, choices=TRANSCRIPT_SOURCE_CHOICES, blank=True, default='')
     language_code = models.CharField(max_length=16, blank=True, default='')
     is_generated = models.BooleanField(null=True, blank=True)
     # The transcript as YouTube gives it: [{"text", "start", "duration"}], times in seconds.
+    # A browser sends plain text, which is stored as a single {"text"} snippet.
     snippets = models.JSONField(default=list, blank=True)
     missing_reason = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -293,3 +306,28 @@ class ExtensionToken(models.Model):
 
     def __str__(self):
         return f"extension token {self.id} for {self.user}"
+
+
+class PostSubmission(models.Model):
+    """Which account sent which post, and when: one row per account and post,
+    updated every time the account sends the post again. Kept for analysis and
+    to trace abuse back to an account; deleted with the account."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='post_submissions')
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='submissions')
+    # The extension connection that last sent it; kept when that connection is removed.
+    extension_token = models.ForeignKey(ExtensionToken, on_delete=models.SET_NULL, null=True, blank=True)
+    first_seen_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField()
+    times_seen = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'post'], name='unique_submission_per_user_and_post'),
+        ]
+        indexes = [
+            models.Index(fields=['user', 'last_seen_at'], name='submissions_by_user_and_time'),
+        ]
+
+    def __str__(self):
+        return f"{self.post} sent by {self.user}"

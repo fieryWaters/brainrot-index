@@ -6,7 +6,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand
 from django.db import connection
 
-from classification.worker import classify_next_pending, download_next_pending_image, download_next_pending_transcript
+from classification.worker import classify_next_pending, download_next_pending_image, settle_next_transcripts
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ def work_forever():
             # A video's classifications wait for its transcript, so transcripts come
             # first. Archiving an original never delays a post.
             found_work = (
-                download_next_pending_transcript()
+                settle_next_transcripts()
                 or classify_next_pending()
                 or download_next_pending_image()
             )
@@ -40,7 +40,7 @@ def work_forever():
 
 
 class Command(BaseCommand):
-    help = "Fetches video transcripts, runs pending classifications, then archives post images, 48 at a time."
+    help = "Settles video transcripts, runs pending classifications, then archives post images, 48 at a time."
 
     def handle(self, *args, **options):
         threads = [threading.Thread(target=work_forever, daemon=True) for _ in range(WORKER_THREADS)]

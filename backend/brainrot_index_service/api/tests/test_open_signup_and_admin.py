@@ -66,6 +66,9 @@ class AdminAccessTests(TestCase):
         owner.refresh_from_db()
         self.assertTrue(owner.is_staff and owner.is_superuser)
         self.assertEqual(client.get('/admin/api/invitecode/').status_code, 200)
+        submissions = client.get(f'/admin/classification/postsubmission/?user__id__exact={owner.id}&last_seen_at__year=2026')
+        self.assertEqual(submissions.status_code, 200)
+        self.assertEqual(client.get('/admin/classification/postsubmission/add/').status_code, 403)
 
     def test_admin_email_signed_in_with_a_password_is_sent_to_the_site_login(self):
         self.create_password_account(ADMIN_EMAIL, is_staff=True, is_superuser=True)
@@ -83,6 +86,7 @@ class AdminAccessTests(TestCase):
 
         self.assertEqual(client.get('/admin/').status_code, 302)
         self.assertEqual(client.get('/admin/api/invitecode/').status_code, 302)
+        self.assertEqual(client.get('/admin/classification/postsubmission/').status_code, 302)
 
     def test_admin_login_page_sends_people_to_the_site_login(self):
         response = self.client.get('/admin/login/')

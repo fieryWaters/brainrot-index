@@ -2,9 +2,10 @@
 
 import time
 from collections import Counter
+from datetime import timedelta
 
 from django.conf import settings
-from django.db import transaction
+from django.db import connection, transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -32,6 +33,7 @@ from .models import (
     PLATFORM_X,
     PLATFORM_YOUTUBE,
     POST_KIND_REPLY,
+    TRANSCRIPT_PENDING,
     Classification,
     ExtensionToken,
     Plugin,
@@ -42,6 +44,7 @@ from .models import (
     VideoTranscript,
 )
 from .serializers import ClassifyRequestSerializer, UserPluginSerializer, UserSettingsSerializer
+from .transcripts import TRANSCRIPT_WAIT_SECONDS, store_browser_report
 
 # How long /classify/ waits for pending posts before answering, so most posts
 # come back done on the first call.
@@ -95,7 +98,7 @@ def settings_for_user(user):
 
 def store_post(seen_post):
     """The stored Post for a seen post, created with its images (and, for a
-    video, its transcript to fetch) the first time."""
+    video, its pending transcript) the first time."""
     if seen_post['kind'] == POST_KIND_REPLY:
         parent_post_id = seen_post['parent_post_id']
     else:
@@ -125,13 +128,54 @@ def store_post(seen_post):
     return post
 
 
+def record_submissions(user, extension_token, posts):
+    """Records that the account sent these posts, in one statement: a new row
+    for a post it never sent before, otherwise a later last_seen_at and one
+    more times_seen."""
+    post_ids = list({post.id for post in posts})
+    if not post_ids:
+        return
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO classification_postsubmission
+                (user_id, post_id, extension_token_id, first_seen_at, last_seen_at, times_seen)
+            SELECT %s, sent_post_id, %s, now(), now(), 1
+            FROM unnest(%s::bigint[]) AS sent_post_id
+            ON CONFLICT (user_id, post_id) DO UPDATE SET
+                extension_token_id = EXCLUDED.extension_token_id,
+                last_seen_at = EXCLUDED.last_seen_at,
+                times_seen = classification_postsubmission.times_seen + 1
+            """,
+            [user.id, extension_token.id, post_ids],
+        )
+
+
+def posts_wanting_transcripts(posts):
+    """The ids of the videos among posts whose transcript a browser may still
+    send: pending, and within the wait for one. Empty while the server
+    downloads transcripts itself."""
+    if settings.YOUTUBE_SERVER_TRANSCRIPTS:
+        return set()
+    video_ids = [post.id for post in posts if post.platform == PLATFORM_YOUTUBE]
+    if not video_ids:
+        return set()
+    return set(VideoTranscript.objects.filter(
+        post_id__in=video_ids,
+        status=TRANSCRIPT_PENDING,
+        created_at__gt=timezone.now() - timedelta(seconds=TRANSCRIPT_WAIT_SECONDS),
+    ).values_list('post_id', flat=True))
+
+
 def build_results(posts, plugins_to_apply):
-    """One result per post. plugins_to_apply is a list of (UserPlugin, PluginVersion)."""
+    """One result per post. plugins_to_apply is a list of (UserPlugin, PluginVersion).
+    A pending video whose transcript is still wanted is marked transcript_wanted."""
     versions = [version for _, version in plugins_to_apply]
     classifications = {
         (classification.post_id, classification.plugin_version_id): classification
         for classification in Classification.objects.filter(post__in=posts, plugin_version__in=versions)
     }
+    wanting_transcripts = posts_wanting_transcripts(posts)
 
     results = []
     for post in posts:
@@ -140,6 +184,8 @@ def build_results(posts, plugins_to_apply):
 
         if any(classification.status == CLASSIFICATION_PENDING for classification in post_classifications):
             result['status'] = 'pending'
+            if post.id in wanting_transcripts:
+                result['transcript_wanted'] = True
             results.append(result)
             continue
 
@@ -168,7 +214,12 @@ def build_results(posts, plugins_to_apply):
     return results
 
 
-def any_pending(results):
+def worth_waiting(results):
+    """True while some result is pending and none wants a transcript. A video
+    waiting for its transcript is answered at once, so the browser can go and
+    fetch it."""
+    if any(result.get('transcript_wanted') for result in results):
+        return False
     return any(result['status'] == 'pending' for result in results)
 
 
@@ -261,10 +312,15 @@ def classify(request):
     refused_seen_posts = new_seen_posts[granted_count:]
     refused_keys = {(seen_post['platform'], seen_post['post_id']) for seen_post in refused_seen_posts}
 
-    posts = [
-        store_post(seen_post) for seen_post in seen_posts
-        if (seen_post['platform'], seen_post['post_id']) not in refused_keys
-    ]
+    posts = []
+    for seen_post in seen_posts:
+        if (seen_post['platform'], seen_post['post_id']) in refused_keys:
+            continue
+        post = store_post(seen_post)
+        if post.platform == PLATFORM_YOUTUBE:
+            store_browser_report(post, seen_post)
+        posts.append(post)
+    record_submissions(request.user, request.auth, posts)
 
     # Queue every missing (post, plugin version) pair; existing rows are the cache.
     Classification.objects.bulk_create(
@@ -274,7 +330,7 @@ def classify(request):
 
     deadline = time.monotonic() + PENDING_WAIT_SECONDS
     results = build_results(posts, plugins_to_apply)
-    while any_pending(results) and time.monotonic() < deadline:
+    while worth_waiting(results) and time.monotonic() < deadline:
         time.sleep(PENDING_RECHECK_SECONDS)
         results = build_results(posts, plugins_to_apply)
 

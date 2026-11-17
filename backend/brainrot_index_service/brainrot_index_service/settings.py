@@ -94,6 +94,9 @@ ADMIN_EMAIL = config('ADMIN_EMAIL', default='').strip().lower()
 # Posts one account may send for classification per day (UTC) that no
 # classification exists for yet. Posts already classified are always answered.
 DAILY_NEW_POST_QUOTA = config('DAILY_NEW_POST_QUOTA', default=10000, cast=int)
+# true: the worker downloads a YouTube video's transcript itself when no browser
+# sent one. Off because YouTube blocks the server's address after a few dozen.
+YOUTUBE_SERVER_TRANSCRIPTS = config('YOUTUBE_SERVER_TRANSCRIPTS', default=False, cast=bool)
 
 LOCAL_AUTH_BYPASS = APP_ENV == 'local'
 LOCAL_AUTH_USERNAME = 'local_dev'

@@ -7,6 +7,7 @@ from .models import (
     PluginVersion,
     Post,
     PostImage,
+    PostSubmission,
     UserPlugin,
     UserSettings,
     VideoTranscript,
@@ -23,7 +24,7 @@ class PostImageInline(admin.TabularInline):
 class VideoTranscriptInline(admin.StackedInline):
     model = VideoTranscript
     extra = 0
-    fields = ['status', 'language_code', 'is_generated', 'missing_reason', 'fetched_at', 'snippets']
+    fields = ['status', 'source', 'language_code', 'is_generated', 'missing_reason', 'fetched_at', 'snippets']
     readonly_fields = fields
 
 
@@ -50,10 +51,30 @@ class PostImageAdmin(admin.ModelAdmin):
 
 @admin.register(VideoTranscript)
 class VideoTranscriptAdmin(admin.ModelAdmin):
-    list_display = ['id', 'post', 'status', 'language_code', 'is_generated', 'fetched_at']
-    list_filter = ['status', 'is_generated']
+    list_display = ['id', 'post', 'status', 'source', 'language_code', 'is_generated', 'fetched_at']
+    list_filter = ['status', 'source', 'is_generated']
     search_fields = ['post__post_id', 'missing_reason']
     raw_id_fields = ['post']
+
+
+@admin.register(PostSubmission)
+class PostSubmissionAdmin(admin.ModelAdmin):
+    """Which account sent which post. Read only: rows are written by /api/classify/."""
+
+    list_display = ['user', 'post', 'times_seen', 'first_seen_at', 'last_seen_at', 'extension_token']
+    list_filter = ['post__platform', ('user', admin.RelatedOnlyFieldListFilter)]
+    search_fields = ['user__email', 'post__post_id']
+    date_hierarchy = 'last_seen_at'
+    list_select_related = ['user', 'post']
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, submission=None):
+        return False
+
+    def has_delete_permission(self, request, submission=None):
+        return False
 
 
 class PluginVersionInline(admin.TabularInline):

@@ -7,6 +7,7 @@ and a worker that dies mid-task simply leaves its row pending for another.
 
 import threading
 
+from django.conf import settings
 from django.db import transaction
 
 from .images import download_image
@@ -19,7 +20,7 @@ from .models import (
     PostImage,
     VideoTranscript,
 )
-from .transcripts import download_transcript
+from .transcripts import download_transcript, settle_overdue_transcripts
 
 # At most this many transcript downloads at once, so a full YouTube page does
 # not send YouTube a burst of requests from the server's address.
@@ -48,6 +49,15 @@ def download_next_pending_transcript():
         return True
     finally:
         transcript_download_slots.release()
+
+
+def settle_next_transcripts():
+    """Ends the wait of videos whose transcript is pending: by downloading one
+    when the server fetches transcripts itself, otherwise by marking missing
+    those no browser reported on in time. Returns False when there was nothing to do."""
+    if settings.YOUTUBE_SERVER_TRANSCRIPTS:
+        return download_next_pending_transcript()
+    return settle_overdue_transcripts()
 
 
 def download_next_pending_image():

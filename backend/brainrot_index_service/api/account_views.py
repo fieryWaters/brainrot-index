@@ -17,7 +17,7 @@ from rest_framework.response import Response
 
 from billing.access import PAYING_STATUSES, subscription_for_user
 from billing.stripe_sync import stripe_client
-from classification.models import ExtensionToken, Plugin, UserPlugin, UserSettings
+from classification.models import ExtensionToken, Plugin, PostSubmission, UserPlugin, UserSettings
 from families.models import ROLE_SUPERADMIN, FamilyMember
 from families.views import LAST_SUPERADMIN_MESSAGE
 from feedback.models import Feedback
@@ -74,9 +74,10 @@ def sign_out_everywhere(request):
 
 
 def account_data(user):
-    """Everything stored about the person, as plain JSON values. Posts and
-    their classifications are not included: they are shared by every account
-    and record nothing about who saw them."""
+    """Everything stored about the person, as plain JSON values. The posts the
+    extension sent are listed by id and address with when they were sent; the
+    posts' contents and classifications are shared by every account that sent
+    them, so they are not repeated here."""
     profile = _get_or_create_profile(user)
     subscription = subscription_for_user(user)
     user_settings = UserSettings.objects.filter(user=user).first()
@@ -125,6 +126,16 @@ def account_data(user):
                 'last_used_at': token.last_used_at and token.last_used_at.isoformat(),
             }
             for token in ExtensionToken.objects.filter(user=user).order_by('created_at')
+        ],
+        'sent_posts': [
+            {
+                'platform': submission.post.platform,
+                'post_id': submission.post.post_id,
+                'url': submission.post.url,
+                'first_seen_at': submission.first_seen_at.isoformat(),
+                'last_seen_at': submission.last_seen_at.isoformat(),
+            }
+            for submission in PostSubmission.objects.filter(user=user).select_related('post').order_by('first_seen_at', 'id')
         ],
         'feedback': [
             {

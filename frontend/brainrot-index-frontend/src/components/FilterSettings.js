@@ -105,7 +105,7 @@ export function createFilterSettingsCard({ basePath = '', canChange }) {
   return card
 }
 
-export function createInstalledPluginsCard({ basePath = '', title = 'My plugins', showAddPlugin = false }) {
+export function createInstalledPluginsCard({ basePath = '', title = 'My plugins', showAddPlugin = false, forChild = false }) {
   const endpoint = `${basePath}/plugins/`
   const { card, body, showError } = createLoadingCard(title)
   const enabledCount = el('p', 'text-xs text-white/40')
@@ -194,7 +194,14 @@ export function createInstalledPluginsCard({ basePath = '', title = 'My plugins'
     const available = data.plugins.filter((plugin) => !installedSlugs.has(plugin.slug))
     if (available.length === 0) return ''
 
-    const pluginSelect = createSelect(available.map((plugin) => [plugin.slug, plugin.name]), available[0].slug, 'Plugin to add', false)
+    // For a child, the plugins suggested for children come first and are marked.
+    const suggested = forChild ? available.filter((plugin) => plugin.suggested_for_children) : []
+    const others = available.filter((plugin) => !suggested.includes(plugin))
+    const options = [
+      ...suggested.map((plugin) => [plugin.slug, `${plugin.name} (suggested for children)`]),
+      ...others.map((plugin) => [plugin.slug, plugin.name]),
+    ]
+    const pluginSelect = createSelect(options, options[0][0], 'Plugin to add', false)
     const addButton = el('button', AMBER_BUTTON_CLASS, 'Add')
     addButton.type = 'button'
     addButton.addEventListener('click', async () => {
@@ -207,8 +214,13 @@ export function createInstalledPluginsCard({ basePath = '', title = 'My plugins'
       }
       load()
     })
-    return el('div', 'pt-4 border-t border-white/10 flex items-center gap-3 text-sm',
-      el('span', 'text-white/70', 'Add a plugin'), pluginSelect, addButton)
+    const suggestion = suggested.length > 0
+      ? el('p', 'text-xs text-white/50', `Suggested for children: ${suggested.map((plugin) => plugin.name).join(', ')}.`)
+      : ''
+    return el('div', 'pt-4 border-t border-white/10 flex flex-col gap-2 text-sm',
+      el('div', 'flex flex-wrap items-center gap-3',
+        el('span', 'text-white/70', 'Add a plugin'), pluginSelect, addButton),
+      suggestion)
   }
 
   async function load() {

@@ -210,6 +210,18 @@ class StoreBrowsingTests(TestCase):
         found = self.client.get(reverse('store_plugins'), {'q': 'shilling'}).json()['plugins']
         self.assertEqual([plugin['slug'] for plugin in found], [self.slug])
 
+    def test_official_plugins_are_listed_but_not_installed(self):
+        official_slugs = ['money-hype', 'body-pressure', 'self-harm-adjacent', 'doom-framing', 'hidden-promo']
+        plugins = {plugin['slug']: plugin for plugin in self.client.get(reverse('store_plugins')).json()['plugins']}
+        for slug in official_slugs:
+            self.assertEqual(plugins[slug]['author_name'], 'Brainrot Index')
+            self.assertFalse(plugins[slug]['installed'])
+        self.assertFalse(plugins['doom-framing']['suggested_for_children'])
+        self.assertTrue(plugins['self-harm-adjacent']['suggested_for_children'])
+
+        installed = self.client.get(reverse('installed_plugins')).json()['plugins']
+        self.assertFalse({plugin['slug'] for plugin in installed} & set(official_slugs))
+
     def test_detail_shows_the_authors_rubric_and_cached_samples(self):
         post = Post.objects.create(platform='reddit', post_id='p1', kind='post', text='BTC to 1M by Friday, buy now')
         version = Plugin.objects.get(slug=self.slug).latest_version()

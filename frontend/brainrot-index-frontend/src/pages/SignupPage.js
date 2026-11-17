@@ -34,6 +34,13 @@ export function mountSignupPage() {
     'Already have an account? <a href="/login" class="text-amber-400 hover:text-amber-300">Sign in</a>'
   footer.appendChild(loginRow)
 
+  const termsRow = document.createElement('p')
+  termsRow.className = 'text-xs text-white/40 text-center max-w-xs'
+  termsRow.innerHTML =
+    'By creating an account you agree to the <a href="/terms" class="underline hover:text-white/70">Terms of Service</a> ' +
+    'and the <a href="/privacy" class="underline hover:text-white/70">Privacy Policy</a>.'
+  footer.appendChild(termsRow)
+
   const form = createAuthForm({
     title: 'Create account',
     subtitle: 'Use at least 12 characters for your password.',
@@ -77,7 +84,9 @@ export function mountSignupPage() {
     panel.innerHTML =
       '<h2 class="text-2xl text-amber-400 mb-3">Check your inbox</h2>' +
       '<p>If that email is available, we just sent a verification link. ' +
-      'Click it to finish setting up your account.</p>'
+      'Click it to finish setting up your account.</p>' +
+      '<p class="mt-4 text-sm text-white/60">While you wait, you can ' +
+      '<a href="/install" class="text-amber-400 hover:text-amber-300 underline">install the extension</a>.</p>'
     wrapper.appendChild(panel)
   }
 

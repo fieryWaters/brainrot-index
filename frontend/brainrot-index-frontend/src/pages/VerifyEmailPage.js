@@ -1,4 +1,4 @@
-import { verifyEmail } from '../lib/auth.js'
+import { getState, verifyEmail } from '../lib/auth.js'
 
 export function mountVerifyEmailPage() {
   const container = document.createElement('div')
@@ -38,7 +38,14 @@ export function mountVerifyEmailPage() {
     verifyEmail(token).then((result) => {
       if (result.ok) {
         heading.textContent = 'Email verified'
-        body.textContent = 'Thanks! Your email is all set.'
+        body.textContent = 'Thanks! Your email is all set. Next, install the extension and connect it.'
+        if (getState().isAuthenticated) {
+          homeLink.href = '/dashboard'
+          homeLink.textContent = 'Continue setup'
+        } else {
+          homeLink.href = '/login'
+          homeLink.textContent = 'Sign in to continue'
+        }
       } else {
         heading.textContent = 'Link invalid'
         body.textContent = result.error || 'This verification link has expired or been used.'

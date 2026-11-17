@@ -1,4 +1,5 @@
-// Receives the account token from the "Connect extension" button on the Brainrot Index website.
+// Receives the account token from the "Connect extension" button on the Brainrot Index website, and
+// tells the website the extension is installed, so its setup checklist can say so.
 // The manifest loads this script on every address the server may use; it only listens on the one
 // the options page is set to.
 
@@ -7,13 +8,25 @@ extensionApi.storage.local.get("serverAddress").then((stored) => {
     return;
   }
 
+  function announcePresence() {
+    window.postMessage({ type: "brainrot-index-extension-present" }, window.location.origin);
+  }
+
   window.addEventListener("message", async (event) => {
-    if (event.source !== window
-        || event.origin !== window.location.origin
-        || event.data?.type !== "brainrot-index-extension-token") {
+    if (event.source !== window || event.origin !== window.location.origin) {
+      return;
+    }
+    if (event.data?.type === "brainrot-index-extension-ping") {
+      announcePresence();
+      return;
+    }
+    if (event.data?.type !== "brainrot-index-extension-token") {
       return;
     }
     await extensionApi.storage.local.set({ token: event.data.token });
     window.postMessage({ type: "brainrot-index-extension-connected" }, window.location.origin);
   });
+
+  // A page that asked before this listener was ready hears it now.
+  announcePresence();
 });

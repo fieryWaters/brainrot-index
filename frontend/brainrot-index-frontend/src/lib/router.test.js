@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { register, navigate, resolve, setOutlet, setAuthGuard, _resetRoutesForTesting } from './router.js'
+import { register, navigate, resolve, setOutlet, setAuthGuard, setNotFoundHandler, _resetRoutesForTesting } from './router.js'
 
 // The router is a singleton module. Each test points it at a fresh outlet and
 // registers a catch-all route so resolve() always renders something.
@@ -97,5 +97,38 @@ describe('router auth guard', () => {
 
     expect(pushSpy).not.toHaveBeenCalled()
     expect(window.location.pathname).toBe('/')
+  })
+})
+
+describe('router titles and unknown addresses', () => {
+  let outlet
+
+  beforeEach(() => {
+    _resetRoutesForTesting()
+    outlet = document.createElement('div')
+    setOutlet(outlet)
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+    register('/', () => ({ el: document.createElement('div') }))
+    register('/privacy', () => ({ el: document.createElement('div') }), { title: 'Privacy Policy' })
+  })
+
+  it('puts the route title in front of the site name', () => {
+    navigate('/privacy')
+    expect(document.title).toBe('Privacy Policy - Brainrot Index')
+  })
+
+  it('renders the not-found page for an address no route matches', () => {
+    const cleanup = vi.fn()
+    setNotFoundHandler(() => {
+      const el = document.createElement('div')
+      el.textContent = 'This page does not exist'
+      return { el, cleanup }
+    })
+    navigate('/no-such-page')
+    expect(outlet.textContent).toBe('This page does not exist')
+    expect(document.title).toBe('Page not found - Brainrot Index')
+
+    navigate('/')
+    expect(cleanup).toHaveBeenCalled()
   })
 })

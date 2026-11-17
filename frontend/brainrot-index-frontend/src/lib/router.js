@@ -9,6 +9,10 @@ let currentCleanup = null
 // only reachable for authenticated users. A logged-out deep-link to such a
 // route bounces to '/' instead of rendering a half-broken protected page.
 let authGuard = null
+// Renders a path no route matches. Set by main.js.
+let notFoundHandler = null
+// The title index.html gives the site; a route's own title is put in front of it.
+const SITE_TITLE = document.title
 const navigationCallbacks = []
 
 // Convert /create/:imageId style pattern to regex + param name list.
@@ -26,7 +30,13 @@ function patternToRegex(pattern) {
 
 export function register(pattern, handler, options = {}) {
   const { regex, paramNames } = patternToRegex(pattern)
-  routes.push({ regex, paramNames, handler, requiresAuth: Boolean(options.requiresAuth) })
+  routes.push({
+    regex,
+    paramNames,
+    handler,
+    requiresAuth: Boolean(options.requiresAuth),
+    title: options.title || '',
+  })
 }
 
 export function navigate(path) {
@@ -84,6 +94,7 @@ export function resolve() {
       return
     }
 
+    setPageTitle(route.title)
     const result = route.handler(params)
     if (result) {
       outletEl.replaceChildren(result.el)
@@ -92,8 +103,26 @@ export function resolve() {
     return
   }
 
-  // No match - render a simple 404
+  setPageTitle('Page not found')
+  if (notFoundHandler) {
+    const result = notFoundHandler()
+    outletEl.replaceChildren(result.el)
+    currentCleanup = result.cleanup || null
+    return
+  }
   outletEl.innerHTML = '<div class="text-center py-20 text-white/50">404 - Page not found</div>'
+}
+
+function setPageTitle(title) {
+  if (title) {
+    document.title = `${title} - Brainrot Index`
+  } else {
+    document.title = SITE_TITLE
+  }
+}
+
+export function setNotFoundHandler(fn) {
+  notFoundHandler = fn
 }
 
 export function setOutlet(el) {
@@ -113,6 +142,7 @@ export function _resetRoutesForTesting() {
   routes.length = 0
   navigationCallbacks.length = 0
   authGuard = null
+  notFoundHandler = null
   if (currentCleanup) {
     currentCleanup()
   }

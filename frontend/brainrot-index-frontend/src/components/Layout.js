@@ -5,6 +5,7 @@ import { getState, subscribe, logout } from '../lib/auth.js'
 import { el } from '../lib/dom.js'
 import { createFeedbackButton } from './FeedbackButton.js'
 import { onNavigate, navigate } from '../lib/router.js'
+import { SUPPORT_EMAIL } from '../lib/site.js'
 
 // The git commit this build came from, passed in by deploy.sh.
 const GIT_COMMIT = import.meta.env.VITE_GIT_COMMIT || 'unknown'
@@ -97,8 +98,26 @@ export function createLayout() {
     }
   }
 
+  // Shown while the site cannot reach its server, instead of pages that silently fail to load.
+  const serverBanner = el('div', 'hidden')
+  serverBanner.setAttribute('role', 'alert')
+  function renderServerBanner() {
+    if (!getState().serverUnavailable) {
+      serverBanner.className = 'hidden'
+      return
+    }
+    const reloadButton = el('button', 'underline hover:text-white', 'Try again')
+    reloadButton.type = 'button'
+    reloadButton.addEventListener('click', () => window.location.reload())
+    serverBanner.className = 'bg-amber-500/10 border-b border-amber-500/20 px-4 py-3 text-center text-sm text-amber-200'
+    serverBanner.replaceChildren(
+      'Brainrot Index cannot reach its server right now, so signing in and settings are unavailable. Please try again in a few minutes. ',
+      reloadButton)
+  }
+
   subscribe(() => {
     renderNav()
+    renderServerBanner()
   })
 
   // Close dropdown on route change
@@ -117,12 +136,24 @@ export function createLayout() {
   const outlet = el('main', 'flex-1')
   outlet.id = 'page-outlet'
 
-  const footer = el('footer', 'border-t border-white/10 py-6 text-center text-sm text-white/40',
-    el('p', '', 'Brainrot Index'),
+  const footerLinks = [
+    ['Install the extension', '/install'],
+    ['Privacy Policy', '/privacy'],
+    ['Terms of Service', '/terms'],
+    ['Contact', `mailto:${SUPPORT_EMAIL}`],
+  ].map(([text, href]) => {
+    const anchor = el('a', 'hover:text-white/80 transition-colors', text)
+    anchor.href = href
+    return anchor
+  })
+
+  const footer = el('footer', 'border-t border-white/10 py-8 px-4 text-center text-sm text-white/40',
+    el('nav', 'flex flex-wrap justify-center gap-x-6 gap-y-2', ...footerLinks),
+    el('p', 'mt-4', 'Brainrot Index'),
     el('p', 'mt-1 text-xs text-white/25', `Version ${GIT_COMMIT}`))
 
   const shell = el('div', 'min-h-screen bg-gray-950 text-white flex flex-col',
-    nav, outlet, footer, feedbackButton.el)
+    nav, serverBanner, outlet, footer, feedbackButton.el)
 
   // Initial render of nav right slot
   renderNav()

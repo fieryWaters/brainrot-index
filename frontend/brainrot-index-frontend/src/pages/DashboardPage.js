@@ -9,6 +9,8 @@ import { mountBillingCard } from '../components/BillingCard.js'
 import { createFilterSettingsCard, createInstalledPluginsCard } from '../components/FilterSettings.js'
 import { CARD_CLASS, AMBER_BUTTON_CLASS } from '../components/styles.js'
 import { pendingFamilyInviteCode } from './JoinFamilyPage.js'
+import { createOnboardingChecklist } from '../components/OnboardingChecklist.js'
+import { detectExtension } from '../lib/extension.js'
 
 // Messages exchanged with the extension's content script on this page.
 export const TOKEN_MESSAGE_TYPE = 'brainrot-index-extension-token'
@@ -55,6 +57,7 @@ export function mountDashboardPage() {
     if (event.data?.type !== CONNECTED_MESSAGE_TYPE) return
     clearTimeout(extensionAnswerTimer)
     connectStatus.textContent = 'Connected'
+    checklist.refresh()
   }
   window.addEventListener('message', handleExtensionMessage)
 
@@ -64,11 +67,20 @@ export function mountDashboardPage() {
         el('h2', 'text-lg font-semibold text-white mb-1', 'Browser extension'),
         connectStatus),
       connectButton))
-  connectStatus.textContent = 'Link the extension in this browser to your account.'
+  const installLink = el('a', 'text-amber-400 hover:text-amber-300 underline', 'Install it first')
+  installLink.href = '/install'
+  connectStatus.append('The extension is not installed in this browser yet. ', installLink, '.')
+
+  const checklist = createOnboardingChecklist()
+  const stopDetectingExtension = detectExtension(() => {
+    checklist.markExtensionInstalled()
+    connectStatus.textContent = 'Link the extension in this browser to your account.'
+  })
 
   container.append(
     el('h1', 'text-3xl font-bold mb-8 text-white', 'Dashboard'),
     errorSlot,
+    checklist.el,
     mountBillingCard(),
     connectCard,
   )
@@ -100,6 +112,8 @@ export function mountDashboardPage() {
     cleanup() {
       window.removeEventListener('message', handleExtensionMessage)
       clearTimeout(extensionAnswerTimer)
+      stopDetectingExtension()
+      checklist.cleanup()
     },
   }
 }

@@ -140,4 +140,12 @@ describe('DashboardPage', () => {
 
     expect(screen.getByText('The extension did not answer on this page. If you just installed or reloaded it, reload this page and press Connect extension again.')).toBeInTheDocument()
   })
+
+  it('points to the install page until the extension answers on this page', async () => {
+    renderElement(mountDashboardPage().el)
+    expect(screen.getByText('Install it first').getAttribute('href')).toBe('/install')
+
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'brainrot-index-extension-present' }, origin: window.location.origin }))
+    expect(screen.getByText('Link the extension in this browser to your account.')).toBeInTheDocument()
+  })
 })

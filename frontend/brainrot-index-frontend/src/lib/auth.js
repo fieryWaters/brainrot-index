@@ -11,6 +11,7 @@ let _state = {
   authProvider: '',
   authError: '',
   isAuthenticated: false,
+  serverUnavailable: false,
 }
 
 let _listeners = new Set()
@@ -55,6 +56,7 @@ export function _resetForTesting() {
     authProvider: '',
     authError: '',
     isAuthenticated: LOCAL_AUTH_MODE,
+    serverUnavailable: false,
   }
   _listeners = new Set()
 }
@@ -63,6 +65,9 @@ export function _resetForTesting() {
 
 export async function refreshSession() {
   const { response, data } = await apiFetch('/auth/me/')
+  // No answer, or nginx saying the backend is down.
+  const serverUnavailable = response.status === 0 || response.status >= 500
+  if (serverUnavailable !== _state.serverUnavailable) setState({ serverUnavailable })
   if (response.ok) {
     applySession(data)
     return

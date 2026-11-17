@@ -1,1 +1,26 @@
 @import "tailwindcss";
+
+/* Long-form text on the Privacy Policy and Terms of Service pages. */
+@layer components {
+  .legal-text {
+    @apply text-white/75 leading-relaxed;
+  }
+  .legal-text h2 {
+    @apply mt-10 mb-3 text-xl font-semibold text-white;
+  }
+  .legal-text h3 {
+    @apply mt-6 mb-2 font-semibold text-white;
+  }
+  .legal-text p {
+    @apply mb-4;
+  }
+  .legal-text ul {
+    @apply mb-4 ml-6 list-disc space-y-1;
+  }
+  .legal-text a {
+    @apply text-amber-400 underline hover:text-amber-300;
+  }
+  .legal-text strong {
+    @apply text-white;
+  }
+}

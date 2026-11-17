@@ -91,6 +91,8 @@ def account_data(user):
         'exported_at': timezone.now().isoformat(),
         'account': {
             'email': user.email,
+            # Filled in from Google for accounts made with Google sign-in.
+            'name': f'{user.first_name} {user.last_name}'.strip(),
             'created_at': user.date_joined.isoformat(),
             'email_verified': profile.email_verified,
             'sign_in_method': profile.auth_provider,

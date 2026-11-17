@@ -135,12 +135,17 @@ services:
     build:
       context: ./frontend/brainrot-index-frontend
       dockerfile: Dockerfile
+      # The extension is packed into the image for download from /downloads/.
+      additional_contexts:
+        extension-source: ./extension
+        scripts: ./scripts
       args:
         VITE_API_BASE_URL: /api
         VITE_APP_ENV: ${APP_ENV:-deployment}
         VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
         VITE_STRIPE_PUBLISHABLE_KEY: ${STRIPE_TEST_PUBLISHABLE_KEY:-}
         VITE_GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        VITE_WEBSTORE_URL: ${WEBSTORE_URL:-}
     restart: unless-stopped
     depends_on:
       backend:

@@ -198,7 +198,7 @@ function createDeleteCard(email, onDeleted) {
       el('li', '', 'your name on plugins you published (the plugins stay for the people who installed them)'),
       el('li', '', 'your subscription, which is canceled at once with no further charges')),
     el('p', 'mt-3 text-sm text-white/70',
-      "Posts the extension sent us, and the filters' verdicts on them, stay in the shared cache. They record nothing about who saw them, so they cannot be traced back to you. Stripe, our payment processor, keeps its own records of past payments."),
+      "Posts the extension sent us, and the filters' verdicts on them, stay in the shared cache. Their link to your account is removed. Stripe, our payment processor, keeps its own records of past payments."),
     el('p', 'mt-4 text-sm text-white/70', 'To confirm, type your email address:'),
     el('div', 'mt-2 flex flex-col sm:flex-row gap-3', confirmInput, deleteButton),
     status)

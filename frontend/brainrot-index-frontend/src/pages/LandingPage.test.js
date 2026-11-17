@@ -37,7 +37,8 @@ describe('Legal pages', () => {
   it('state what is stored and give the contact address', () => {
     renderElement(mountPrivacyPage().el)
     expect(screen.getByRole('heading', { name: 'Privacy Policy' })).toBeInTheDocument()
-    expect(screen.getByText(/do not record which account sent them or who saw them/)).toBeInTheDocument()
+    expect(screen.getAllByText(/together with the account that sent them/).length).toBeGreaterThan(0)
+    expect(screen.getByRole('heading', { name: 'When a person reads your posts' })).toBeInTheDocument()
     expect(screen.getAllByText('support@brainrotindex.com').length).toBeGreaterThan(0)
   })
 

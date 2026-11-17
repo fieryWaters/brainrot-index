@@ -71,9 +71,12 @@ The dashboard's own wording wins where it differs from this file.
 
     Privacy: while it is switched on, the extension sends each post it sees on X and Reddit (its
     text, author username, address and image addresses) to the Brainrot Index server, where AI models
-    classify it. Posts are stored in a shared cache that does not record who saw them. The extension
-    does not read your messages, what you type, or any other site. We do not sell data or show ads.
-    Full details: https://brainrotindex.com/privacy
+    classify it. Posts are stored together with the account that sent them, and are used to run the
+    service, to improve the filters and to stop abuse. A person reads an individual post only if you
+    report it, to investigate abuse or a security problem, or when the law requires it. The extension
+    does not read your messages, what you type, or any other site. We do not sell data, use it for
+    advertising, or share it beyond the AI model providers that classify posts and the services that
+    run the site. Full details: https://brainrotindex.com/privacy
 
 **Category**: Social Media & Networking (in the 2023 category list; pick the closest current name).
 
@@ -94,8 +97,11 @@ The dashboard's own wording wins where it differs from this file.
 | Small promo tile | 440 x 280 | no, but listings without it rank lower | Done: `docs/webstore/promo-tile-440x280.png` |
 | Marquee promo tile | 1400 x 560 | only for being featured | Not made |
 
-All brand images are drawn from `frontend/brainrot-index-frontend/public/favicon.svg` by
-`node extension-tests/make-icons.mjs`.
+The icon is the glowing blue shield with a line-art brain, on a transparent background; the promo
+tile and the site's social preview put it on the logo's deep navy with a light cyan headline. All
+brand images are drawn from `brand/logo-source.webp` by `node extension-tests/make-icons.mjs` (run
+`npm install` in `extension-tests` first). The site's palette is defined once in
+`frontend/brainrot-index-frontend/src/index.css`.
 
 Screenshots to take at 1280 x 800 (a Brave window of that size, with a signed-in account; do not
 show other people's identifiable posts prominently, or crop them):
@@ -131,36 +137,46 @@ only returns JSON data.)
 **Data usage**: tick these categories.
 
 - **Website content**: yes. The text of every post and reply the extension sees on X and Reddit,
-  its address, its community, and the addresses of its images. The server downloads and stores the
-  images too.
-- **Personally identifiable information**: yes. The usernames of post authors are sent with each
-  post. The account's email address is held by the website (not collected by the extension itself;
-  tick it to be safe).
+  its address, its community, and the addresses of its images, stored with the account that sent
+  it. The server downloads and stores the images too.
+- **Personally identifiable information**: yes. The account's email address, which the posts are
+  stored with, and the usernames of post authors, which are sent with each post.
 - **Authentication information**: yes. The extension stores and sends an account connection key.
 - **User activity**: no. It does not record clicks, keystrokes or scrolling.
-- **Web history**: no. It sends only posts on X and Reddit, never the list of pages visited. (The
-  feedback form attaches the address of the current tab when the user sends a report; if the
-  reviewer counts that as web history, tick it.)
+- **Web history**: yes. The server keeps, with the account, the addresses of the X and Reddit posts
+  the extension saw, which is a record of what the user scrolled past on those sites. The feedback
+  form also attaches the address of the current tab when the user sends a report. It never sends
+  the list of other pages visited.
 - **Location, health, financial and payment, personal communications**: no. (Payments happen on the
   website through Stripe, not in the extension.)
 
-**Certifications**: all three can be ticked truthfully, with the note below.
+**Certifications**: all three can be ticked truthfully, with the notes below.
 
 - I do not sell or transfer user data to third parties, outside of the approved use cases.
-  (Post content goes to the AI model providers OpenRouter and Google only to classify it.)
+  (Post content goes to the AI model providers OpenRouter and Google only to classify it; the other
+  services that run the site, Stripe, Resend and Cloudflare, receive only what they need for that.
+  Nothing is sold or used for advertising.)
 - I do not use or transfer user data for purposes that are unrelated to my item's single purpose.
+  (Stored posts are used to run the filtering, to improve the filters, mostly through automated and
+  aggregate analysis and the posts users report with "Wrong?", and to detect and investigate abuse.)
 - I do not use or transfer user data to determine creditworthiness or for lending purposes.
+
+How this meets Limited Use's rule on people reading user data: a person on our side reads an
+individual stored post only when the user reports it (their consent), when investigating abuse or a
+security problem, or when the law requires it. Those are the exceptions the policy allows. Other
+work on the filters uses automated and aggregate analysis.
 
 **Privacy policy URL**: https://brainrotindex.com/privacy
 
 ### Decisions the owner must make before submitting
 
-- **People reading stored posts.** Limited Use generally forbids humans reading user data, except
-  with the user's consent, for security, to comply with law, or when the data is aggregated and
-  anonymized. The Privacy Policy says staff may read stored posts and reports to improve the
-  filters. Reports a user sends are read with their consent; browsing stored posts in the admin is
-  the grey area. Either keep that to posts named in reports, or ask a lawyer whether stored posts
-  (public content not linked to an account) count.
+- **People reading stored posts.** Decided: only reported posts, abuse or security investigations,
+  and legal requirements, as the Privacy Policy now says. Keep the admin used that way; browsing
+  stored posts for any other reason would break both the policy and Limited Use.
+- **Posts stored with the account.** The Privacy Policy and the answers above say posts are kept
+  with the account that sent them. As of 2026-11-16 the server's Post table has no account column,
+  so that record does not exist yet; the texts describe the decided practice. Build it (and remove
+  the link when an account is deleted, as the policy promises) before relying on it.
 - **"Data mining" the cache.** Using stored posts to improve the filters fits the single purpose.
   Any other use (research unrelated to filtering, selling datasets, training general models) would
   not, and would also contradict the Privacy Policy as written.

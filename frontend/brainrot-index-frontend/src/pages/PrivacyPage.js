@@ -3,8 +3,8 @@
 // must review it before relying on it. Points to check in particular: the legal
 // entity behind "we", the governing law, where the servers are, how long
 // server logs are kept, the age rules for children's accounts (COPPA in the
-// US, GDPR-K in the EU), and whether staff reading stored posts fits the
-// Chrome Web Store's Limited Use policy. Keep it true: when the code changes
+// US, GDPR-K in the EU), and whether the cases where a person reads stored
+// posts fit the Chrome Web Store's Limited Use policy. Keep it true: when the code changes
 // what is collected, sent or kept, change this text in the same commit.
 
 import { mountLegalPage } from './LegalPage.js'
@@ -18,8 +18,10 @@ This policy explains exactly what we collect, why, who else receives it, how lon
 We wrote it to be read, not skimmed past. If anything here is unclear, write to
 <a href="mailto:support@brainrotindex.com">support@brainrotindex.com</a>.</p>
 
-<p><strong>The short version:</strong> the extension sends us every post it sees while it is on, and we keep those posts.
-Stored posts are not linked to your account. We do not sell your data and we do not show ads.</p>
+<p><strong>The short version:</strong> the extension sends us every post it sees while it is on, and we keep those posts together
+with the account that sent them. We use them to run the service, to improve the filters and to stop abuse. A person on our side reads
+an individual post only when you report it, when investigating abuse or a security problem, or when the law requires it.
+We do not sell your data, use it for advertising, or share it beyond the companies that help us run the service.</p>
 
 <h2>1. What the extension sends us</h2>
 <p>While the extension is connected to your account and filtering is switched on, it sends us each post and reply it finds on the
@@ -44,9 +46,9 @@ answers it got for posts during the current browser session, which your browser 
 image addresses and the time we first saw it. We also download and store the images themselves. For each filter that reads a post,
 we store its result: a score, a label, the model's written reasoning, the exact prompt sent to the model, the model's raw answer and
 which model gave it.</p>
-<p>These stored posts are a <strong>shared cache</strong>: when several people see the same post, it is stored and classified once,
-and everyone gets the same stored result. Stored posts and classifications <strong>do not record which account sent them or who saw them</strong>.
-They stay when you delete your account, because they cannot be traced back to you.</p>
+<p>Stored posts are kept <strong>together with the account that sent them</strong>, so we can tell which posts reached us from
+your extension. They also serve as a <strong>shared cache</strong>: when several people see the same post, it is classified once,
+and everyone gets the same stored result.</p>
 <p>Keep in mind that a stored post can contain personal information about its author, and can be your own post if the extension
 saw it in your feed.</p>
 <h3>Your account</h3>
@@ -68,13 +70,20 @@ can make, to protect accounts against abuse.</p>
 <ul>
   <li><strong>To run the service:</strong> to classify posts, apply your settings, and tell the extension what to blur or hide.</li>
   <li><strong>To make filtering faster and cheaper:</strong> the shared cache means a post is read by a model once, not once per person.</li>
-  <li><strong>To make filtering better:</strong> we use stored posts, classifications and your reports to measure how accurate the filters
-  are, to fix mistakes and to improve the filters' instructions. People at Brainrot Index may read stored posts, classifications and the
-  reports you send in order to do this.</li>
+  <li><strong>To make filtering better:</strong> we measure how accurate the filters are and improve their instructions, mostly through
+  automated and aggregate analysis of stored posts and classifications, and through the posts you report with <strong>Wrong?</strong>.</li>
   <li><strong>To run your account:</strong> to sign you in, send you verification and password reset emails, and manage your trial and subscription.</li>
-  <li><strong>To protect the service:</strong> to limit abuse and investigate security problems.</li>
+  <li><strong>To protect the service:</strong> to detect and investigate abuse and security problems.</li>
 </ul>
-<p>We do not sell your data, rent it, or share it with advertisers or data brokers, and we do not use it to show you ads.</p>
+<h3>When a person reads your posts</h3>
+<p>A person at Brainrot Index reads individual stored posts only:</p>
+<ul>
+  <li>when you report a post, for example with <strong>Wrong?</strong>, which lets us read that post and what you wrote about it;</li>
+  <li>when investigating abuse of the service or a security problem;</li>
+  <li>when the law requires it.</li>
+</ul>
+<p>We do not sell your data, rent it, use it for advertising, or share it with advertisers or data brokers. We share it only as
+described in the next section.</p>
 
 <h2>4. Who else receives it</h2>
 <p>We share data only with the companies that help us run Brainrot Index, and only what each needs:</p>
@@ -96,7 +105,7 @@ sold or merged, your data would move to the new owner under this policy, and we 
 <h2>5. How long we keep it</h2>
 <ul>
   <li><strong>Stored posts, images and classifications</strong> are kept indefinitely, because they serve as the shared cache and as the
-  record we use to measure and improve the filters.</li>
+  record we use to measure and improve the filters. The link between a post and the account that sent it is kept until you delete your account.</li>
   <li><strong>Your account data</strong> is kept until you delete your account.</li>
   <li><strong>Your reports and feedback</strong> are kept until you delete your account.</li>
 </ul>
@@ -107,7 +116,8 @@ sold or merged, your data would move to the new owner under this policy, and we 
   <li><strong>Download your data:</strong> on the Account page, <strong>Download my data</strong> gives you a JSON file of your account,
   subscription, settings, filters and reports.</li>
   <li><strong>Delete your account:</strong> on the Account page. This removes your account and everything listed under "Your account" above,
-  disconnects every extension and cancels your subscription. Stored posts and classifications stay, as explained above.</li>
+  disconnects every extension and cancels your subscription. We also remove the link between your account and the posts it sent;
+  the posts and their classifications stay in the shared cache, because other people's extensions use them too.</li>
   <li><strong>Correct your data:</strong> change your settings on the dashboard and your password on the Account page.
   For anything else, write to us.</li>
   <li><strong>Remove a post:</strong> if you wrote a post that we stored and want it removed from our cache, write to us with its address.</li>
@@ -126,8 +136,8 @@ companies and follow their own cookie policies.</p>
 collect information from a child under 13 who signed up on their own; if we learn of one, we delete the account.</p>
 <p>A parent or guardian can use <strong>child mode</strong> on a browser their child uses. In child mode, posts stay blurred until they have
 been checked and filtered posts cannot be revealed. The account, its settings and its subscription belong to the parent or guardian.
-Posts seen in a child's browser are handled exactly like everyone else's: they are sent to us and to the AI model providers, and stored in
-the shared cache without being linked to the account. We never use them for advertising and never sell them.</p>
+Posts seen in a child's browser are handled exactly like everyone else's: they are sent to us and to the AI model providers, and stored
+together with the account that sent them. We never use them for advertising and never sell them.</p>
 <p>Child mode is a filter, not a lock: a child who can manage the browser's extensions can switch it off or remove it.</p>
 
 <h2>9. Security</h2>

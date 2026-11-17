@@ -125,6 +125,7 @@ INSTALLED_APPS = [
     'api',
     'classification',
     'feedback',
+    'billing',
 ]
 
 # -- Email -------------------------------------------------------------------

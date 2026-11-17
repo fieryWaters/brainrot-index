@@ -16,6 +16,7 @@ from api.auth_tokens import generate_raw_token, hash_token
 from api.models import DailyNewPostCount
 from api.permissions import HasVerifiedEmail
 from api.throttling import UserRateThrottle
+from billing.permissions import HasAccess
 
 from .authentication import ExtensionTokenAuthentication
 from .images import image_url_is_allowed
@@ -205,7 +206,7 @@ def daily_limit_result(seen_post):
 
 @api_view(['GET'])
 @authentication_classes([ExtensionTokenAuthentication])
-@permission_classes([IsAuthenticated, HasVerifiedEmail])
+@permission_classes([IsAuthenticated, HasVerifiedEmail, HasAccess])
 @throttle_classes([ExtensionConfigThrottle])
 def extension_config(request):
     user_settings = settings_for_user(request.user)
@@ -225,7 +226,7 @@ def extension_config(request):
 
 @api_view(['POST'])
 @authentication_classes([ExtensionTokenAuthentication])
-@permission_classes([IsAuthenticated, HasVerifiedEmail])
+@permission_classes([IsAuthenticated, HasVerifiedEmail, HasAccess])
 @throttle_classes([ClassifyThrottle])
 def classify(request):
     serializer = ClassifyRequestSerializer(data=request.data)

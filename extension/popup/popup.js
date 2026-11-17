@@ -3,7 +3,7 @@
 const ACCOUNT_STATUS_TEXT = {
   "connected": "Connected to your account",
   "not-connected": "Not connected. Open Brainrot Index and press Connect extension.",
-  "no-subscription": "No active subscription or trial, so nothing is filtered.",
+  "no-subscription": "Your free trial has ended. Subscribe to continue.",
   "email-not-verified": "Verify your email first: open the link Brainrot Index emailed you, then reload the page.",
   "server-error": "The server answered with an error.",
   "server-unreachable": "Cannot reach the server.",
@@ -12,6 +12,11 @@ const ACCOUNT_STATUS_TEXT = {
 async function showAccountStatus() {
   const status = await extensionApi.runtime.sendMessage({ type: "get-status" });
   document.getElementById("account-status").textContent = ACCOUNT_STATUS_TEXT[status.state];
+  if (status.state === "no-subscription") {
+    const { serverAddress } = await extensionApi.storage.local.get("serverAddress");
+    document.getElementById("subscribe-link").href = serverAddress + "/dashboard";
+    document.getElementById("subscribe-row").hidden = false;
+  }
 }
 
 // Counts the answers the background worker has cached this session: one per post checked.

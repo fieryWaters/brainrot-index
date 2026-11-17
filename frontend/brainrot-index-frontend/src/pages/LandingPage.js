@@ -1,5 +1,5 @@
-// Landing page: the product name, one sentence about what it does, and the
-// two ways in.
+// Landing page: the product name, one sentence about what it does, the two
+// ways in, and the price.
 
 import { el } from '../lib/dom.js'
 
@@ -21,6 +21,12 @@ export function mountLandingPage() {
     el('p', 'mt-4 max-w-xl text-lg text-white/70',
       'Filter brainrot, ragebait, and engagement bait out of your feeds.'),
     el('div', 'mt-8 flex gap-4 justify-center', signupLink, loginLink),
+    el('section', 'mt-14 w-full max-w-sm rounded-2xl border border-white/10 bg-black/30 p-6',
+      el('h2', 'text-sm font-semibold uppercase tracking-wide text-white/50', 'Pricing'),
+      el('p', 'mt-3 text-4xl font-bold text-white', '$5',
+        el('span', 'text-lg font-medium text-white/50', ' / month')),
+      el('p', 'mt-3 text-white/70', 'Free for 7 days. No card needed to start.'),
+      el('p', 'mt-1 text-sm text-white/50', 'Cancel any time.')),
   )
 
   return { el: root }

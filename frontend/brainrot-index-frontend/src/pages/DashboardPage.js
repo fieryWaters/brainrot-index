@@ -1,9 +1,10 @@
-// Dashboard: connect the browser extension, the master switch and mode, and
+// Dashboard: the subscription, connect the browser extension, the master switch and mode, and
 // one row of settings per installed plugin. Every change saves immediately.
 
 import { apiFetch } from '../lib/api.js'
 import { el } from '../lib/dom.js'
 import { createErrorBanner } from '../components/ErrorBanner.js'
+import { mountBillingCard } from '../components/BillingCard.js'
 
 // Messages exchanged with the extension's content script on this page.
 export const TOKEN_MESSAGE_TYPE = 'brainrot-index-extension-token'
@@ -158,6 +159,7 @@ export function mountDashboardPage() {
   container.append(
     el('h1', 'text-3xl font-bold mb-8 text-white', 'Dashboard'),
     errorSlot,
+    mountBillingCard(),
     connectCard,
   )
 

@@ -151,8 +151,8 @@ subscription and the Stripe events received.
 Stripe can only deliver webhooks to a public address, so this waits for
 `brainrotindex.com` (see Public address above).
 
-1. Deploy with `SITE_URL=https://brainrotindex.com`, so Checkout and the
-   portal return to the public site.
+1. Finish "Going public" above. Checkout and the portal send people back to
+   whichever site address they started from.
 2. Create the webhook endpoint and put its signing secret into `.env` without
    it appearing on screen. Run from this checkout on spark:
 

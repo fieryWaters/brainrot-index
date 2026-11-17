@@ -56,7 +56,11 @@ def end_trial(user):
     Subscription.objects.filter(user=user).update(trial_end=timezone.now() - timedelta(minutes=1))
 
 
-@override_settings(STRIPE_SECRET_KEY='sk_test_fake', STRIPE_WEBHOOK_SECRET=WEBHOOK_SECRET)
+@override_settings(
+    STRIPE_SECRET_KEY='sk_test_fake',
+    STRIPE_WEBHOOK_SECRET=WEBHOOK_SECRET,
+    SITE_URLS=['https://brainrot.example.com', 'https://brainrotindex.com'],
+)
 class BillingTests(TestCase):
     def setUp(self):
         self.user, self.token = create_user_with_token('reader@example.com')
@@ -105,13 +109,14 @@ class BillingTests(TestCase):
         self.client.force_login(self.user)
 
         with fake_stripe(client):
-            response = self.client.post(reverse('billing_checkout'))
+            response = self.client.post(reverse('billing_checkout'), HTTP_ORIGIN='https://brainrotindex.com')
 
         self.assertEqual(response.json(), {'url': 'https://checkout.stripe.com/c/pay/cs_test'})
         self.assertEqual(self.subscription().stripe_customer_id, CUSTOMER_ID)
         session_params = client.v1.checkout.sessions.create.call_args.args[0]
         self.assertEqual(session_params['customer'], CUSTOMER_ID)
         self.assertEqual(session_params['subscription_data']['trial_end'], unix(self.subscription().trial_end))
+        self.assertEqual(session_params['cancel_url'], 'https://brainrotindex.com/billing/canceled')
 
     def test_checkout_reconcile_activates(self):
         self.link_stripe_customer()

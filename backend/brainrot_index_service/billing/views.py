@@ -61,6 +61,15 @@ def billing_payload(user):
     }
 
 
+def site_address(request):
+    """The site address the request came from, so Stripe sends the person back
+    to the address their session cookie belongs to."""
+    origin = request.headers.get('Origin', '')
+    if origin in settings.SITE_URLS:
+        return origin
+    return settings.FRONTEND_BASE_URL
+
+
 def payments_not_set_up():
     return Response({'error': 'Payments are not set up yet.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
@@ -115,8 +124,8 @@ def create_checkout_session(request):
         'client_reference_id': str(request.user.id),
         'line_items': [{'price': price['id'], 'quantity': 1}],
         'subscription_data': subscription_data,
-        'success_url': f'{settings.FRONTEND_BASE_URL}/billing/success?session_id={{CHECKOUT_SESSION_ID}}',
-        'cancel_url': f'{settings.FRONTEND_BASE_URL}/billing/canceled',
+        'success_url': f'{site_address(request)}/billing/success?session_id={{CHECKOUT_SESSION_ID}}',
+        'cancel_url': f'{site_address(request)}/billing/canceled',
     })
     return Response({'url': checkout_session['url']})
 
@@ -153,7 +162,7 @@ def create_portal_session(request):
     portal_session = stripe_client().v1.billing_portal.sessions.create({
         'customer': subscription.stripe_customer_id,
         'configuration': portal_configuration_id(),
-        'return_url': f'{settings.FRONTEND_BASE_URL}/dashboard',
+        'return_url': f'{site_address(request)}/dashboard',
     })
     return Response({'url': portal_session['url']})
 

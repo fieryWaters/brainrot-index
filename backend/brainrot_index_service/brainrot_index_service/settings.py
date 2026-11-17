@@ -301,6 +301,13 @@ REST_FRAMEWORK = {
         # Asked on every Reddit or X page load and every popup opening.
         'extension_config': '60/minute',
         'extension_token': '20/hour',
+        # Each try of a draft rubric is one model call.
+        'store_try': '20/hour',
+        'store_publish': '20/day',
+        'store_review': '60/hour',
+        'family_change': '60/hour',
+        # Joining checks an invite code, so it is limited like a sign-in.
+        'family_join': '20/hour',
     },
 }
 

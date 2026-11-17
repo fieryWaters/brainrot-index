@@ -24,3 +24,12 @@ class UserRateThrottle(ClientAddressIdent, throttling.UserRateThrottle):
 
 class ScopedRateThrottle(ClientAddressIdent, throttling.ScopedRateThrottle):
     pass
+
+
+class ChangeRateThrottle(UserRateThrottle):
+    """Limits only requests that change something, for views that also answer GET."""
+
+    def allow_request(self, request, view):
+        if request.method == 'GET':
+            return True
+        return super().allow_request(request, view)

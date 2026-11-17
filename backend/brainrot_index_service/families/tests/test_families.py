@@ -1,18 +1,16 @@
 from datetime import timedelta
 
-from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
 from classification.models import UserSettings
+from classification.tests.helpers import create_verified_user
 from families.models import FamilyInvite, FamilyMember
-
-User = get_user_model()
 
 
 def signed_in_client(email):
-    user = User.objects.create_user(username=email, email=email)
+    user = create_verified_user(email)
     client = Client()
     client.force_login(user)
     return user, client

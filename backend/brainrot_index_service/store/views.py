@@ -4,17 +4,19 @@ per-account plugin settings."""
 
 from django.conf import settings
 from django.db import transaction
-from django.http import Http404
 from django.db.models import Avg, Count, IntegerField, OuterRef, Q, Subquery, Value
 from django.db.models.functions import Coalesce
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils.text import slugify
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import UserRateThrottle
 
+from api.permissions import HasVerifiedEmail
+from api.throttling import ChangeRateThrottle, UserRateThrottle
+from billing.permissions import HasAccess
 from classification.inference import ask_model, build_messages, configured_model, describe_post
 from classification.models import (
     CLASSIFICATION_DONE,
@@ -24,6 +26,7 @@ from classification.models import (
     PluginVersion,
     UserPlugin,
 )
+from classification.views import take_from_daily_quota
 from families.permissions import require_not_child
 
 from .models import PluginRating, PluginReport
@@ -44,10 +47,24 @@ CHILD_CANNOT_PUBLISH_MESSAGE = 'Child accounts cannot publish plugins.'
 CHILD_CANNOT_RATE_MESSAGE = 'Child accounts cannot rate plugins.'
 
 
-# Each try is one model call, paid for by the site.
 class TryRubricThrottle(UserRateThrottle):
-    scope = 'plugin_try'
-    rate = '20/hour'
+    scope = 'store_try'
+
+
+class PublishThrottle(ChangeRateThrottle):
+    scope = 'store_publish'
+
+
+class ReviewThrottle(UserRateThrottle):
+    scope = 'store_review'
+
+
+# Publishing needs a verified email; browsing needs only a session.
+class VerifiedEmailToChange(HasVerifiedEmail):
+    def has_permission(self, request, view):
+        if request.method == 'GET':
+            return True
+        return super().has_permission(request, view)
 
 
 def with_store_counts(plugins):
@@ -150,7 +167,8 @@ def publish_version(plugin, author_rubric, version_number):
 
 
 @api_view(['GET', 'POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, VerifiedEmailToChange])
+@throttle_classes([PublishThrottle])
 def store_plugin_list(request):
     """GET lists the store, filtered by ?q=; POST publishes a new plugin."""
     if request.method == 'POST':
@@ -212,7 +230,8 @@ def store_plugin_detail(request, slug):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasVerifiedEmail])
+@throttle_classes([PublishThrottle])
 def store_plugin_new_version(request, slug):
     """Publishes a new rubric version. Earlier versions and their cached classifications stay as they were."""
     require_not_child(request.user, CHILD_CANNOT_PUBLISH_MESSAGE)
@@ -225,7 +244,8 @@ def store_plugin_new_version(request, slug):
 
 
 @api_view(['PUT'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasVerifiedEmail])
+@throttle_classes([ReviewThrottle])
 def store_plugin_rating(request, slug):
     require_not_child(request.user, CHILD_CANNOT_RATE_MESSAGE)
     plugin = visible_plugin(request, slug)
@@ -239,7 +259,8 @@ def store_plugin_rating(request, slug):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasVerifiedEmail])
+@throttle_classes([ReviewThrottle])
 def store_plugin_report(request, slug):
     plugin = visible_plugin(request, slug)
     serializer = ReportSerializer(data=request.data)
@@ -249,14 +270,20 @@ def store_plugin_report(request, slug):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasVerifiedEmail, HasAccess])
 @throttle_classes([TryRubricThrottle])
 def try_rubric(request):
-    """Scores pasted post text with a draft rubric, exactly as a published version would."""
+    """Scores pasted post text with a draft rubric, exactly as a published version would.
+    Each try is one model call, so it also counts as one new post against the daily quota."""
     require_not_child(request.user, CHILD_CANNOT_PUBLISH_MESSAGE)
     serializer = TryRubricSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     fields = serializer.validated_data
+    if take_from_daily_quota(request.user, 1) == 0:
+        return Response(
+            {'error': "You have reached today's limit of posts checked. Please try again tomorrow."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
 
     draft_version = PluginVersion(
         rubric_prompt=framed_rubric(fields['rubric']), allowed_labels=PUBLISHED_PLUGIN_LABELS)

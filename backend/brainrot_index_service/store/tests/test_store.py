@@ -1,18 +1,17 @@
 from unittest.mock import patch
 
-from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
+from api.models import UserProfile
 from classification.models import Classification, Plugin, PluginVersion, Post
-from classification.tests.helpers import bearer, create_user_with_token, fake_model_scoring, seen_post
+from classification.tests.helpers import bearer, create_user_with_token, create_verified_user, fake_model_scoring, seen_post
 from classification.views import MAX_ENABLED_PLUGINS
 from families.models import ROLE_CHILD, Family, FamilyMember
 from store.models import PluginRating, PluginReport
 from store.rubric import PUBLISHED_PLUGIN_LABELS
 
-User = get_user_model()
 
 RUBRIC = 'Flag posts that are mostly about crypto price predictions, token shilling, or pump and dump hype.'
 
@@ -37,7 +36,7 @@ def make_child(user, family_owner):
 
 class PublishTests(TestCase):
     def setUp(self):
-        self.author = User.objects.create_user(username='author@example.com', email='author@example.com')
+        self.author = create_verified_user('author@example.com')
         self.client.force_login(self.author)
 
     def test_publishing_wraps_the_rubric_in_the_fixed_frame(self):
@@ -86,14 +85,21 @@ class PublishTests(TestCase):
 
     def test_only_the_author_publishes_versions(self):
         slug = publish(self.client).json()['slug']
-        other = User.objects.create_user(username='other@example.com', email='other@example.com')
+        other = create_verified_user('other@example.com')
         self.client.force_login(other)
         response = self.client.post(
             reverse('store_plugin_versions', args=[slug]), {'rubric': RUBRIC}, content_type='application/json')
         self.assertEqual(response.status_code, 404)
 
+    def test_publishing_needs_a_verified_email(self):
+        UserProfile.objects.filter(user=self.author).update(email_verified=False)
+        response = publish(self.client)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['code'], 'email_not_verified')
+        self.assertEqual(self.client.get(reverse('store_plugins')).status_code, 200)
+
     def test_child_cannot_publish(self):
-        child = User.objects.create_user(username='kid@example.com', email='kid@example.com')
+        child = create_verified_user('kid@example.com')
         make_child(child, self.author)
         self.client.force_login(child)
         self.assertEqual(publish(self.client).status_code, 403)
@@ -102,7 +108,7 @@ class PublishTests(TestCase):
 
 class InstallTests(TestCase):
     def setUp(self):
-        self.author = User.objects.create_user(username='author@example.com', email='author@example.com')
+        self.author = create_verified_user('author@example.com')
         self.client.force_login(self.author)
         self.slug = publish(self.client).json()['slug']
         self.reader, self.token = create_user_with_token('reader@example.com')
@@ -169,7 +175,7 @@ class InstallTests(TestCase):
         Plugin.objects.filter(slug=self.slug).update(is_listed=False)
         self.assertIn(self.slug, self.installed_slugs())
 
-        newcomer = User.objects.create_user(username='new@example.com', email='new@example.com')
+        newcomer = create_verified_user('new@example.com')
         self.client.force_login(newcomer)
         self.assertEqual(self.install().status_code, 404)
         store_slugs = [plugin['slug'] for plugin in self.client.get(reverse('store_plugins')).json()['plugins']]
@@ -184,10 +190,10 @@ class InstallTests(TestCase):
 
 class StoreBrowsingTests(TestCase):
     def setUp(self):
-        self.author = User.objects.create_user(username='author@example.com', email='author@example.com')
+        self.author = create_verified_user('author@example.com')
         self.client.force_login(self.author)
         self.slug = publish(self.client).json()['slug']
-        self.reader = User.objects.create_user(username='reader@example.com', email='reader@example.com')
+        self.reader = create_verified_user('reader@example.com')
         self.client.force_login(self.reader)
 
     def test_list_shows_counts_and_search_filters(self):
@@ -221,10 +227,10 @@ class StoreBrowsingTests(TestCase):
 
 class RatingAndReportTests(TestCase):
     def setUp(self):
-        self.author = User.objects.create_user(username='author@example.com', email='author@example.com')
+        self.author = create_verified_user('author@example.com')
         self.client.force_login(self.author)
         self.slug = publish(self.client).json()['slug']
-        self.reader = User.objects.create_user(username='reader@example.com', email='reader@example.com')
+        self.reader = create_verified_user('reader@example.com')
         self.client.force_login(self.reader)
 
     def rate(self, stars, review=''):
@@ -263,7 +269,7 @@ class RatingAndReportTests(TestCase):
 class TryRubricTests(TestCase):
     def setUp(self):
         cache.clear()
-        self.user = User.objects.create_user(username='author@example.com', email='author@example.com')
+        self.user = create_verified_user('author@example.com')
         self.client.force_login(self.user)
 
     def try_rubric(self, rubric=RUBRIC):
@@ -285,7 +291,14 @@ class TryRubricTests(TestCase):
         self.assertEqual(statuses[:20], [200] * 20)
         self.assertEqual(statuses[20], 429)
 
+    @override_settings(DAILY_NEW_POST_QUOTA=1)
+    def test_each_try_counts_against_the_daily_quota(self):
+        with patch('classification.inference.requests.post', side_effect=fake_model_scoring(10)) as model_call:
+            self.assertEqual(self.try_rubric().status_code, 200)
+            self.assertEqual(self.try_rubric().status_code, 429)
+        self.assertEqual(model_call.call_count, 1)
+
     def test_child_cannot_try(self):
-        owner = User.objects.create_user(username='parent@example.com', email='parent@example.com')
+        owner = create_verified_user('parent@example.com')
         make_child(self.user, owner)
         self.assertEqual(self.try_rubric().status_code, 403)

@@ -28,6 +28,10 @@ export function createLayout() {
   const dropdownLinkClass = 'block px-3 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-colors'
   const dashboardLink = el('a', dropdownLinkClass, 'Dashboard')
   dashboardLink.href = '/dashboard'
+  const storeLink = el('a', dropdownLinkClass, 'Plugin store')
+  storeLink.href = '/store'
+  const familyLink = el('a', dropdownLinkClass, 'Family')
+  familyLink.href = '/family'
   const accountLink = el('a', dropdownLinkClass, 'Account settings')
   accountLink.href = '/account'
 
@@ -42,7 +46,7 @@ export function createLayout() {
 
   const dropdown = el('div', 'absolute right-0 mt-2 w-72 bg-gray-900 border border-white/10 rounded-xl shadow-2xl shadow-black/50 overflow-hidden z-50 hidden',
     el('div', 'px-4 py-3 border-b border-white/10', emailP),
-    el('div', 'p-1', dashboardLink, accountLink, signOutBtn))
+    el('div', 'p-1', dashboardLink, storeLink, familyLink, accountLink, signOutBtn))
 
   const dropdownWrapper = el('div', 'relative', avatarBtn, dropdown)
 
@@ -68,6 +72,9 @@ export function createLayout() {
     }
   })
 
+  const navStoreLink = el('a', 'text-sm text-white/70 hover:text-white transition-colors', 'Store')
+  navStoreLink.href = '/store'
+
   const feedbackButton = createFeedbackButton()
 
   function renderNav() {
@@ -77,7 +84,7 @@ export function createLayout() {
       emailP.textContent = email || ''
       avatarBtn.textContent = email ? email[0].toUpperCase() : '?'
 
-      rightSlot.replaceChildren(dropdownWrapper)
+      rightSlot.replaceChildren(navStoreLink, dropdownWrapper)
     } else {
       closeDropdown()
 

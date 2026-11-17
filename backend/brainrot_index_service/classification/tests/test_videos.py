@@ -20,7 +20,6 @@ from classification.models import (
     Plugin,
     PostVideo,
     UserPlugin,
-    VideoTranscript,
 )
 from classification.video_judging import brainrot_points, parse_answer, score_from_points
 from classification.video_sources import hls_stream_urls, x_embed_token
@@ -76,6 +75,27 @@ def model_watching(engagement, information, cognitive):
     return answer
 
 
+def gemini_watching(engagement, information, cognitive):
+    """A stand-in for requests.post that answers like the Gemini API."""
+    def answer(url, **request):
+        answer_text = json.dumps({
+            'observations': 'A calm lecture with slow animations.',
+            'engagement_power': engagement,
+            'information_content': information,
+            'cognitive_draw': cognitive,
+        })
+        body = {
+            'candidates': [{'content': {'parts': [{'text': answer_text}]}}],
+            'usageMetadata': {'promptTokenCount': 1700, 'candidatesTokenCount': 70, 'thoughtsTokenCount': 5},
+        }
+        response = MagicMock()
+        response.text = json.dumps(body)
+        response.json.return_value = body
+        response.raise_for_status.return_value = None
+        return response
+    return answer
+
+
 def ffmpeg_writing_a_clip(command, **arguments):
     """A stand-in for subprocess.run: ffmpeg writes a few bytes to its output
     path (the last argument) and ffprobe reports 30 seconds."""
@@ -88,7 +108,7 @@ def ffmpeg_writing_a_clip(command, **arguments):
 
 
 @patch('classification.views.PENDING_WAIT_SECONDS', 0)
-@override_settings(MEDIA_ROOT=tempfile.mkdtemp(), VIDEO_MAX_YOUTUBE_SECONDS=180, VIDEO_WATCH_SECONDS=30)
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(), VIDEO_MAX_YOUTUBE_SECONDS=180, VIDEO_WATCH_SECONDS=30, GEMINI_API_KEY='')
 class VideoFilterTests(TestCase):
     def setUp(self):
         self.user, self.token = create_user_with_token('reader@example.com')
@@ -216,7 +236,6 @@ class VideoFilterTests(TestCase):
 
     def test_a_short_youtube_video_is_watched_by_url_without_any_download(self):
         self.classify([seen_youtube_video('vid00000001', 95)])
-        VideoTranscript.objects.update(status='missing')
         self.assertEqual(PostVideo.objects.get(post__post_id='vid00000001').status, VIDEO_READY)
 
         with (
@@ -239,7 +258,6 @@ class VideoFilterTests(TestCase):
             seen_youtube_video('vid00000002', None),
             seen_youtube_video('vid00000003', None, url='https://www.youtube.com/shorts/vid00000003'),
         ])
-        VideoTranscript.objects.update(status='missing')
         statuses = dict(PostVideo.objects.values_list('post__post_id', 'status'))
         self.assertEqual(statuses, {'vid00000001': VIDEO_MISSING, 'vid00000002': VIDEO_MISSING, 'vid00000003': VIDEO_READY})
 
@@ -248,6 +266,69 @@ class VideoFilterTests(TestCase):
                 pass
         self.assertEqual(model_call.call_count, 1)
         self.assertEqual(self.video_classification('vid00000001').status, CLASSIFICATION_FAILED)
+
+
+@patch('classification.views.PENDING_WAIT_SECONDS', 0)
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(), VIDEO_WATCH_SECONDS=15, GEMINI_API_KEY='test-gemini-key')
+class GeminiVideoTests(TestCase):
+    def setUp(self):
+        self.user, self.token = create_user_with_token('reader@example.com')
+        settings_for_user(self.user)
+        UserPlugin.objects.filter(user=self.user).update(enabled=False)
+        self.video_plugin = Plugin.objects.get(slug='video-brainrot')
+        UserPlugin.objects.create(user=self.user, plugin=self.video_plugin, threshold=67)
+        for platform in video_sources.next_download_at:
+            video_sources.next_download_at[platform] = 0.0
+
+    def classify(self, posts):
+        return self.client.post(reverse('classify'), {'posts': posts}, content_type='application/json', **bearer(self.token))
+
+    def video_classification(self, post_id):
+        return Classification.objects.get(post__post_id=post_id, plugin_version__plugin=self.video_plugin)
+
+    def test_any_youtube_video_is_watched_for_its_opening_seconds_only(self):
+        self.classify([seen_youtube_video('vid00000001', 3600), seen_youtube_video('vid00000002', None)])
+        self.assertEqual(set(PostVideo.objects.values_list('status', flat=True)), {VIDEO_READY})
+
+        with patch('classification.video_judging.requests.post', side_effect=gemini_watching(1, 5, 5)) as model_call:
+            while classify_next_pending():
+                pass
+        self.assertEqual(model_call.call_count, 2)
+        request = model_call.call_args_list[0]
+        self.assertIn('/models/gemini-3.5-flash-lite:generateContent', request.args[0])
+        self.assertEqual(request.kwargs['headers'], {'x-goog-api-key': 'test-gemini-key'})
+        video_part = request.kwargs['json']['contents'][0]['parts'][0]
+        self.assertEqual(video_part, {
+            'fileData': {'fileUri': 'https://www.youtube.com/watch?v=vid00000001'},
+            'videoMetadata': {'startOffset': '0s', 'endOffset': '15s'},
+        })
+
+        classification = self.video_classification('vid00000001')
+        self.assertEqual(classification.status, CLASSIFICATION_DONE)
+        self.assertEqual(classification.inference_source, 'gemini')
+        self.assertEqual(classification.score, 7)
+        self.assertEqual(classification.prompt_tokens, 1700)
+        self.assertEqual(classification.completion_tokens, 75)
+        self.assertIn('Video shown: the first 15 seconds', json.dumps(classification.prompt))
+
+    def test_a_reddit_clip_is_sent_inline_and_stored_as_a_reference(self):
+        self.classify([seen_reddit_video('p1')])
+        with (
+            patch('classification.video_sources.requests.get', return_value=http_response(200, MASTER_PLAYLIST)),
+            patch('classification.video_sources.subprocess.run', side_effect=ffmpeg_writing_a_clip) as ffmpeg,
+        ):
+            download_next_pending_video()
+        self.assertEqual(ffmpeg.call_args_list[0].args[0][ffmpeg.call_args_list[0].args[0].index('-t') + 1], '15')
+
+        with patch('classification.video_judging.requests.post', side_effect=gemini_watching(5, 0, 0)) as model_call:
+            self.assertTrue(classify_next_pending())
+        sent_part = model_call.call_args.kwargs['json']['contents'][0]['parts'][0]
+        self.assertEqual(sent_part['inlineData']['mimeType'], 'video/mp4')
+        self.assertNotIn('post_video:', sent_part['inlineData']['data'])
+        classification = self.video_classification('p1')
+        stored_part = classification.prompt['contents'][0]['parts'][0]
+        self.assertEqual(stored_part['inlineData']['data'], f'post_video:{PostVideo.objects.get().id}')
+        self.assertEqual(classification.label, 'brainrot')
 
 
 class VideoRubricTests(TestCase):

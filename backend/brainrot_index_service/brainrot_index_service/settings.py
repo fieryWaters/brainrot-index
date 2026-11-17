@@ -121,13 +121,18 @@ OPENROUTER_MODEL = config('OPENROUTER_MODEL', default='google/gemini-2.5-flash-l
 LOCAL_INFERENCE_BASE_URL = config('LOCAL_INFERENCE_BASE_URL', default='').strip().rstrip('/')
 LOCAL_INFERENCE_MODEL = config('LOCAL_INFERENCE_MODEL', default='').strip()
 
-# Video filters watch the video itself, frames and audio, always through
-# OpenRouter: only Gemini on Google AI Studio fetches YouTube videos by URL.
+# Video filters watch the video itself, frames and audio, with Gemini, the only
+# model that fetches YouTube videos by URL: straight through the Gemini API
+# when GEMINI_API_KEY is set, which can clip a YouTube video to its opening,
+# otherwise through OpenRouter, which cannot.
+GEMINI_API_KEY = config('GEMINI_API_KEY', default='').strip()
+VIDEO_GEMINI_MODEL = config('VIDEO_GEMINI_MODEL', default='gemini-3.5-flash-lite').strip()
 VIDEO_MODEL = config('VIDEO_MODEL', default='google/gemini-3.5-flash-lite').strip()
-# How many opening seconds of a Reddit or X video are downloaded and watched.
+# How many opening seconds of a video are watched: downloaded for Reddit and X,
+# clipped by Gemini for YouTube when GEMINI_API_KEY is set.
 VIDEO_WATCH_SECONDS = config('VIDEO_WATCH_SECONDS', default=15, cast=int)
-# A YouTube video is watched whole (OpenRouter cannot clip it), at about 100
-# tokens a second, so longer ones are not watched at all.
+# Without GEMINI_API_KEY a YouTube video is watched whole (OpenRouter cannot
+# clip it), at about 100 tokens a second, so longer ones are not watched at all.
 VIDEO_MAX_YOUTUBE_SECONDS = config('VIDEO_MAX_YOUTUBE_SECONDS', default=180, cast=int)
 # The least time between two video downloads from the same site.
 VIDEO_DOWNLOAD_INTERVAL_SECONDS = config('VIDEO_DOWNLOAD_INTERVAL_SECONDS', default=5, cast=float)

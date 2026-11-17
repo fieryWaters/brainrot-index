@@ -23,6 +23,7 @@ from .models import (
     POST_KIND_REPLY,
     TRANSCRIPT_FETCHED,
     Post,
+    VideoTranscript,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,8 +116,8 @@ def transcript_for_model(post):
     none, or None for a post that is not a video."""
     if post.platform != PLATFORM_YOUTUBE:
         return None
-    video_transcript = post.transcript
-    if video_transcript.status != TRANSCRIPT_FETCHED:
+    video_transcript = VideoTranscript.objects.filter(post=post).first()
+    if video_transcript is None or video_transcript.status != TRANSCRIPT_FETCHED:
         return "(not available)"
     words = video_transcript.text().split()
     if len(words) > MAX_TRANSCRIPT_WORDS:

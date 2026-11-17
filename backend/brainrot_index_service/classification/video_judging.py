@@ -3,7 +3,12 @@ frames and audio, and scores each criterion of the rubric from 0 to 5; the
 filter's score and label are computed here from those scores, never by the model.
 
 The criteria are those of the owner's definition of brainrot: high engagement
-power, low information content, low cognitive draw."""
+power, low information content, low cognitive draw.
+
+With GEMINI_API_KEY set, the video goes straight to the Gemini API, which can
+clip a YouTube video, so only its first VIDEO_WATCH_SECONDS are watched and
+billed. Without it, the video goes through OpenRouter, which cannot clip, so a
+YouTube video is watched whole."""
 
 import base64
 import json
@@ -33,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 # Only Google AI Studio fetches YouTube videos by URL.
 VIDEO_PROVIDER = 'google-ai-studio'
+GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
+INFERENCE_SOURCE_GEMINI = 'gemini'
 REQUEST_TIMEOUT_SECONDS = 180
 MAX_RESPONSE_TOKENS = 600
 MAX_TEXT_CHARACTERS = 2000
@@ -106,10 +113,19 @@ def parse_answer(answer_text):
     return answer
 
 
+def watches_through_gemini():
+    return settings.GEMINI_API_KEY != ''
+
+
 def watched_description(post_video):
-    if post_video.post.platform == PLATFORM_YOUTUBE:
+    """How much of the video the model is shown, in the words the prompt uses."""
+    if post_video.post.platform != PLATFORM_YOUTUBE:
+        return f'the first {round(post_video.clip_seconds)} seconds'
+    if not watches_through_gemini():
         return 'the whole video'
-    return f'the first {round(post_video.clip_seconds)} seconds'
+    if post_video.duration_seconds is not None and post_video.duration_seconds <= settings.VIDEO_WATCH_SECONDS:
+        return 'the whole video'
+    return f'the first {settings.VIDEO_WATCH_SECONDS} seconds'
 
 
 def describe_video_post(post, watched):
@@ -123,18 +139,29 @@ def describe_video_post(post, watched):
     return '\n'.join(lines)
 
 
-def video_url_for_model(post_video):
-    """The YouTube watch URL, or the kept clip as a data URL."""
+def clip_base64(post_video):
+    with post_video.clip.open('rb') as clip_file:
+        return base64.b64encode(clip_file.read()).decode('ascii')
+
+
+def system_prompt(rubric_prompt):
+    return rubric_prompt + '\n\n' + RESPONSE_INSTRUCTIONS
+
+
+# -- Through OpenRouter: a YouTube URL, watched whole, or the clip as a data URL --
+
+
+def openrouter_video_url(post_video, stored):
     if post_video.post.platform == PLATFORM_YOUTUBE:
         return post_video.source_url
-    with post_video.clip.open('rb') as clip_file:
-        clip_bytes = clip_file.read()
-    return 'data:video/mp4;base64,' + base64.b64encode(clip_bytes).decode('ascii')
+    if stored:
+        return f"post_video:{post_video.id}"
+    return 'data:video/mp4;base64,' + clip_base64(post_video)
 
 
 def build_messages(rubric_prompt, post_description, video_url):
     return [
-        {'role': 'system', 'content': rubric_prompt + '\n\n' + RESPONSE_INSTRUCTIONS},
+        {'role': 'system', 'content': system_prompt(rubric_prompt)},
         {'role': 'user', 'content': [
             {'type': 'video_url', 'video_url': {'url': video_url}},
             {'type': 'text', 'text': post_description},
@@ -142,7 +169,7 @@ def build_messages(rubric_prompt, post_description, video_url):
     ]
 
 
-def request_video_judgment(messages, model):
+def send_to_openrouter(messages, model):
     return requests.post(
         f"{OPENROUTER_BASE_URL}/chat/completions",
         json={
@@ -161,24 +188,82 @@ def request_video_judgment(messages, model):
     )
 
 
-def ask_model_to_watch(messages, model):
-    """Sends the messages, retrying once after a failed request or an invalid
-    answer, and returns a ModelOutcome."""
+def read_openrouter_completion(completion):
+    """(answer text, prompt tokens, completion tokens, cost) of an OpenRouter answer."""
+    usage = completion.get('usage') or {}
+    return (
+        completion['choices'][0]['message']['content'],
+        usage.get('prompt_tokens'),
+        usage.get('completion_tokens'),
+        usage.get('cost'),
+    )
+
+
+# -- Straight to Gemini: a YouTube URL clipped to its opening, or the clip inline --
+
+
+def gemini_video_part(post_video, stored):
+    if post_video.post.platform == PLATFORM_YOUTUBE:
+        return {
+            'fileData': {'fileUri': post_video.source_url},
+            'videoMetadata': {'startOffset': '0s', 'endOffset': f'{settings.VIDEO_WATCH_SECONDS}s'},
+        }
+    if stored:
+        return {'inlineData': {'mimeType': 'video/mp4', 'data': f"post_video:{post_video.id}"}}
+    return {'inlineData': {'mimeType': 'video/mp4', 'data': clip_base64(post_video)}}
+
+
+def build_gemini_request(rubric_prompt, post_description, video_part):
+    return {
+        'systemInstruction': {'parts': [{'text': system_prompt(rubric_prompt)}]},
+        'contents': [{'role': 'user', 'parts': [video_part, {'text': post_description}]}],
+        'generationConfig': {
+            'temperature': 0,
+            'maxOutputTokens': MAX_RESPONSE_TOKENS,
+            'responseMimeType': 'application/json',
+            'responseJsonSchema': answer_schema(),
+        },
+    }
+
+
+def send_to_gemini(request_body, model):
+    return requests.post(
+        f"{GEMINI_BASE_URL}/models/{model}:generateContent",
+        json=request_body,
+        headers={'x-goog-api-key': settings.GEMINI_API_KEY},
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+
+
+def read_gemini_completion(completion):
+    """(answer text, prompt tokens, completion tokens, cost) of a Gemini answer.
+    Gemini reports no cost; thinking tokens are billed as output, so they count
+    as completion tokens."""
+    usage = completion.get('usageMetadata') or {}
+    completion_tokens = (usage.get('candidatesTokenCount') or 0) + (usage.get('thoughtsTokenCount') or 0)
+    return (
+        completion['candidates'][0]['content']['parts'][0]['text'],
+        usage.get('promptTokenCount'),
+        completion_tokens,
+        None,
+    )
+
+
+def ask_model_to_watch(send, read_completion):
+    """Calls send() for the model's answer, retrying once after a failed request
+    or an invalid answer, and returns a ModelOutcome."""
     outcome = ModelOutcome()
     for attempt in range(1, ATTEMPTS_PER_CLASSIFICATION + 1):
         started_at = time.monotonic()
         try:
-            response = request_video_judgment(messages, model)
+            response = send()
             outcome.latency_ms = round((time.monotonic() - started_at) * 1000)
             outcome.raw_response = response.text
             response.raise_for_status()
-            completion = response.json()
-            usage = completion.get('usage') or {}
-            outcome.prompt_tokens = usage.get('prompt_tokens')
-            outcome.completion_tokens = usage.get('completion_tokens')
-            if usage.get('cost') is not None:
-                outcome.cost = (outcome.cost or 0) + usage['cost']
-            outcome.answer = parse_answer(completion['choices'][0]['message']['content'])
+            answer_text, outcome.prompt_tokens, outcome.completion_tokens, cost = read_completion(response.json())
+            if cost is not None:
+                outcome.cost = (outcome.cost or 0) + cost
+            outcome.answer = parse_answer(answer_text)
         except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as error:
             logger.warning("Video judgment attempt %s failed: %s", attempt, error)
             continue
@@ -201,9 +286,15 @@ def run_video_classification(classification):
     outcome. A post whose video cannot be watched fails, and is never flagged."""
     post = classification.post
     post_video = PostVideo.objects.get(post=post)
-    model = settings.VIDEO_MODEL
+    rubric_prompt = classification.plugin_version.rubric_prompt
+
+    if watches_through_gemini():
+        model = settings.VIDEO_GEMINI_MODEL
+        classification.inference_source = INFERENCE_SOURCE_GEMINI
+    else:
+        model = settings.VIDEO_MODEL
+        classification.inference_source = INFERENCE_SOURCE_OPENROUTER
     classification.model = model
-    classification.inference_source = INFERENCE_SOURCE_OPENROUTER
 
     if post_video.status != VIDEO_READY:
         classification.status = CLASSIFICATION_FAILED
@@ -213,12 +304,19 @@ def run_video_classification(classification):
         return
 
     post_description = describe_video_post(post, watched_description(post_video))
-    rubric_prompt = classification.plugin_version.rubric_prompt
-    stored_video_url = post_video.source_url if post.platform == PLATFORM_YOUTUBE else f"post_video:{post_video.id}"
     # The stored prompt points at the kept clip instead of repeating its bytes.
-    classification.prompt = build_messages(rubric_prompt, post_description, stored_video_url)
+    if watches_through_gemini():
+        classification.prompt = build_gemini_request(
+            rubric_prompt, post_description, gemini_video_part(post_video, stored=True))
+        request_body = build_gemini_request(
+            rubric_prompt, post_description, gemini_video_part(post_video, stored=False))
+        outcome = ask_model_to_watch(lambda: send_to_gemini(request_body, model), read_gemini_completion)
+    else:
+        classification.prompt = build_messages(
+            rubric_prompt, post_description, openrouter_video_url(post_video, stored=True))
+        messages = build_messages(rubric_prompt, post_description, openrouter_video_url(post_video, stored=False))
+        outcome = ask_model_to_watch(lambda: send_to_openrouter(messages, model), read_openrouter_completion)
 
-    outcome = ask_model_to_watch(build_messages(rubric_prompt, post_description, video_url_for_model(post_video)), model)
     classification.raw_response = outcome.raw_response
     classification.latency_ms = outcome.latency_ms
     classification.prompt_tokens = outcome.prompt_tokens

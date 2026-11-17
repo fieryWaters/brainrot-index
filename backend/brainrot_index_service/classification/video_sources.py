@@ -1,7 +1,9 @@
 """Getting a post's video to the model.
 
-YouTube: Gemini on Google AI Studio fetches a public video by its watch URL,
-so nothing is downloaded here, and the model watches the whole video.
+YouTube: Google fetches a public video by its watch URL, so nothing is
+downloaded here. Straight through the Gemini API (GEMINI_API_KEY) only its
+first VIDEO_WATCH_SECONDS are watched, whatever its length; through
+OpenRouter it is watched whole, so longer ones are skipped.
 
 Reddit and X: the provider fetches only YouTube URLs, so the worker downloads
 the opening VIDEO_WATCH_SECONDS of the video once, keeps that clip, and sends
@@ -76,9 +78,12 @@ def is_youtube_short(url):
 
 
 def youtube_video_status(watch_url, duration_seconds):
-    """(status, missing_reason) of a YouTube video, decided without any request:
-    the model watches a video whole, so one longer than VIDEO_MAX_YOUTUBE_SECONDS
-    is not watched. A Short's tile shows no length; Shorts are short."""
+    """(status, missing_reason) of a YouTube video, decided without any request.
+    Through OpenRouter the model watches a video whole, so one longer than
+    VIDEO_MAX_YOUTUBE_SECONDS is not watched. A Short's tile shows no length;
+    Shorts are short."""
+    if settings.GEMINI_API_KEY != '':
+        return VIDEO_READY, ''
     if duration_seconds is None:
         if is_youtube_short(watch_url):
             return VIDEO_READY, ''

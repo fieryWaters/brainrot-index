@@ -113,7 +113,7 @@ def settings_for_user(user):
 
 def store_post(seen_post):
     """The stored Post for a seen post, created with its images (and, for a
-    video, its pending transcript) the first time."""
+    video whose transcript the worker downloads, its pending transcript) the first time."""
     if seen_post['kind'] == POST_KIND_REPLY:
         parent_post_id = seen_post['parent_post_id']
     else:
@@ -138,7 +138,9 @@ def store_post(seen_post):
     )
     if created:
         PostImage.objects.bulk_create([PostImage(post=post, source_url=url) for url in image_urls])
-        if post.platform == PLATFORM_YOUTUBE:
+        # No browser sends transcripts any more, so a video waits for one only
+        # when the worker downloads it.
+        if post.platform == PLATFORM_YOUTUBE and settings.YOUTUBE_SERVER_TRANSCRIPTS:
             VideoTranscript.objects.create(post=post)
     return post
 

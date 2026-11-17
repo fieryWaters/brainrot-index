@@ -1,16 +1,16 @@
 """YouTube video transcripts, settled before a video is classified, so the
 model reads what is said in the video and not only its title and thumbnail.
 
-The reader's browser fetches the captions and sends them with the video. The
-server answers a new video with transcript_wanted, and the video's
-classifications wait up to TRANSCRIPT_WAIT_SECONDS for a browser to report.
-The first report settles the transcript; later reports are ignored. When no
-report came in time, the worker marks the transcript missing before any
-classification starts, so every plugin reads the same transcript and a late
-one is ignored.
+A video gets a transcript only when the worker downloads it itself
+(YOUTUBE_SERVER_TRANSCRIPTS), and YouTube blocks the server's address after a
+few dozen, so that is off, and new videos are classified at once on their
+title and thumbnail.
 
-The worker can also download transcripts itself (YOUTUBE_SERVER_TRANSCRIPTS),
-but YouTube blocks the server's address after a few dozen, so that is off."""
+Readers' browsers used to send transcripts: the server answered a new video
+with transcript_wanted and its classifications waited up to
+TRANSCRIPT_WAIT_SECONDS for a report. The extension no longer does, and no
+video waits for one now, but the code that took those reports remains, and
+the worker still settles any transcript left pending from that time."""
 
 import logging
 import re

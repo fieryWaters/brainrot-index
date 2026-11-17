@@ -18,8 +18,7 @@ collect, why, and what you can do about it.</p>
 <h2>What we collect</h2>
 <ul>
   <li><strong>What the extension checks.</strong> While it is switched on and connected, the extension sends us the content of the
-  posts and videos it checks on supported sites, such as their text, links and images. For videos it also reads the captions in your
-  browser and sends them with the video. We keep these posts and videos together with the account that sent them, along with what the filters decided.</li>
+  posts and videos it checks on supported sites, such as their text, links and images. We keep these posts and videos together with the account that sent them, along with what the filters decided.</li>
   <li><strong>Your account.</strong> Your email address, your name if you sign in with Google, your settings, and the reports and feedback you send.</li>
   <li><strong>Payments.</strong> Stripe handles payments. We never see your card number.</li>
   <li><strong>Technical data.</strong> IP addresses and similar records our servers keep to sign you in and protect accounts.</li>

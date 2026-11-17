@@ -51,14 +51,8 @@ dashboard tab and press Connect extension again.
 - On YouTube, video tiles on the home page, in search results, in the "up next" column of a watch page
   and in Shorts shelves are filtered; playlists, mixes and ads are not. A hidden tile keeps its place
   in the grid with only the one-line notice in it. The server judges a video by its title, thumbnail
-  and transcript. Hovering a blurred tile does not play its preview. On a narrow Shorts tile the
+  and channel. Hovering a blurred tile does not play its preview. On a narrow Shorts tile the
   label wraps so the plugin and score stay readable, and hovering any label shows all of it.
-- The transcript comes from your browser: for a video the server has never classified, it asks for
-  the transcript, and the extension fetches the video's captions from YouTube (English if there are
-  any, captions written by a person before automatic ones) and sends the first 2500 words with the
-  video. Videos the server already knows cost no request to YouTube. At most two videos are fetched
-  at once and 20 a minute, each given up after 2.5 seconds; once YouTube refuses a request, no more
-  are made until the browser restarts. See `sites/youtube-transcript.js`.
 
 ## Reporting mistakes
 

@@ -110,7 +110,7 @@ made-up posts, which each picture says in a footnote.
     X, Reddit and YouTube, in Chrome, Brave and other Chromium browsers on a computer.
 
     PRIVACY
-    While filtering is on, the extension sends the posts and videos it checks on those sites to the BrainRot Index service: their text, links, author names and image addresses, and for a video its captions, which the extension reads in your browser. They are stored with your account to run and improve the filters and to prevent abuse. The extension does not read your messages, what you type, or any other site. We do not sell your data or use it for advertising. Details: https://brainrotindex.com/privacy
+    While filtering is on, the extension sends the posts and videos it checks on those sites to the BrainRot Index service: their text, links, author names and image addresses. They are stored with your account to run and improve the filters and to prevent abuse. The extension does not read your messages, what you type, or any other site. We do not sell your data or use it for advertising. Details: https://brainrotindex.com/privacy
 
 The one line naming the supported sites is kept on purpose: the install prompt names them anyway,
 and a listing that hides where the extension works invites a "misleading description" rejection.
@@ -161,19 +161,18 @@ What each screenshot shows:
 | `scripting` | Right after install, adds the connect script to brainrotindex.com tabs that were already open, so the site's Connect extension button works without reloading the page. |
 | Host permission `https://brainrotindex.com/*` | The extension's own service: it sends posts there to be scored, reads the user's filter settings, sends feedback, and receives the account connection key from the site's Connect extension button. |
 | Content scripts on `https://x.com/*`, `https://www.reddit.com/*` | Read the posts and replies shown in the feed and in threads, and blur or hide the ones the service flags. |
-| Content script on `https://www.youtube.com/*` | Reads the video tiles on the home page, in search results, beside a playing video and in Shorts shelves, and blurs or hides the ones the service flags. For a video the service has not seen before, it fetches that video's captions from www.youtube.com, without the user's YouTube cookies, and sends them with the video so the filters can judge what is said in it. |
+| Content script on `https://www.youtube.com/*` | Reads the video tiles on the home page, in search results, beside a playing video and in Shorts shelves, and blurs or hides the ones the service flags. |
 
-**Remote code**: "No, I am not using remote code." All JavaScript is in the package; the service and
-YouTube only return JSON data.
+**Remote code**: "No, I am not using remote code." All JavaScript is in the package; the service only
+returns JSON data.
 
 **Data usage**: tick these.
 
 - **Website content**: yes. For each post and reply on X and Reddit: its text, address, community,
   author's username and image addresses. For each YouTube video tile: the video id, title, channel
-  name, description snippet (search results only) and thumbnail address, and for a video the service
-  has not seen before up to the first 2500 words of its captions, with their language and whether
-  they are automatic. Stored with the account that sent them; the service also downloads and stores
-  the images. Also the thumbs up or down, severity, filter and optional note the user gives a post.
+  name, description snippet (search results only) and thumbnail address. Stored with the account
+  that sent them; the service also downloads and stores the images. Also the thumbs up or down,
+  severity, filter and optional note the user gives a post.
 - **Personally identifiable information**: yes. The usernames of post authors are sent with each
   post, and posts are stored with the account, which carries the user's email address.
 - **Authentication information**: yes. The extension stores and sends an account connection key.
@@ -216,25 +215,7 @@ Fill in the reviewer account from step 4, and paste:
 
 Ordered from most to least likely to cause trouble.
 
-1. **YouTube captions fetched as YouTube's Android app** (`extension/sites/youtube-transcript.js`).
-   Risk: medium, mostly after approval rather than at review. To get a video's captions the content
-   script posts to YouTube's internal player endpoint (`/youtubei/v1/player`) with
-   `clientName: "ANDROID"`, a fixed app version, so that YouTube answers with caption addresses that
-   do not need the proof-of-origin token its web player makes. The file's own comment says this is
-   why. What it is: not a remote-code or permission problem (the request goes to the page's own
-   origin, so no extra permission shows up, and only JSON comes back), and it is rate-limited (only
-   videos the service never saw, two at a time, 20 a minute, stops for the session at the first
-   refusal), sends no cookies and is disclosed in the listing as "reads captions in your browser".
-   What a careful reviewer or YouTube could object to: it presents itself as another client to get
-   around a protection YouTube put on its web captions, through an undocumented interface, which
-   YouTube's terms forbid. YouTube belongs to Google, which also runs the store, so a complaint from
-   YouTube is the likeliest way this becomes a takedown. It can also break without warning when
-   YouTube changes the Android client, and because the requests come from the user's own address, a
-   heavy user could in principle be shown YouTube's "confirm you're not a bot" page. Options for the
-   owner: keep it as is (automated review will very likely pass it); soften the comment so it
-   describes rather than advertises the workaround; or drop in-browser captions and judge videos by
-   title and thumbnail only. Not changed here.
-2. **Reading and sending feed content.** Risk: medium. The whole product is sending what the user
+1. **Reading and sending feed content.** Risk: medium. The whole product is sending what the user
    scrolls past to a server, which is the data Google's User Data policy watches most. It passes if
    the listing, the Privacy tab and the Privacy Policy agree, which they now do. There is no consent
    screen inside the extension itself; consent is the sign-up page's "By creating an account you
@@ -242,23 +223,23 @@ Ordered from most to least likely to cause trouble.
    extension. Google asks for in-product disclosure only when collection is not closely tied to the
    described purpose, which is not the case here, but a reviewer may still ask. If one does, a
    one-screen notice on the dashboard before Connect extension answers it.
-3. **The extension needs an account to do anything.** Risk: medium if the Test instructions are
+2. **The extension needs an account to do anything.** Risk: medium if the Test instructions are
    empty, low with the reviewer account from step 4. Reviewers reject items they cannot try.
-4. **Host access to three big sites.** Risk: low. The install prompt reads roughly "Read and change
+3. **Host access to three big sites.** Risk: low. The install prompt reads roughly "Read and change
    your data on brainrotindex.com, www.reddit.com, www.youtube.com and x.com". Named sites, not all
    sites, but any content-script access means a longer, partly manual review.
-5. **Options page with a "Server address" box.** Risk: low. It lets anyone point the extension at
+4. **Options page with a "Server address" box.** Risk: low. It lets anyone point the extension at
    another server. In the packed copy the host permission and the connect script cover only
    brainrotindex.com, so it is useful only for development, but a reviewer looking for ways data
    could go elsewhere may ask. Hiding the options page in the packed manifest would remove the
    question; not changed here.
-6. **Site look-alikes in screenshots.** Risk: low. The screenshots use stand-in pages that look like
+5. **Site look-alikes in screenshots.** Risk: low. The screenshots use stand-in pages that look like
    the sites' feeds, with made-up posts and no site logos, and say so. Store policy forbids using
    other companies' logos or implying endorsement, which these do not.
-7. **Child mode.** Risk: low. The listing mentions it, but neither the listing nor the site says the
+6. **Child mode.** Risk: low. The listing mentions it, but neither the listing nor the site says the
    product is made for children, and the Privacy Policy says children under 13 may not have their own
    account. Do not tick anything that marks the item as designed for children.
-8. **`activeTab` and `scripting`.** Risk: low. Each has one narrow use (above); reviewers mainly
+7. **`activeTab` and `scripting`.** Risk: low. Each has one narrow use (above); reviewers mainly
    reject permissions that are never used, and both are used.
 
 Already fine: no remote code, no `eval` or markup injection (everything is built element by

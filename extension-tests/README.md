@@ -16,7 +16,7 @@ Chrome ignores `--load-extension`.
     npm test -- reddit    # Reddit only: load, connect, feed, comments, feedback, reveal, performance
     npm test -- x         # X only: home feed, recycled tweets, feedback, reveal, replies, performance
     npm test -- youtube   # YouTube only: watch page, home, search, reveal, feedback, navigation, dark theme
-    npm test -- transcripts  # captions fetched in the browser, on a stand-in for youtube.com (no real YouTube)
+    npm test -- transcripts  # the extension asks YouTube for no captions, on a stand-in for youtube.com (no real YouTube)
     npm test -- judgments    # thumbs and details box, on stand-ins for X, Reddit and YouTube (no real site)
 
 The connect group opens https://brainrot.jacob-waters.com without signing in, even with the mock

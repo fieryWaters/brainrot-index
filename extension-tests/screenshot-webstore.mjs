@@ -266,7 +266,7 @@ try {
       text: "AI reads each post with its text and images. Replies in a thread are checked too, and one click shows anything that was filtered.",
       pictures: [pictures.thread], footnote: MADE_UP },
     { headline: "Videos too",
-      text: "Suggested and searched videos are judged by their title and thumbnail, and by their captions when they have them.",
+      text: "Suggested and searched videos are judged by their title, thumbnail and channel.",
       pictures: [pictures.videos], footnote: MADE_UP },
     { headline: "You choose what goes",
       text: "Turn each filter on or off, set how strict it is, and choose whether flagged posts are blurred or hidden.",

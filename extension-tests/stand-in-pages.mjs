@@ -249,8 +249,7 @@ export function youTubeHomePage(videos, theme = "light") {
   return page("YouTube", theme, YOUTUBE_STYLES, videos.map(youTubeTile).join(""));
 }
 
-// Serves pages[url] for each address given, and an empty 404 for anything else on those sites, such as
-// YouTube's caption requests.
+// Serves pages[url] for each address given, and an empty 404 for anything else on those sites.
 export async function serveStandInPages(context, pages) {
   for (const origin of ["https://x.com", "https://www.reddit.com", "https://www.youtube.com"]) {
     await context.route(origin + "/**", async (route) => {

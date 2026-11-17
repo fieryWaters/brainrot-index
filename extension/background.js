@@ -61,6 +61,14 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendFeedback(message.feedback).then(sendResponse);
     return true;
   }
+  if (message.type === "send-judgment") {
+    sendJudgment(message.judgment).then(sendResponse);
+    return true;
+  }
+  if (message.type === "add-judgment-details") {
+    addJudgmentDetails(message.judgmentId, message.details).then(sendResponse);
+    return true;
+  }
   // Once YouTube refuses a caption request, no tab asks it for captions again this browser session.
   if (message.type === "youtube-refused-transcripts") {
     extensionApi.storage.session.set({ youtubeRefusedTranscripts: true });
@@ -204,28 +212,44 @@ async function extensionCommit() {
   }
 }
 
-// feedback holds any of text, page_url, platform, post_id, shown_action and expected_action.
-// Answers { sent: true } when the server recorded it, otherwise { sent: false, reason } where reason
-// is a sentence for the reader.
-async function sendFeedback(feedback) {
+// Sends a report to the server. Answers { sent: true, body } with the server's reply when it was
+// recorded, otherwise { sent: false, reason } where reason is a sentence for the reader.
+async function sendReport(method, path, body) {
   const { token } = await extensionApi.storage.local.get("token");
   if (token === undefined) {
     return { sent: false, reason: "Not connected. Open BrainRot Index and press Connect extension." };
   }
-  const body = { ...feedback, source: "extension", extension_commit: await extensionCommit() };
   let response;
   try {
-    response = await callServer("POST", "/api/feedback/", body);
+    response = await callServer(method, path, body);
   } catch (networkError) {
     return { sent: false, reason: "Cannot reach the server." };
   }
   if (response.ok) {
-    return { sent: true };
+    return { sent: true, body: await response.json() };
   }
   if (response.status === 401) {
     return { sent: false, reason: "The connection was refused. Open BrainRot Index and press Connect extension again." };
   }
   return { sent: false, reason: "The server answered with error " + response.status + "." };
+}
+
+// feedback holds any of text, page_url, platform, post_id, shown_action and expected_action.
+async function sendFeedback(feedback) {
+  const body = { ...feedback, source: "extension", extension_commit: await extensionCommit() };
+  return sendReport("POST", "/api/feedback/", body);
+}
+
+// judgment is { platform, post_id, verdict, shown_action }: a thumbs up ("right") or down ("wrong")
+// on a post the server answered for. The reply's body holds the judgment's id.
+async function sendJudgment(judgment) {
+  const body = { ...judgment, extension_commit: await extensionCommit() };
+  return sendReport("POST", "/api/judgments/", body);
+}
+
+// details holds any of severity, details and plugin (a plugin slug).
+async function addJudgmentDetails(judgmentId, details) {
+  return sendReport("PATCH", "/api/judgments/" + judgmentId + "/", details);
 }
 
 // Opens the report form over the post the reader last right-clicked in that tab. When the right-click

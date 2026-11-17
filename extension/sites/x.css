@@ -1,0 +1,26 @@
+/* X-specific additions to content/post-decoration.css. */
+
+/* The thumbs at a tweet's top right, just before the "More" menu. Sized like X's icon
+   buttons, which overhang the 20 px name row; their colour is copied from X's icons by sites/x.js. */
+div:has([data-testid="caret"]) > .brainrot-index-judge {
+  margin-right: 4px;
+}
+
+div:has([data-testid="caret"]) > .brainrot-index-judge .brainrot-index-judge-button {
+  width: 34px;
+  height: 34px;
+  margin: -7px 0;
+}
+
+div:has([data-testid="caret"]) > .brainrot-index-judge .brainrot-index-judge-icon {
+  width: 18.75px;
+  height: 18.75px;
+  stroke-width: 1.75;
+}
+
+/* The grey of X's secondary text, which reads on its light, dim and dark themes. */
+.brainrot-index-notice:not(.brainrot-index-notice-over-post) {
+  color: rgb(113, 118, 123);
+  font-family: TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+}

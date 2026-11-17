@@ -6,6 +6,8 @@ urlpatterns = [
     # Browser extension (bearer token)
     path('extension/config/', views.extension_config, name='extension_config'),
     path('classify/', views.classify, name='classify'),
+    path('judgments/', views.create_judgment, name='create_judgment'),
+    path('judgments/<int:judgment_id>/', views.judgment_details, name='judgment_details'),
 
     # Website (session)
     path('extension/token/', views.create_extension_token, name='create_extension_token'),

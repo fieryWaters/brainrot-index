@@ -7,6 +7,7 @@ from .models import (
     PluginVersion,
     Post,
     PostImage,
+    PostJudgment,
     PostSubmission,
     UserPlugin,
     UserSettings,
@@ -75,6 +76,22 @@ class PostSubmissionAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, submission=None):
         return False
+
+
+@admin.register(PostJudgment)
+class PostJudgmentAdmin(admin.ModelAdmin):
+    """Readers' thumbs up and down on posts: the labeled examples for evaluating filters."""
+
+    list_display = ['id', 'updated_at', 'user', 'post', 'verdict', 'shown_action', 'plugin', 'severity', 'short_details']
+    list_filter = ['verdict', 'shown_action', 'severity', 'plugin', 'post__platform']
+    search_fields = ['user__email', 'post__post_id', 'post__text', 'details']
+    date_hierarchy = 'updated_at'
+    raw_id_fields = ['post']
+    list_select_related = ['user', 'post', 'plugin']
+
+    @admin.display(description='details')
+    def short_details(self, judgment):
+        return judgment.details[:100]
 
 
 class PluginVersionInline(admin.TabularInline):

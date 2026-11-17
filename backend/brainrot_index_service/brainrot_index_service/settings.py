@@ -315,6 +315,8 @@ REST_FRAMEWORK = {
         # Asked on every Reddit or X page load and every popup opening.
         'extension_config': '60/minute',
         'extension_token': '20/hour',
+        # One thumbs up or down per post judged, and one more when details are added.
+        'judgment': '120/minute',
         # Each try of a draft rubric is one model call.
         'store_try': '20/hour',
         'store_publish': '20/day',

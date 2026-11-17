@@ -1,6 +1,15 @@
 from rest_framework import serializers
 
-from .models import PLATFORM_CHOICES, POST_KIND_CHOICES, UserPlugin, UserSettings
+from .models import (
+    PLATFORM_CHOICES,
+    POST_KIND_CHOICES,
+    SHOWN_ACTION_CHOICES,
+    VERDICT_CHOICES,
+    Plugin,
+    PostJudgment,
+    UserPlugin,
+    UserSettings,
+)
 
 MAX_POSTS_PER_REQUEST = 25
 # A browser sends at most the first 2500 words of a transcript; this leaves room
@@ -58,3 +67,23 @@ class UserPluginSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserPlugin
         fields = ['slug', 'name', 'description', 'enabled', 'threshold', 'flagged_action']
+
+
+class JudgmentSerializer(serializers.Serializer):
+    """A thumbs up or down on a post the extension answered for."""
+
+    platform = serializers.ChoiceField(choices=PLATFORM_CHOICES)
+    post_id = serializers.CharField(max_length=128)
+    verdict = serializers.ChoiceField(choices=VERDICT_CHOICES)
+    shown_action = serializers.ChoiceField(choices=SHOWN_ACTION_CHOICES)
+    extension_commit = serializers.CharField(max_length=64, allow_blank=True, default='')
+
+
+class JudgmentDetailsSerializer(serializers.ModelSerializer):
+    """What the reader adds after the click: a severity, details, and the filter it is about."""
+
+    plugin = serializers.SlugRelatedField(slug_field='slug', queryset=Plugin.objects.all(), allow_null=True)
+
+    class Meta:
+        model = PostJudgment
+        fields = ['severity', 'details', 'plugin']

@@ -63,6 +63,17 @@ function readChannelAndSnippet(tileElement) {
   ];
 }
 
+// A lockup tile's "More actions" (three dots) button sits in a column beside its title; the thumbs go
+// in that column, under the button. Other tiles (older search results, Shorts) get none.
+function placeJudgeControl(tileElement, control) {
+  const menuColumn = tileElement.querySelector(".ytLockupMetadataViewModelMenuButton");
+  if (tileElement.tagName !== "YT-LOCKUP-VIEW-MODEL" || menuColumn === null) {
+    return null;
+  }
+  menuColumn.append(control);
+  return tileElement;
+}
+
 const siteAdapter = {
   platform: "youtube",
 
@@ -111,7 +122,7 @@ const siteAdapter = {
 
   // treatment is described in content/post-decoration.js. The whole tile is treated.
   applyAction(tileElement, treatment) {
-    decoratePost(tileElement, treatment);
+    decoratePost(tileElement, treatment, (control) => placeJudgeControl(tileElement, control));
   },
 
   // Called by the feed watcher when the server asks for a video's transcript (sites/youtube-transcript.js).

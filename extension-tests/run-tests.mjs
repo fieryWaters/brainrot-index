@@ -20,6 +20,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { makeFreshProfileDir, withBrave, launchBraveWithoutExtension, loadExtensionLater, EXTENSION_DIR } from "./browser.mjs";
 import { startMockServer, MOCK_TOKEN, MOCK_CONFIG } from "./mock-server.mjs";
+import {
+  SAMPLE_REDDIT_COMMENTS, SAMPLE_REDDIT_POSTS, SAMPLE_X_TWEETS, SAMPLE_YOUTUBE_VIDEOS, STAND_IN_URLS,
+  samplePages, serveStandInPages,
+} from "./stand-in-pages.mjs";
 
 const X_TEST_PROFILE_DIR = "/Users/jacob/git-repos/brainrot-test-profile";
 const DEFAULT_SERVER_ADDRESS = "https://brainrot.jacob-waters.com";
@@ -389,6 +393,29 @@ function expectedExtensionCommit() {
   return buildInfo.dirty ? buildInfo.commit + "-dirty" : buildInfo.commit;
 }
 
+// Every request the extension makes to /api/judgments/: POST for a thumb, PATCH for its details.
+function recordJudgmentCalls(context) {
+  const judgmentCalls = [];
+  context.on("requestfinished", async (request) => {
+    if (!request.url().includes("/api/judgments/")) {
+      return;
+    }
+    const response = await request.response();
+    judgmentCalls.push({ method: request.method(), url: request.url(), body: request.postDataJSON(), status: response.status() });
+  });
+  return judgmentCalls;
+}
+
+function checkJudgmentCall(judgmentCall, expectedFields) {
+  check(judgmentCall !== undefined && judgmentCall.method === "POST", "a judgment was sent");
+  console.log("    judgment sent: " + JSON.stringify(judgmentCall.body));
+  check(judgmentCall.status === 201 || judgmentCall.status === 200, "the server recorded it");
+  check(judgmentCall.body.extension_commit === expectedExtensionCommit(), "extension_commit is " + expectedExtensionCommit());
+  for (const [field, value] of Object.entries(expectedFields)) {
+    check(judgmentCall.body[field] === value, `${field} is ${value}`);
+  }
+}
+
 function checkFeedbackCall(feedbackCall, expectedFields) {
   check(feedbackCall !== undefined, "a feedback request was sent");
   console.log("    feedback sent: " + JSON.stringify(feedbackCall.body));
@@ -482,8 +509,11 @@ async function testRevealBlurredPost(page) {
   const notice = noticeOf(post);
   const summary = await notice.locator(".brainrot-index-summary").textContent();
   console.log("    label: " + summary);
-  check(/^Blurred - .+: .+ \(\d+\/100\)$/.test(summary), "the label names what was done, the plugin, its label and score");
+  check(/^Blurred · .+$/.test(summary), "the label names what was done and the plugin");
+  check(await notice.locator(".brainrot-index-reveal").isHidden(), "the label's buttons are hidden until hovered");
   check((await notice.boundingBox()).height <= 30, "the label is one line");
+  await notice.hover();
+  check(/^.+ · \d+\/100$/.test(await notice.locator(".brainrot-index-detail").textContent()), "hovered, the label adds the plugin's label and score");
   await notice.locator(".brainrot-index-reveal").hover();
   const before = await post.evaluate(readPostLook);
   await notice.locator(".brainrot-index-reveal").click();
@@ -497,6 +527,7 @@ async function testRevealBlurredPost(page) {
   await post.evaluate((element) => element.scrollIntoView({ block: "center" }));
   await page.waitForTimeout(500);
   const beforeBlurAgain = await post.evaluate(readPostLook);
+  await noticeOf(post).hover();
   await blurAgainButton.click();
   const blurredAgain = await post.evaluate(readPostLook);
   check(!blurredAgain.revealed && blurredAgain.filter.includes("blur"), "Blur again blurs it");
@@ -517,7 +548,7 @@ async function testRevealHiddenPost(page) {
   }
   check(!(await post.evaluate(readPostLook)).drawn, "the hidden post is collapsed");
   const notice = noticeOf(post);
-  check(/^Hidden - .+: .+ \(\d+\/100\)$/.test(await notice.locator(".brainrot-index-summary").textContent()), "the hidden line names the plugin, label and score");
+  check(/^Hidden · .+$/.test(await notice.locator(".brainrot-index-summary").textContent()), "the hidden line names the plugin");
   const noticeTopBefore = (await notice.boundingBox()).y;
   await notice.locator(".brainrot-index-reveal").focus();
   await page.keyboard.press("Enter");
@@ -526,6 +557,7 @@ async function testRevealHiddenPost(page) {
   check(Math.abs((await noticeOf(post).boundingBox()).y - noticeTopBefore) <= 2, "the line stayed where it was");
   const hideAgainButton = noticeOf(post).locator(".brainrot-index-reveal");
   check(await hideAgainButton.textContent() === "Hide again", "the line offers Hide again");
+  await noticeOf(post).hover();
   await hideAgainButton.click();
   check(!(await post.evaluate(readPostLook)).drawn, "Hide again collapses it");
 }
@@ -579,6 +611,7 @@ async function testRevealSurvivesScrolling(page, platform) {
     }
     return readPostId(element, platform);
   }, [platform, readPostIdInPage.toString()]);
+  await noticeOf(post).hover();
   await noticeOf(post).locator(".brainrot-index-reveal").click();
   check((await post.evaluate(readPostLook)).revealed, "the post is revealed");
   const scrollYBefore = await page.evaluate(() => window.scrollY);
@@ -614,46 +647,43 @@ async function testNoRevealWhenNotAllowed(page, classifyCalls, feedUrl) {
   }
 }
 
-// "Wrong?" on a blurred or hidden post's label opens a form: what it should have been (Shown is
-// chosen), an optional reason, Send. The label then says the report was recorded.
-async function testReportWrongControl(page, feedbackCalls, platform) {
-  const reportWrongButton = page.locator(".brainrot-index-report-wrong").first();
-  check(await reportWrongButton.count() === 1, "a filtered post shows a Wrong? control");
-  const reportedPost = await reportWrongButton.evaluate((button, [platform, readPostIdSource]) => {
+// Thumbs down on a blurred or hidden post's label saves a judgment at once and opens the details box;
+// a severity and details typed there are saved too. The label keeps the post where it was.
+async function testJudgeFilteredPost(page, judgmentCalls, platform) {
+  const notice = page.locator(".brainrot-index-notice:has(.brainrot-index-judge)").first();
+  check(await notice.count() === 1, "a filtered post's label has thumbs");
+  const judgedPost = await notice.evaluate((element, [platform, readPostIdSource]) => {
     const readPostId = new Function("return " + readPostIdSource)();
-    const postElement = button.closest(".brainrot-index-notice").nextElementSibling;
+    const postElement = element.nextElementSibling;
     return { id: readPostId(postElement, platform), action: postElement.dataset.brainrotIndexAction };
   }, [platform, readPostIdInPage.toString()]);
-  const notice = page.locator(".brainrot-index-notice", { has: reportWrongButton });
-  await reportWrongButton.scrollIntoViewIfNeeded();
+  await notice.evaluate((element) => element.scrollIntoView({ block: "center" }));
   const urlBefore = page.url();
-  await reportWrongButton.click();
-  const form = notice.locator(".brainrot-index-report-form");
-  check(await form.count() === 1, "Wrong? opens the report form on the label");
-  check(await form.locator('.brainrot-index-choice[aria-pressed="true"]').textContent() === "Shown", "Shown is chosen");
-  // Real key presses on Reddit and YouTube check that they stay in the form. On X, where single keys
+  await notice.hover();
+  const callsBefore = judgmentCalls.length;
+  await notice.locator('.brainrot-index-judge-button[data-verdict="wrong"]').click();
+  await waitUntil(() => judgmentCalls.length > callsBefore, 5000);
+  checkJudgmentCall(judgmentCalls[callsBefore], {
+    platform: platform, post_id: judgedPost.id, verdict: "wrong", shown_action: judgedPost.action,
+  });
+  const detailsBox = page.locator(".brainrot-index-details");
+  check(await waitUntil(async () => (await detailsBox.locator(".brainrot-index-details-status").textContent()).endsWith("saved"), 3000),
+    "the details box says the thumb was saved");
+  await detailsBox.locator('.brainrot-index-chip[data-value="low"]').click();
+  // Real key presses on Reddit and YouTube check that they stay in the box. On X, where single keys
   // like and repost, the text is filled in without key presses so the test account can never act.
   if (platform !== "x") {
-    await form.locator(".brainrot-index-reason").pressSequentially("automated test: fine post");
+    await detailsBox.locator(".brainrot-index-details-input").pressSequentially("automated test: fine post");
   } else {
-    await form.locator(".brainrot-index-reason").fill("automated test: fine post");
+    await detailsBox.locator(".brainrot-index-details-input").fill("automated test: fine post");
   }
-  const callsBefore = feedbackCalls.length;
-  await form.locator(".brainrot-index-send").click();
-  await waitUntil(() => feedbackCalls.length > callsBefore, 5000);
-  checkFeedbackCall(feedbackCalls[callsBefore], {
-    platform: platform,
-    post_id: reportedPost.id,
-    shown_action: reportedPost.action,
-    expected_action: "allow",
-    text: "automated test: fine post",
-    page_url: urlBefore,
-  });
-  await waitUntil(async () => (await form.locator(".brainrot-index-report-status").textContent()) !== "Sending...", 3000);
-  check(await form.locator(".brainrot-index-report-status").textContent() === "Recorded, thank you", "the label confirms it was recorded");
-  check(page.url() === urlBefore, "using the form did not open the post");
-  await waitUntil(async () => (await form.count()) === 0, 4000);
-  check(await form.count() === 0 && await reportWrongButton.isVisible(), "the form closes and Wrong? comes back");
+  await detailsBox.locator(".brainrot-index-details-save").click();
+  await waitUntil(() => judgmentCalls.length > callsBefore + 1, 5000);
+  const detailsCall = judgmentCalls[callsBefore + 1];
+  check(detailsCall !== undefined && detailsCall.method === "PATCH", "the details are sent");
+  check(detailsCall.body.severity === "low" && detailsCall.body.details === "automated test: fine post", "with the severity and text");
+  check(page.url() === urlBefore, "judging did not open the post");
+  check(await waitUntil(async () => (await detailsBox.count()) === 0, 3000), "the details box closes");
 }
 
 // The context menu item cannot be clicked from a test, so the test right-clicks a post (a contextmenu
@@ -1185,6 +1215,7 @@ async function runRedditGroup() {
   await withBrave(makeFreshProfileDir("reddit"), {}, async ({ context, serviceWorker, extensionId }) => {
     const classifyCalls = recordClassifyCalls(context);
     const feedbackCalls = recordFeedbackCalls(context);
+    const judgmentCalls = recordJudgmentCalls(context);
     const page = context.pages()[0] ?? (await context.newPage());
 
     await runTest("1. extension loads, service worker starts, default options", () =>
@@ -1192,7 +1223,7 @@ async function runRedditGroup() {
     await connectExtension(context, serviceWorker, extensionId, "Reddit profile");
     await runSurfaceTest("3a. Reddit feed", classifyCalls, () =>
       checkFeed(page, serviceWorker, classifyCalls, "reddit", "https://www.reddit.com/r/popular/"), page);
-    await runTest("6a. feedback: Wrong? control on a filtered post", () => testReportWrongControl(page, feedbackCalls, "reddit"));
+    await runTest("6a. feedback: thumbs on a filtered post", () => testJudgeFilteredPost(page, judgmentCalls, "reddit"));
     await runTest("6b. feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "reddit"));
     await runTest("6c. feedback: popup text box", () => testPopupFeedbackBox(context, extensionId, feedbackCalls));
     await runTest("8a. reveal: Show and Blur again on a blurred Reddit post", () => testRevealBlurredPost(page));
@@ -1350,6 +1381,7 @@ async function runXGroup() {
     await serviceWorker.evaluate(() => chrome.storage.session.clear());
     const classifyCalls = recordClassifyCalls(context);
     const feedbackCalls = recordFeedbackCalls(context);
+    const judgmentCalls = recordJudgmentCalls(context);
     const page = context.pages()[0] ?? (await context.newPage());
 
     await runSurfaceTest("4a. X home feed", classifyCalls, () =>
@@ -1359,7 +1391,7 @@ async function runXGroup() {
     await runTest("4j. X reveal: Show and Hide again on a hidden tweet", () => testRevealHiddenPost(page));
     await runTest("4k. X reveal: a click on a blurred tweet reveals it without opening it", () => testClickOnBlurredPost(page));
     await runTest("4l. X reveal: a revealed tweet stays revealed after X redraws it", () => testRevealSurvivesScrolling(page, "x"));
-    await runTest("4d. X feedback: Wrong? control", () => testReportWrongControl(page, feedbackCalls, "x"));
+    await runTest("4d. X feedback: thumbs on a filtered post", () => testJudgeFilteredPost(page, judgmentCalls, "x"));
     await runTest("4e. X feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "x"));
     await runSurfaceTest("4b. X replies", classifyCalls, async () => {
       await page.goto("https://x.com/home", { waitUntil: "domcontentloaded" });
@@ -1647,6 +1679,7 @@ async function runYouTubeGroup() {
     await context.addInitScript(recordTileTimesInPage);
     const classifyCalls = recordClassifyCalls(context);
     const feedbackCalls = recordFeedbackCalls(context);
+    const judgmentCalls = recordJudgmentCalls(context);
     const page = context.pages()[0] ?? (await context.newPage());
     await connectExtension(context, serviceWorker, extensionId, "YouTube profile");
     await playFirstVideoForHalfAMinute(page);
@@ -1658,7 +1691,7 @@ async function runYouTubeGroup() {
     await runTest("9c. YouTube reveal: Show and Blur again on a blurred tile", () => testRevealBlurredPost(page));
     await runTest("9d. YouTube reveal: Show and Hide again on a hidden tile", () => testRevealHiddenPost(page));
     await runTest("9e. YouTube reveal: a click on a blurred tile reveals it without opening the video", () => testClickOnBlurredPost(page));
-    await runTest("9f. YouTube feedback: Wrong? control", () => testReportWrongControl(page, feedbackCalls, "youtube"));
+    await runTest("9f. YouTube feedback: thumbs on a filtered post", () => testJudgeFilteredPost(page, judgmentCalls, "youtube"));
     await runTest("9g. YouTube feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "youtube"));
     await runTest("9i. YouTube: no video preview over a blurred tile", () => testNoPreviewOverBlurredTile(page));
     await runSurfaceTest("9j. YouTube search results", classifyCalls, () =>
@@ -1826,6 +1859,160 @@ async function runTranscriptsGroup() {
   });
 }
 
+// The judgments group runs on stand-ins for X, Reddit and YouTube served by Playwright (see
+// stand-in-pages.mjs), so no real site is asked. It checks where the thumbs go in each site's row of
+// actions, that they show only on hover, and what a thumb and its details send.
+
+async function openStandInPage(page, url, judgeControlCount) {
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+  await page.mouse.move(0, 0);
+  check(await waitUntil(() => page.evaluate((count) =>
+    document.querySelectorAll('[data-brainrot-index-action="pending"]').length === 0
+    && document.querySelectorAll(".brainrot-index-judge").length >= count, judgeControlCount), 15000),
+  "every post on the page is answered");
+}
+
+async function opacityOf(locator) {
+  return Number(await locator.evaluate((element) => getComputedStyle(element).opacity));
+}
+
+// Thumbs down on a shown post, then a filter, a severity and details in the box.
+async function judgeShownPostAsMissed(page, judgmentCalls, control, platform, postId) {
+  const callsBefore = judgmentCalls.length;
+  await control.locator('.brainrot-index-judge-button[data-verdict="wrong"]').click();
+  await waitUntil(() => judgmentCalls.length > callsBefore, 5000);
+  checkJudgmentCall(judgmentCalls[callsBefore], { platform: platform, post_id: postId, verdict: "wrong", shown_action: "allow" });
+  const detailsBox = page.locator(".brainrot-index-details");
+  await waitUntil(async () => (await detailsBox.locator(".brainrot-index-details-status").textContent()).endsWith("saved"), 3000);
+  check(await detailsBox.locator(".brainrot-index-details-status").textContent() === "Should have been filtered · saved",
+    "the box says what was saved");
+  const filterChips = await detailsBox.locator('.brainrot-index-chip').allTextContents();
+  check(filterChips.slice(0, 3).join(",") === "Engagement bait,Ragebait,Brainrot", "the box offers the reader's filters");
+  await detailsBox.locator('.brainrot-index-chip[data-value="ragebait"]').click();
+  await detailsBox.locator('.brainrot-index-chip[data-value="high"]').click();
+  await detailsBox.locator(".brainrot-index-details-input").fill("automated test: outrage farming");
+  await detailsBox.locator(".brainrot-index-details-save").click();
+  await waitUntil(() => judgmentCalls.length > callsBefore + 1, 5000);
+  const detailsCall = judgmentCalls[callsBefore + 1];
+  check(detailsCall?.method === "PATCH" && /\/api\/judgments\/\d+\/$/.test(detailsCall.url), "the details are sent to the judgment saved");
+  check(JSON.stringify(detailsCall.body) === JSON.stringify({ plugin: "ragebait", severity: "high", details: "automated test: outrage farming" }),
+    "with the filter, severity and text: " + JSON.stringify(detailsCall.body));
+  check(await waitUntil(async () => (await detailsBox.count()) === 0, 3000), "the box closes once the details are saved");
+}
+
+async function testThumbsInXActionRow(page, judgmentCalls) {
+  await openStandInPage(page, STAND_IN_URLS.x, 2);
+  const shownTweet = SAMPLE_X_TWEETS[0];
+  const tweet = page.locator(`article:has(a[href="/${shownTweet.handle}/status/${shownTweet.id}"])`);
+  const control = tweet.locator(".brainrot-index-judge");
+  check(await control.count() === 1, "the shown tweet has thumbs");
+  check(await control.evaluate((element) => element.nextElementSibling.querySelector('[data-testid="caret"]') !== null),
+    "they are just before the tweet's More menu");
+  check(await opacityOf(control) === 0, "they are hidden while the pointer is elsewhere");
+  const promotedMenuBox = await page.locator('article:not(:has(time)) [data-testid="caret"]').boundingBox();
+  const menuBox = await tweet.locator('[data-testid="caret"]').boundingBox();
+  check(Math.abs(menuBox.x - promotedMenuBox.x) < 1,
+    "the More menu did not move (same place as in a tweet without thumbs)");
+  const promotedNameRowHeight = (await page.locator("article:not(:has(time)) .head").boundingBox()).height;
+  check((await tweet.locator(".head").boundingBox()).height === promotedNameRowHeight, "the name row kept its height");
+  await tweet.hover({ position: { x: 300, y: 20 } });
+  await page.waitForTimeout(300);
+  check(await opacityOf(control) === 1, "hovering the tweet shows them");
+  await judgeShownPostAsMissed(page, judgmentCalls, control, "x", shownTweet.id);
+  check(await control.locator('[data-verdict="wrong"]').getAttribute("aria-pressed") === "true", "thumbs down stays pressed");
+}
+
+async function testThumbsOnHiddenXLine(page, judgmentCalls) {
+  await page.evaluate(() => window.redrawFeed());
+  const hiddenTweet = SAMPLE_X_TWEETS[1];
+  const notice = page.locator(`.brainrot-index-notice:has(+ article [href="/${hiddenTweet.handle}/status/${hiddenTweet.id}"])`);
+  check(await waitUntil(async () => (await notice.count()) === 1, 5000), "after a redraw the hidden tweet is one line");
+  await page.mouse.move(0, 0);
+  check(await notice.locator(".brainrot-index-summary").textContent() === "Hidden · Engagement bait", "the line says what was done and by which filter");
+  check((await notice.boundingBox()).height <= 36, "the line is one quiet row");
+  check(await opacityOf(notice.locator(".brainrot-index-actions")) === 0, "its buttons are hidden while the pointer is elsewhere");
+  await notice.hover();
+  await page.waitForTimeout(300);
+  check(await opacityOf(notice.locator(".brainrot-index-actions")) === 1, "hovering the line shows Show and the thumbs");
+  check(await notice.locator(".brainrot-index-detail").textContent() === "Asks for engagement · 90/100", "and the filter's label and score");
+  const callsBefore = judgmentCalls.length;
+  await notice.locator('.brainrot-index-judge-button[data-verdict="right"]').click();
+  await waitUntil(() => judgmentCalls.length > callsBefore, 5000);
+  checkJudgmentCall(judgmentCalls[callsBefore], { platform: "x", post_id: hiddenTweet.id, verdict: "right", shown_action: "hide" });
+  const detailsBox = page.locator(".brainrot-index-details");
+  check(await detailsBox.locator('.brainrot-index-chip[data-value="ragebait"]').count() === 0, "a filtered post's box asks for no filter");
+  await page.mouse.move(0, 0);
+  check(await waitUntil(async () => (await detailsBox.count()) === 0, 6000), "the box leaves by itself when the reader does not touch it");
+  check(judgmentCalls.length === callsBefore + 1, "and nothing more was sent");
+}
+
+async function testThumbsInRedditActionRows(page, judgmentCalls) {
+  await openStandInPage(page, STAND_IN_URLS.reddit, 3);
+  const shownPost = page.locator(`shreddit-post#${SAMPLE_REDDIT_POSTS[0].id}`);
+  const postControl = shownPost.locator(":scope > .brainrot-index-judge");
+  check(await postControl.evaluate((element) => element.assignedSlot?.name) === "action-row-whitespace", "a post's thumbs are in its row of actions");
+  const comment = page.locator(`shreddit-comment[thingid="${SAMPLE_REDDIT_COMMENTS[0].id}"]`);
+  const reply = page.locator(`shreddit-comment[thingid="${SAMPLE_REDDIT_COMMENTS[0].replies[0].id}"]`);
+  const commentControl = comment.locator(":scope > [slot='actionRow'] > shreddit-comment-action-row > .brainrot-index-judge");
+  const replyControl = reply.locator(":scope > [slot='actionRow'] > shreddit-comment-action-row > .brainrot-index-judge");
+  check(await commentControl.evaluate((element) => element.assignedSlot?.name) === "comment-insight", "a comment's thumbs are between Share and its menu");
+  await reply.locator('[slot="comment"]').hover();
+  await page.waitForTimeout(300);
+  check(await opacityOf(replyControl) === 1 && await opacityOf(commentControl) === 0, "hovering a reply shows its thumbs only, not its parent's");
+  await comment.locator(':scope > [slot="comment"]').hover();
+  await page.waitForTimeout(300);
+  check(await opacityOf(commentControl) === 1 && await opacityOf(replyControl) === 0, "hovering the parent shows the parent's");
+  await shownPost.hover({ position: { x: 300, y: 20 } });
+  await page.waitForTimeout(300);
+  await judgeShownPostAsMissed(page, judgmentCalls, postControl, "reddit", SAMPLE_REDDIT_POSTS[0].id);
+}
+
+async function testDetailsBoxKeepsKeyPresses(page, judgmentCalls) {
+  const comment = page.locator(`shreddit-comment[thingid="${SAMPLE_REDDIT_COMMENTS[0].id}"]`);
+  await comment.locator(':scope > [slot="comment"]').hover();
+  await comment.locator(':scope > [slot="actionRow"] > shreddit-comment-action-row > .brainrot-index-judge [data-verdict="right"]').click();
+  const input = page.locator(".brainrot-index-details .brainrot-index-details-input");
+  await input.waitFor({ state: "visible", timeout: 3000 });
+  const keyPressesBefore = await page.evaluate(() => window.keyPressesSeenByPage);
+  await input.pressSequentially("jkl.");
+  check(await page.evaluate(() => window.keyPressesSeenByPage) === keyPressesBefore, "key presses typed in the box never reach the page");
+  await page.keyboard.press("Escape");
+  check(await page.locator(".brainrot-index-details").count() === 0, "Escape closes the box");
+}
+
+async function testThumbsInYouTubeTile(page, judgmentCalls) {
+  await openStandInPage(page, STAND_IN_URLS.youtube, 4);
+  const video = SAMPLE_YOUTUBE_VIDEOS[0];
+  const tile = page.locator(`yt-lockup-view-model:has(h3 a[href="/watch?v=${video.id}"])`);
+  const control = tile.locator(".ytLockupMetadataViewModelMenuButton > .brainrot-index-judge");
+  check(await control.count() === 1, "the tile's thumbs are in its More actions column");
+  const plainTileHeight = (await page.locator(`yt-lockup-view-model:has(h3 a[href="/watch?v=${SAMPLE_YOUTUBE_VIDEOS[2].id}"])`).boundingBox()).height;
+  check(Math.abs((await tile.boundingBox()).height - plainTileHeight) < 1, "the tile kept its height");
+  check(await opacityOf(control) === 0, "they are hidden while the pointer is elsewhere");
+  await tile.hover();
+  await page.waitForTimeout(300);
+  check(await opacityOf(control) === 1, "hovering the tile shows them");
+  const menuBox = await tile.locator('[aria-label="More actions"]').boundingBox();
+  check((await control.boundingBox()).y >= menuBox.y + menuBox.height - 1, "under the More actions button");
+  const urlBefore = page.url();
+  await judgeShownPostAsMissed(page, judgmentCalls, control, "youtube", video.id);
+  check(page.url() === urlBefore, "judging did not open the video");
+}
+
+async function runJudgmentsGroup() {
+  await withBrave(makeFreshProfileDir("judgments"), {}, async ({ context, serviceWorker, extensionId }) => {
+    await serveStandInPages(context, samplePages());
+    const judgmentCalls = recordJudgmentCalls(context);
+    const page = context.pages()[0] ?? (await context.newPage());
+    await connectExtension(context, serviceWorker, extensionId, "stand-in sites profile");
+    await runTest("11a. judgments: thumbs by an X tweet's More menu", () => testThumbsInXActionRow(page, judgmentCalls));
+    await runTest("11b. judgments: thumbs on a hidden tweet's line", () => testThumbsOnHiddenXLine(page, judgmentCalls));
+    await runTest("11c. judgments: thumbs in Reddit's post and comment rows", () => testThumbsInRedditActionRows(page, judgmentCalls));
+    await runTest("11d. judgments: the details box keeps key presses", () => testDetailsBoxKeepsKeyPresses(page, judgmentCalls));
+    await runTest("11e. judgments: thumbs in a YouTube tile", () => testThumbsInYouTubeTile(page, judgmentCalls));
+  });
+}
+
 function pgrepFinds(pattern) {
   try {
     return execFileSync("pgrep", ["-f", pattern], { encoding: "utf8" }).trim() !== "";
@@ -1835,7 +2022,7 @@ function pgrepFinds(pattern) {
 }
 
 const requestedGroups = process.argv.slice(2);
-const groupsToRun = requestedGroups.length > 0 ? requestedGroups : ["connect", "reddit", "x", "youtube", "transcripts"];
+const groupsToRun = requestedGroups.length > 0 ? requestedGroups : ["connect", "reddit", "x", "youtube", "transcripts", "judgments"];
 const mockServer = usingMockServer ? await startMockServer(MOCK_PORT) : null;
 console.log("server: " + serverAddress + (usingMockServer ? " (mock)" : ""));
 try {
@@ -1857,6 +2044,9 @@ try {
   }
   if (groupsToRun.includes("transcripts")) {
     await runTranscriptsGroup();
+  }
+  if (groupsToRun.includes("judgments")) {
+    await runJudgmentsGroup();
   }
 } finally {
   if (mockServer !== null) {

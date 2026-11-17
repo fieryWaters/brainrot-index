@@ -104,6 +104,26 @@ function extractComment(commentElement) {
   };
 }
 
+// Reddit draws its rows of actions inside its elements' shadow roots and lets pages add to them
+// through named slots: a post's row ends in "action-row-whitespace", and a comment's row has
+// "comment-insight" between Share and the "..." menu. A comment's thumbs show on hovering the comment
+// itself, not its replies (post-decoration.js counts the innermost post under the pointer).
+function placeJudgeControl(element, control) {
+  if (element.tagName === "SHREDDIT-COMMENT") {
+    // Found by the comment's id, because a comment element also holds its replies' rows.
+    const actionRow = element.querySelector(`shreddit-comment-action-row[comment-id="${element.getAttribute("thingid")}"]`);
+    if (actionRow === null) {
+      return null;
+    }
+    control.slot = "comment-insight";
+    actionRow.append(control);
+    return element;
+  }
+  control.slot = "action-row-whitespace";
+  element.append(control);
+  return element;
+}
+
 const siteAdapter = {
   platform: "reddit",
 
@@ -128,10 +148,11 @@ const siteAdapter = {
   // treatment is described in content/post-decoration.js. A post is treated whole. For a comment only
   // its own text is treated, so its author line and its replies stay visible and the thread keeps its shape.
   applyAction(element, treatment) {
+    const placeControl = (control) => placeJudgeControl(element, control);
     if (element.tagName === "SHREDDIT-COMMENT") {
-      decoratePost(ownCommentBody(element), treatment);
+      decoratePost(ownCommentBody(element), treatment, placeControl);
     } else {
-      decoratePost(element, treatment);
+      decoratePost(element, treatment, placeControl);
     }
   },
 };

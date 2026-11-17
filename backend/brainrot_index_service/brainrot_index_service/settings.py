@@ -125,7 +125,7 @@ LOCAL_INFERENCE_MODEL = config('LOCAL_INFERENCE_MODEL', default='').strip()
 # OpenRouter: only Gemini on Google AI Studio fetches YouTube videos by URL.
 VIDEO_MODEL = config('VIDEO_MODEL', default='google/gemini-3.5-flash-lite').strip()
 # How many opening seconds of a Reddit or X video are downloaded and watched.
-VIDEO_WATCH_SECONDS = config('VIDEO_WATCH_SECONDS', default=30, cast=int)
+VIDEO_WATCH_SECONDS = config('VIDEO_WATCH_SECONDS', default=15, cast=int)
 # A YouTube video is watched whole (OpenRouter cannot clip it), at about 100
 # tokens a second, so longer ones are not watched at all.
 VIDEO_MAX_YOUTUBE_SECONDS = config('VIDEO_MAX_YOUTUBE_SECONDS', default=180, cast=int)

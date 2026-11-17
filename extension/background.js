@@ -14,7 +14,7 @@ extensionApi.runtime.onInstalled.addListener(async () => {
     id: MISSED_POST_MENU_ITEM_ID,
     title: "Brainrot Index: report this post",
     contexts: ["all"],
-    documentUrlPatterns: ["https://www.reddit.com/*", "https://x.com/*"],
+    documentUrlPatterns: ["https://www.reddit.com/*", "https://x.com/*", "https://www.youtube.com/*"],
   });
 
   const stored = await extensionApi.storage.local.get(["serverAddress", "extensionEnabled"]);

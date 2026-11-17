@@ -107,9 +107,16 @@ function handlePostElement(postElement) {
   }
 }
 
+// A changed link address means the site may have filled an element with another post.
 function onPageChanges(mutations) {
   const changedPosts = new Set();
   for (const mutation of mutations) {
+    if (mutation.type === "attributes") {
+      for (const postElement of siteAdapter.findPostElements(mutation.target)) {
+        changedPosts.add(postElement);
+      }
+      continue;
+    }
     for (const addedNode of mutation.addedNodes) {
       if (addedNode.nodeType !== Node.ELEMENT_NODE || addedNode.classList.contains(NOTICE_CLASS)) {
         continue;
@@ -131,7 +138,12 @@ function onPostsNearViewport(entries) {
     }
     nearViewportObserver.unobserve(entry.target);
     const post = siteAdapter.extractPost(entry.target);
-    if (post === null || requestedPostIds.has(post.post_id)) {
+    if (post === null) {
+      continue;
+    }
+    // Another element showing the same post was sent first; this one shows its answer or waits for it.
+    if (requestedPostIds.has(post.post_id)) {
+      handlePostElement(entry.target);
       continue;
     }
     requestedPostIds.add(post.post_id);
@@ -273,7 +285,7 @@ async function startWatching() {
     return;
   }
   config = status.config;
-  pageChangeObserver.observe(document.body, { childList: true, subtree: true });
+  pageChangeObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["href"] });
   for (const postElement of siteAdapter.findPostElements(document.body)) {
     handlePostElement(postElement);
   }
@@ -304,7 +316,8 @@ document.addEventListener("contextmenu", (event) => {
 }, true);
 
 // The "this should have been filtered" menu item opens the report form over the post the reader
-// right-clicked. Answers false when the right-click was not inside a post.
+// right-clicked. Answers false when the right-click was not inside a post, or inside an element the
+// extension never sends (such as a YouTube playlist).
 extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type !== "open-report-form") {
     return;
@@ -314,6 +327,10 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
   const post = siteAdapter.extractPost(rightClickedPostElement);
+  if (post === null) {
+    sendResponse(false);
+    return;
+  }
   const answer = answerByPostId.get(post.post_id);
   let shownAction = "allow";
   if (answer !== undefined) {

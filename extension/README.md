@@ -1,7 +1,7 @@
 # Brainrot Index browser extension
 
-Watches your Reddit and X feeds, asks the Brainrot Index server about each post and reply, and blurs
-or hides the ones your plugins flag. All decisions are made on the server; the extension only shows
+Watches your Reddit, X and YouTube feeds, asks the Brainrot Index server about each post, reply and
+video, and blurs or hides the ones your plugins flag. All decisions are made on the server; the extension only shows
 them.
 
 ## Install in Brave (or Chrome)
@@ -47,6 +47,10 @@ dashboard tab and press Connect extension again.
   instead, so the page never jumps under you. It is collapsed the next time the site redraws it.
 - On Reddit, a hidden comment shows only its author line and the one-line notice; its replies stay
   visible.
+- On YouTube, video tiles on the home page, in search results, in the "up next" column of a watch page
+  and in Shorts shelves are filtered; playlists, mixes and ads are not. A hidden tile keeps its place
+  in the grid with only the one-line notice in it. The server judges a video by its title, thumbnail
+  and transcript. Hovering a blurred tile does not play its preview.
 
 ## Reporting mistakes
 

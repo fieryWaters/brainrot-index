@@ -1,0 +1,14 @@
+/* YouTube-specific additions to content/post-decoration.css. */
+
+/* A line of its own takes YouTube's text colour, which follows its light and dark themes. The label
+   over a blurred tile keeps its own colours. */
+.brainrot-index-notice:not(.brainrot-index-notice-over-post) {
+  color: var(--yt-sys-color-baseline--text-primary);
+}
+
+/* Hovering a tile plays a preview of the video in a separate element over the tile, which the blur
+   does not cover. It is not shown while the hovered tile is blurred. */
+ytd-app:has([data-brainrot-index-action="pending"]:hover,
+            [data-brainrot-index-action="blur"]:not([data-brainrot-index-revealed]):hover) ytd-video-preview {
+  display: none !important;
+}

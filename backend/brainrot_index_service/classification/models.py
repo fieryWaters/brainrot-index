@@ -108,7 +108,12 @@ class Plugin(models.Model):
         blank=True,
         related_name='authored_plugins',
     )
+    # The name shown as the plugin's author in the store, chosen when it is published.
+    author_name = models.CharField(max_length=60, blank=True, default='')
     is_baseline = models.BooleanField(default=False)
+    # An unlisted plugin is hidden from the store and cannot be installed;
+    # accounts that already installed it keep it.
+    is_listed = models.BooleanField(default=True)
     # The threshold a user starts with when the plugin is installed.
     default_threshold = models.PositiveSmallIntegerField(
         default=60,
@@ -129,7 +134,11 @@ class PluginVersion(models.Model):
 
     plugin = models.ForeignKey(Plugin, on_delete=models.PROTECT, related_name='versions')
     version = models.PositiveIntegerField()
+    # The full system prompt before the response instructions. For a plugin
+    # published in the store it is author_rubric inside the fixed frame.
     rubric_prompt = models.TextField()
+    # The rubric as a store author wrote it. Blank for the baseline plugins.
+    author_rubric = models.TextField(blank=True, default='')
     allowed_labels = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -137,6 +146,16 @@ class PluginVersion(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['plugin', 'version'], name='unique_plugin_version'),
         ]
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            raise ValueError('A plugin version is immutable; publish a new version instead.')
+        super().save(*args, **kwargs)
+
+    def displayed_rubric(self):
+        if self.author_rubric:
+            return self.author_rubric
+        return self.rubric_prompt
 
     def __str__(self):
         return f"{self.plugin.name} v{self.version}"

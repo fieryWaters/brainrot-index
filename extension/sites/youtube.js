@@ -63,6 +63,18 @@ function readChannelAndSnippet(tileElement) {
   ];
 }
 
+// The video's length in seconds, from the badge on its thumbnail ("4:00", "1:02:03"); null when the
+// tile shows none, as for Shorts and live streams.
+function videoDurationSeconds(tileElement) {
+  for (const badge of tileElement.querySelectorAll(".ytBadgeShapeText")) {
+    const text = badge.textContent.trim();
+    if (/^\d+(:\d\d){1,2}$/.test(text)) {
+      return text.split(":").reduce((seconds, part) => seconds * 60 + parseInt(part, 10), 0);
+    }
+  }
+  return null;
+}
+
 // A lockup tile's "More actions" (three dots) button sits in a column beside its title; the thumbs go
 // in that column, under the button. Other tiles (older search results, Shorts) get none.
 function placeJudgeControl(tileElement, control) {
@@ -117,6 +129,7 @@ const siteAdapter = {
       community: "",
       text: text,
       image_urls: ["https://i.ytimg.com/vi/" + videoId + "/hqdefault.jpg"],
+      video_duration_seconds: videoDurationSeconds(tileElement),
     };
   },
 

@@ -12,6 +12,9 @@ WORKDIR /app
 
 RUN addgroup --system app && adduser --system --ingroup app app
 
+# ffmpeg cuts the opening seconds of Reddit and X videos for the video filters.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+
 RUN python -m pip install --no-cache-dir --upgrade "pip==$PIP_VERSION" && \
     python -m pip install --no-cache-dir "uv==$UV_VERSION"
 

@@ -27,11 +27,13 @@ from .models import (
     ACTION_BLUR,
     ACTION_HIDE,
     CLASSIFICATION_DONE,
+    CLASSIFICATION_NOT_APPLICABLE,
     CLASSIFICATION_PENDING,
     MODE_CHILD,
     PLATFORM_REDDIT,
     PLATFORM_X,
     PLATFORM_YOUTUBE,
+    PLUGIN_INPUT_VIDEO,
     POST_KIND_REPLY,
     TRANSCRIPT_PENDING,
     Classification,
@@ -40,6 +42,7 @@ from .models import (
     Post,
     PostImage,
     PostJudgment,
+    PostVideo,
     UserPlugin,
     UserSettings,
     VideoTranscript,
@@ -52,6 +55,7 @@ from .serializers import (
     UserSettingsSerializer,
 )
 from .transcripts import TRANSCRIPT_WAIT_SECONDS, store_browser_report
+from .video_sources import reddit_video_url_is_allowed, youtube_video_status
 
 # How long /classify/ waits for pending posts before answering, so most posts
 # come back done on the first call.
@@ -137,6 +141,37 @@ def store_post(seen_post):
         if post.platform == PLATFORM_YOUTUBE:
             VideoTranscript.objects.create(post=post)
     return post
+
+
+def store_post_video(post, seen_post):
+    """Records the video a page shows in a post, the first time a reader with a
+    video filter reports it. A YouTube video is settled at once; a Reddit or X
+    video waits for the worker to download its opening. A Reddit playlist off
+    Reddit's video host is ignored."""
+    if PostVideo.objects.filter(post=post).exists():
+        return
+    if post.platform == PLATFORM_YOUTUBE:
+        video_status, missing_reason = youtube_video_status(post.url, seen_post['video_duration_seconds'])
+        PostVideo.objects.get_or_create(post=post, defaults={
+            'source_url': post.url,
+            'duration_seconds': seen_post['video_duration_seconds'],
+            'status': video_status,
+            'missing_reason': missing_reason,
+            'settled_at': timezone.now(),
+        })
+        return
+    if seen_post['video_url'] == '':
+        return
+    if post.platform == PLATFORM_REDDIT and not reddit_video_url_is_allowed(seen_post['video_url']):
+        return
+    PostVideo.objects.get_or_create(post=post, defaults={'source_url': seen_post['video_url']})
+
+
+def new_classification(post, plugin, plugin_version, post_ids_with_video):
+    """A video filter has nothing to judge in a post without a video."""
+    if plugin.input_kind == PLUGIN_INPUT_VIDEO and post.id not in post_ids_with_video:
+        return Classification(post=post, plugin_version=plugin_version, status=CLASSIFICATION_NOT_APPLICABLE)
+    return Classification(post=post, plugin_version=plugin_version)
 
 
 def record_submissions(user, extension_token, posts):
@@ -329,6 +364,7 @@ def classify(request):
     refused_seen_posts = new_seen_posts[granted_count:]
     refused_keys = {(seen_post['platform'], seen_post['post_id']) for seen_post in refused_seen_posts}
 
+    watches_videos = any(user_plugin.plugin.input_kind == PLUGIN_INPUT_VIDEO for user_plugin, _ in plugins_to_apply)
     posts = []
     for seen_post in seen_posts:
         if (seen_post['platform'], seen_post['post_id']) in refused_keys:
@@ -336,12 +372,20 @@ def classify(request):
         post = store_post(seen_post)
         if post.platform == PLATFORM_YOUTUBE:
             store_browser_report(post, seen_post)
+        if watches_videos:
+            store_post_video(post, seen_post)
         posts.append(post)
     record_submissions(request.user, request.auth, posts)
 
+    post_ids_with_video = set()
+    if watches_videos:
+        post_ids_with_video = set(PostVideo.objects.filter(post__in=posts).values_list('post_id', flat=True))
     # Queue every missing (post, plugin version) pair; existing rows are the cache.
     Classification.objects.bulk_create(
-        [Classification(post=post, plugin_version=version) for post in posts for _, version in plugins_to_apply],
+        [
+            new_classification(post, user_plugin.plugin, version, post_ids_with_video)
+            for post in posts for user_plugin, version in plugins_to_apply
+        ],
         ignore_conflicts=True,
     )
 

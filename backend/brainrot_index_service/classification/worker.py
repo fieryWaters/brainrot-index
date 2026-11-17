@@ -6,6 +6,7 @@ and a worker that dies mid-task simply leaves its row pending for another.
 """
 
 import threading
+import time
 
 from django.conf import settings
 from django.db import transaction
@@ -15,12 +16,17 @@ from .inference import run_classification
 from .models import (
     CLASSIFICATION_PENDING,
     IMAGE_PENDING,
+    PLUGIN_INPUT_VIDEO,
     TRANSCRIPT_PENDING,
+    VIDEO_PENDING,
     Classification,
     PostImage,
+    PostVideo,
     VideoTranscript,
 )
 from .transcripts import download_transcript, settle_overdue_transcripts
+from .video_judging import run_video_classification
+from .video_sources import DOWNLOADED_PLATFORMS, download_video, next_download_at
 
 # At most this many transcript downloads at once, so a full YouTube page does
 # not send YouTube a burst of requests from the server's address.
@@ -60,6 +66,43 @@ def settle_next_transcripts():
     return settle_overdue_transcripts()
 
 
+# One video download at a time per site (see video_sources).
+video_download_locks = {platform: threading.Lock() for platform in DOWNLOADED_PLATFORMS}
+
+
+def download_next_pending_video():
+    """Downloads the opening of one pending Reddit or X video that a video
+    filter is waiting on, from a site that may be asked now. Returns False when
+    there was none."""
+    waiting_post_ids = Classification.objects.filter(
+        status=CLASSIFICATION_PENDING,
+        plugin_version__plugin__input_kind=PLUGIN_INPUT_VIDEO,
+    ).values('post_id')
+    for platform in DOWNLOADED_PLATFORMS:
+        download_lock = video_download_locks[platform]
+        if not download_lock.acquire(blocking=False):
+            continue
+        try:
+            if time.monotonic() < next_download_at[platform]:
+                continue
+            with transaction.atomic():
+                post_video = (
+                    PostVideo.objects
+                    .select_for_update(skip_locked=True, of=('self',))
+                    .filter(status=VIDEO_PENDING, post__platform=platform, post_id__in=waiting_post_ids)
+                    .select_related('post')
+                    .order_by('id')
+                    .first()
+                )
+                if post_video is None:
+                    continue
+                download_video(post_video)
+            return True
+        finally:
+            download_lock.release()
+    return False
+
+
 def download_next_pending_image():
     """Downloads one pending image. Returns False when there was none."""
     with transaction.atomic():
@@ -78,7 +121,8 @@ def download_next_pending_image():
 
 def classify_next_pending():
     """Runs one pending classification. Returns False when there was none.
-    A video waits until its transcript has been fetched or found missing."""
+    A YouTube video waits until its transcript has been fetched or found
+    missing, and a video filter until the post's video has been settled."""
     with transaction.atomic():
         classification = (
             Classification.objects
@@ -86,11 +130,15 @@ def classify_next_pending():
             .select_for_update(skip_locked=True, of=('self',))
             .filter(status=CLASSIFICATION_PENDING)
             .exclude(post__transcript__status=TRANSCRIPT_PENDING)
-            .select_related('post', 'plugin_version')
+            .exclude(plugin_version__plugin__input_kind=PLUGIN_INPUT_VIDEO, post__video__status=VIDEO_PENDING)
+            .select_related('post', 'plugin_version__plugin')
             .order_by('id')
             .first()
         )
         if classification is None:
             return False
-        run_classification(classification)
+        if classification.plugin_version.plugin.input_kind == PLUGIN_INPUT_VIDEO:
+            run_video_classification(classification)
+        else:
+            run_classification(classification)
     return True

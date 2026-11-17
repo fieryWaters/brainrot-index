@@ -47,13 +47,33 @@ TRANSCRIPT_SOURCE_CHOICES = [
     (TRANSCRIPT_SOURCE_SERVER, 'Server'),
 ]
 
+VIDEO_PENDING = 'pending'
+VIDEO_READY = 'ready'
+VIDEO_MISSING = 'missing'
+VIDEO_STATUS_CHOICES = [
+    (VIDEO_PENDING, 'Pending'),
+    (VIDEO_READY, 'Ready'),
+    (VIDEO_MISSING, 'Missing'),
+]
+
 CLASSIFICATION_PENDING = 'pending'
 CLASSIFICATION_DONE = 'done'
 CLASSIFICATION_FAILED = 'failed'
+# A video filter meeting a post that has no video. Finished, and never flags.
+CLASSIFICATION_NOT_APPLICABLE = 'not_applicable'
 CLASSIFICATION_STATUS_CHOICES = [
     (CLASSIFICATION_PENDING, 'Pending'),
     (CLASSIFICATION_DONE, 'Done'),
     (CLASSIFICATION_FAILED, 'Failed'),
+    (CLASSIFICATION_NOT_APPLICABLE, 'Not applicable'),
+]
+
+# What a plugin judges: a post as text and images, or the video in it, watched and listened to.
+PLUGIN_INPUT_POST = 'post'
+PLUGIN_INPUT_VIDEO = 'video'
+PLUGIN_INPUT_CHOICES = [
+    (PLUGIN_INPUT_POST, 'Post'),
+    (PLUGIN_INPUT_VIDEO, 'Video'),
 ]
 
 ACTION_ALLOW = 'allow'
@@ -146,6 +166,36 @@ class VideoTranscript(models.Model):
         return f"transcript of {self.post} ({self.status})"
 
 
+class PostVideo(models.Model):
+    """The video in a post, as a video filter watches it. Settled once for
+    every reader. A Reddit or X video is downloaded once, cut to its opening
+    seconds, and the clip is kept, so judging it again never asks the site
+    again. A YouTube video is never downloaded: the model provider fetches it
+    by its URL, whole."""
+
+    post = models.OneToOneField(Post, on_delete=models.CASCADE, related_name='video')
+    status = models.CharField(max_length=16, choices=VIDEO_STATUS_CHOICES, default=VIDEO_PENDING)
+    # Where the reader's page plays the video: a Reddit HLS playlist, an X post, a YouTube watch page.
+    source_url = models.TextField()
+    # The video's full length, when the page or the site says it.
+    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    # The opening of a Reddit or X video, at most VIDEO_WATCH_SECONDS long. Empty for YouTube.
+    clip = models.FileField(upload_to='post_videos/%Y/%m/', blank=True)
+    clip_seconds = models.FloatField(null=True, blank=True)
+    clip_bytes = models.PositiveIntegerField(null=True, blank=True)
+    missing_reason = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    settled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['id'], condition=models.Q(status=VIDEO_PENDING), name='pending_post_videos'),
+        ]
+
+    def __str__(self):
+        return f"video of {self.post} ({self.status})"
+
+
 class Plugin(models.Model):
     """A kind of unwanted content, such as engagement bait. Its rubric lives in its versions."""
 
@@ -172,6 +222,7 @@ class Plugin(models.Model):
         default=60,
         validators=[MinValueValidator(0), MaxValueValidator(100)],
     )
+    input_kind = models.CharField(max_length=16, choices=PLUGIN_INPUT_CHOICES, default=PLUGIN_INPUT_POST)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def latest_version(self):

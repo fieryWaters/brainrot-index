@@ -47,6 +47,11 @@ class SeenPostSerializer(serializers.Serializer):
     transcript_language = serializers.CharField(max_length=16, allow_blank=True, default='')
     transcript_kind = serializers.ChoiceField(
         choices=[TRANSCRIPT_KIND_MANUAL, TRANSCRIPT_KIND_AUTO], allow_blank=True, default='')
+    # Where the page plays the post's video: a Reddit post's HLS playlist, or an X post's own URL.
+    # Blank for a post without a video, and for YouTube, whose every post is a video.
+    video_url = serializers.CharField(allow_blank=True, default='')
+    # A YouTube video's length as its tile shows it. Null when the tile shows none, as for Shorts.
+    video_duration_seconds = serializers.IntegerField(min_value=0, allow_null=True, default=None)
 
 
 class ClassifyRequestSerializer(serializers.Serializer):

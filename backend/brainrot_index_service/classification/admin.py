@@ -9,6 +9,7 @@ from .models import (
     PostImage,
     PostJudgment,
     PostSubmission,
+    PostVideo,
     UserPlugin,
     UserSettings,
     VideoTranscript,
@@ -29,13 +30,20 @@ class VideoTranscriptInline(admin.StackedInline):
     readonly_fields = fields
 
 
+class PostVideoInline(admin.StackedInline):
+    model = PostVideo
+    extra = 0
+    fields = ['status', 'source_url', 'duration_seconds', 'clip', 'clip_seconds', 'clip_bytes', 'missing_reason', 'settled_at']
+    readonly_fields = fields
+
+
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
     list_display = ['__str__', 'kind', 'community', 'author', 'short_text', 'first_seen_at']
     list_filter = ['platform', 'kind']
     search_fields = ['post_id', 'parent_post_id', 'author', 'community', 'text']
     date_hierarchy = 'first_seen_at'
-    inlines = [PostImageInline, VideoTranscriptInline]
+    inlines = [PostImageInline, VideoTranscriptInline, PostVideoInline]
 
     @admin.display(description='text')
     def short_text(self, post):
@@ -54,6 +62,14 @@ class PostImageAdmin(admin.ModelAdmin):
 class VideoTranscriptAdmin(admin.ModelAdmin):
     list_display = ['id', 'post', 'status', 'source', 'language_code', 'is_generated', 'fetched_at']
     list_filter = ['status', 'source', 'is_generated']
+    search_fields = ['post__post_id', 'missing_reason']
+    raw_id_fields = ['post']
+
+
+@admin.register(PostVideo)
+class PostVideoAdmin(admin.ModelAdmin):
+    list_display = ['id', 'post', 'status', 'duration_seconds', 'clip_seconds', 'clip_bytes', 'settled_at']
+    list_filter = ['status', 'post__platform']
     search_fields = ['post__post_id', 'missing_reason']
     raw_id_fields = ['post']
 
@@ -104,8 +120,8 @@ class PluginVersionInline(admin.TabularInline):
 
 @admin.register(Plugin)
 class PluginAdmin(admin.ModelAdmin):
-    list_display = ['name', 'slug', 'is_baseline', 'is_listed', 'author_name', 'author', 'created_at']
-    list_filter = ['is_baseline', 'is_listed']
+    list_display = ['name', 'slug', 'input_kind', 'is_baseline', 'is_listed', 'author_name', 'author', 'created_at']
+    list_filter = ['input_kind', 'is_baseline', 'is_listed']
     search_fields = ['name', 'slug', 'author_name']
     inlines = [PluginVersionInline]
     actions = ['unlist']

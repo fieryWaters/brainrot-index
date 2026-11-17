@@ -100,7 +100,12 @@ const siteAdapter = {
       community: "",
       text: textElement === null ? "" : textElement.textContent,
       image_urls: imageUrls(tweetElement),
+      video_url: "",
     };
+    // A tweet showing a video or GIF sends its own address; the server finds the video's files from it.
+    if (tweetElement.querySelector('[data-testid="videoPlayer"], video') !== null) {
+      record.video_url = record.url;
+    }
 
     const openPostMatch = location.pathname.match(/^\/[^/]+\/status\/(\d+)/);
     // X status ids grow with time, so a reply always has a larger id than the post it answers. Older

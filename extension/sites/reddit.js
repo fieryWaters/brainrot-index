@@ -55,6 +55,14 @@ function ownCommentBody(commentElement) {
   return commentElement.querySelector(`[id="${commentId}-comment-rtjson-content"]`);
 }
 
+// The address of a video post's HLS playlist, which its player carries; "" for any other post.
+function postVideoUrl(postElement) {
+  if (postElement.getAttribute("post-type") !== "video") {
+    return "";
+  }
+  return postElement.querySelector("shreddit-player")?.getAttribute("src") ?? "";
+}
+
 function extractFeedPost(postElement) {
   const postId = postElement.getAttribute("id");
   if (postId === null) {
@@ -75,6 +83,7 @@ function extractFeedPost(postElement) {
     community: postElement.getAttribute("subreddit-prefixed-name") ?? "",
     text: text,
     image_urls: postImageUrls(postElement),
+    video_url: postVideoUrl(postElement),
   };
 }
 

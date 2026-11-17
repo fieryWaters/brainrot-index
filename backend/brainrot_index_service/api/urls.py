@@ -1,5 +1,5 @@
 from django.urls import path
-from . import auth_views
+from . import account_views, auth_views
 from .views import auth_google, health
 
 urlpatterns = [
@@ -16,4 +16,10 @@ urlpatterns = [
     path('auth/resend-verification/', auth_views.resend_verification, name='auth_resend_verification'),
     path('auth/password-reset/request/', auth_views.password_reset_request, name='auth_password_reset_request'),
     path('auth/password-reset/confirm/', auth_views.password_reset_confirm, name='auth_password_reset_confirm'),
+
+    # The signed-in person's own account
+    path('account/change-password/', account_views.change_password, name='account_change_password'),
+    path('account/sign-out-everywhere/', account_views.sign_out_everywhere, name='account_sign_out_everywhere'),
+    path('account/export/', account_views.export_account_data, name='account_export'),
+    path('account/delete/', account_views.delete_account, name='account_delete'),
 ]

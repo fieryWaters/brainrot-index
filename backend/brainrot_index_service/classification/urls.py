@@ -9,6 +9,7 @@ urlpatterns = [
 
     # Website (session)
     path('extension/token/', views.create_extension_token, name='create_extension_token'),
+    path('onboarding/', views.onboarding_status, name='onboarding_status'),
     path('settings/', views.user_settings_detail, name='user_settings'),
     path('plugins/', views.installed_plugin_list, name='installed_plugins'),
     path('plugins/<slug:slug>/', views.installed_plugin_detail, name='installed_plugin'),

@@ -151,6 +151,8 @@ ANYMAIL = {
     'RESEND_API_KEY': config('RESEND_API_KEY', default=''),
 }
 DEFAULT_FROM_EMAIL = 'Brainrot Index <noreply@brainrotindex.com>'
+# Where people write to us; named in error messages and on the legal pages.
+SUPPORT_EMAIL = 'support@brainrotindex.com'
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -317,6 +319,8 @@ REST_FRAMEWORK = {
         'family_change': '60/hour',
         # Joining checks an invite code, so it is limited like a sign-in.
         'family_join': '20/hour',
+        # Password changes, signing out everywhere, data downloads, account deletion.
+        'account_change': '20/hour',
     },
 }
 

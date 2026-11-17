@@ -13,7 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from api.auth_tokens import generate_raw_token, hash_token
-from api.models import DailyNewPostCount
+from api.models import DailyNewPostCount, UserProfile
 from api.permissions import HasVerifiedEmail
 from api.throttling import UserRateThrottle
 from billing.permissions import HasAccess
@@ -242,6 +242,9 @@ def classify(request):
     serializer.is_valid(raise_exception=True)
     seen_posts = serializer.validated_data['posts']
 
+    # request.auth is the ExtensionToken the request came with.
+    ExtensionToken.objects.filter(id=request.auth.id).update(last_classify_request_at=timezone.now())
+
     settings_for_user(request.user)
     enabled_plugins = UserPlugin.objects.filter(user=request.user, enabled=True).select_related('plugin')
     plugins_to_apply = [(user_plugin, user_plugin.plugin.latest_version()) for user_plugin in enabled_plugins]
@@ -284,6 +287,21 @@ def create_extension_token(request):
     raw_token = generate_raw_token()
     ExtensionToken.objects.create(user=request.user, token_hash=hash_token(raw_token))
     return Response({'token': raw_token}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@throttle_classes([])
+def onboarding_status(request):
+    """Which setup steps the account has done. Installing the extension can
+    only be seen by the page itself, or by a connection having been made."""
+    email_verified = UserProfile.objects.filter(user=request.user, email_verified=True).exists()
+    extension_tokens = ExtensionToken.objects.filter(user=request.user)
+    return Response({
+        'email_verified': email_verified,
+        'extension_connected': extension_tokens.exists(),
+        'feed_opened': extension_tokens.filter(last_classify_request_at__isnull=False).exists(),
+    })
 
 
 @api_view(['GET', 'PATCH'])

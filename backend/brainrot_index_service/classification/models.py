@@ -249,6 +249,9 @@ class ExtensionToken(models.Model):
     token_hash = models.CharField(max_length=64, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
+    # The last time the extension sent posts with this token, which first
+    # happens when the reader opens Reddit or X after connecting.
+    last_classify_request_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"extension token {self.id} for {self.user}"

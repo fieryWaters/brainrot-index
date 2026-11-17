@@ -155,7 +155,12 @@ export function mountFamilyPage() {
           const basePath = `/family/members/${member.user_id}`
           editor.append(
             createFilterSettingsCard({ basePath, canChange: true }),
-            createInstalledPluginsCard({ basePath, title: `Plugins for ${member.email}`, showAddPlugin: true }))
+            createInstalledPluginsCard({
+              basePath,
+              title: `Plugins for ${member.email}`,
+              showAddPlugin: true,
+              forChild: member.role === 'child',
+            }))
         }
         editor.classList.toggle('hidden')
         editButton.setAttribute('aria-expanded', String(opening))
@@ -179,7 +184,7 @@ export function mountFamilyPage() {
       roleHelp.textContent = ROLE_DESCRIPTIONS[roleSelect.value]
     })
 
-    const result = el('div')
+    let result = el('div')
     const inviteButton = createButton(PRIMARY_BUTTON_CLASS + ' shrink-0', 'Create invite')
     inviteButton.addEventListener('click', async () => {
       inviteButton.disabled = true
@@ -190,7 +195,9 @@ export function mountFamilyPage() {
         return
       }
       showError('')
-      result.replaceWith(createInviteResult(data))
+      const next = createInviteResult(data)
+      result.replaceWith(next)
+      result = next
     })
 
     const pending = invites.map((invite) => {

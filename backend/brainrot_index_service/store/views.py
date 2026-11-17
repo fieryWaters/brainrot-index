@@ -106,6 +106,7 @@ def plugin_summary(plugin, installed_plugin_ids):
         'author_name': author_name_of(plugin),
         'is_baseline': plugin.is_baseline,
         'is_listed': plugin.is_listed,
+        'suggested_for_children': plugin.suggested_for_children,
         'install_count': plugin.install_count,
         'rating_count': plugin.rating_count,
         'average_rating': average_rating,

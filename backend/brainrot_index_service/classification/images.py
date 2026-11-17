@@ -16,7 +16,7 @@ from .models import IMAGE_DOWNLOADED, IMAGE_FAILED, IMAGE_REJECTED
 logger = logging.getLogger(__name__)
 
 # Only the platforms' own media hosts, so a post cannot make the server fetch arbitrary URLs.
-ALLOWED_IMAGE_HOST_SUFFIXES = ['redd.it', 'redditmedia.com', 'twimg.com']
+ALLOWED_IMAGE_HOST_SUFFIXES = ['redd.it', 'redditmedia.com', 'twimg.com', 'ytimg.com']
 IMAGE_DOWNLOAD_TIMEOUT_SECONDS = 10
 MAX_IMAGE_BYTES = 20 * 1024 * 1024
 DOWNLOAD_CHUNK_BYTES = 256 * 1024

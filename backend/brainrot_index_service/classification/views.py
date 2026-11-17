@@ -30,6 +30,7 @@ from .models import (
     MODE_CHILD,
     PLATFORM_REDDIT,
     PLATFORM_X,
+    PLATFORM_YOUTUBE,
     POST_KIND_REPLY,
     Classification,
     ExtensionToken,
@@ -38,6 +39,7 @@ from .models import (
     PostImage,
     UserPlugin,
     UserSettings,
+    VideoTranscript,
 )
 from .serializers import ClassifyRequestSerializer, UserPluginSerializer, UserSettingsSerializer
 
@@ -92,7 +94,8 @@ def settings_for_user(user):
 
 
 def store_post(seen_post):
-    """The stored Post for a seen post, created with its images the first time."""
+    """The stored Post for a seen post, created with its images (and, for a
+    video, its transcript to fetch) the first time."""
     if seen_post['kind'] == POST_KIND_REPLY:
         parent_post_id = seen_post['parent_post_id']
     else:
@@ -117,6 +120,8 @@ def store_post(seen_post):
     )
     if created:
         PostImage.objects.bulk_create([PostImage(post=post, source_url=url) for url in image_urls])
+        if post.platform == PLATFORM_YOUTUBE:
+            VideoTranscript.objects.create(post=post)
     return post
 
 
@@ -229,7 +234,7 @@ def extension_config(request):
         'mode': user_settings.mode,
         'pending_action': pending_action,
         'allow_reveal': user_settings.allow_reveal and not child_mode,
-        'platforms': [PLATFORM_REDDIT, PLATFORM_X],
+        'platforms': [PLATFORM_REDDIT, PLATFORM_X, PLATFORM_YOUTUBE],
     })
 
 

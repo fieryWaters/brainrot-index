@@ -5,9 +5,11 @@ from django.db import models
 
 PLATFORM_REDDIT = 'reddit'
 PLATFORM_X = 'x'
+PLATFORM_YOUTUBE = 'youtube'
 PLATFORM_CHOICES = [
     (PLATFORM_REDDIT, 'Reddit'),
     (PLATFORM_X, 'X'),
+    (PLATFORM_YOUTUBE, 'YouTube'),
 ]
 
 POST_KIND_POST = 'post'
@@ -26,6 +28,15 @@ IMAGE_STATUS_CHOICES = [
     (IMAGE_DOWNLOADED, 'Downloaded'),
     (IMAGE_FAILED, 'Failed'),
     (IMAGE_REJECTED, 'Rejected (host not allowed)'),
+]
+
+TRANSCRIPT_PENDING = 'pending'
+TRANSCRIPT_FETCHED = 'fetched'
+TRANSCRIPT_MISSING = 'missing'
+TRANSCRIPT_STATUS_CHOICES = [
+    (TRANSCRIPT_PENDING, 'Pending'),
+    (TRANSCRIPT_FETCHED, 'Fetched'),
+    (TRANSCRIPT_MISSING, 'Missing'),
 ]
 
 CLASSIFICATION_PENDING = 'pending'
@@ -93,6 +104,33 @@ class PostImage(models.Model):
 
     def __str__(self):
         return f"image {self.id} of {self.post} ({self.status})"
+
+
+class VideoTranscript(models.Model):
+    """The transcript of a YouTube video, fetched once, before the video is
+    classified. A video whose transcript cannot be had is classified on its
+    title and thumbnail, and missing_reason says why."""
+
+    post = models.OneToOneField(Post, on_delete=models.CASCADE, related_name='transcript')
+    status = models.CharField(max_length=16, choices=TRANSCRIPT_STATUS_CHOICES, default=TRANSCRIPT_PENDING)
+    language_code = models.CharField(max_length=16, blank=True, default='')
+    is_generated = models.BooleanField(null=True, blank=True)
+    # The transcript as YouTube gives it: [{"text", "start", "duration"}], times in seconds.
+    snippets = models.JSONField(default=list, blank=True)
+    missing_reason = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    fetched_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['id'], condition=models.Q(status=TRANSCRIPT_PENDING), name='pending_transcripts'),
+        ]
+
+    def text(self):
+        return ' '.join(snippet['text'] for snippet in self.snippets)
+
+    def __str__(self):
+        return f"transcript of {self.post} ({self.status})"
 
 
 class Plugin(models.Model):

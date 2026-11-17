@@ -28,7 +28,7 @@ class ExtensionTokenTests(TestCase):
             'mode': 'adult',
             'pending_action': 'allow',
             'allow_reveal': True,
-            'platforms': ['reddit', 'x'],
+            'platforms': ['reddit', 'x', 'youtube'],
         })
         stored_token.refresh_from_db()
         self.assertIsNotNone(stored_token.last_used_at)

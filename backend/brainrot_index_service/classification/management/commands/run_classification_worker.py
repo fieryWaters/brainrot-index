@@ -6,7 +6,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand
 from django.db import connection
 
-from classification.worker import classify_next_pending, download_next_pending_image
+from classification.worker import classify_next_pending, download_next_pending_image, download_next_pending_transcript
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +21,13 @@ HEARTBEAT_PATH = Path('/tmp/classification-worker-heartbeat')
 def work_forever():
     while True:
         try:
-            # Classifying comes first: archiving an original never delays a post.
-            found_work = classify_next_pending() or download_next_pending_image()
+            # A video's classifications wait for its transcript, so transcripts come
+            # first. Archiving an original never delays a post.
+            found_work = (
+                download_next_pending_transcript()
+                or classify_next_pending()
+                or download_next_pending_image()
+            )
             HEARTBEAT_PATH.touch()
         except Exception:
             # Usually the database restarting; drop the broken connection and try again.
@@ -35,7 +40,7 @@ def work_forever():
 
 
 class Command(BaseCommand):
-    help = "Runs pending classifications, then archives post images, 48 at a time."
+    help = "Fetches video transcripts, runs pending classifications, then archives post images, 48 at a time."
 
     def handle(self, *args, **options):
         threads = [threading.Thread(target=work_forever, daemon=True) for _ in range(WORKER_THREADS)]

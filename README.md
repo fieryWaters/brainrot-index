@@ -18,7 +18,10 @@ stored once (`Post`, with its images downloaded to the `post_images` volume).
 Each plugin (engagement bait, ragebait, brainrot, AI slop) is a rubric prompt
 with immutable versions; a `Classification` row per (post, plugin version) is
 the shared cache, so a post costs one model call per plugin version no matter
-how many users see it. The `worker` service takes pending rows from Postgres
+how many users see it. A YouTube video's transcript is fetched once by the
+worker (`VideoTranscript`) before the video is classified, and the model reads
+its first 2000 words; a video without one is classified on its title and
+thumbnail. The `worker` service takes pending rows from Postgres
 and calls the model; the endpoint waits up to 1.5 s so most posts come back
 done on the first call. Each user's threshold and blur/hide choice per plugin
 decide the action. An account may send `DAILY_NEW_POST_QUOTA` posts a day that

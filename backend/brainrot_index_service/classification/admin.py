@@ -9,6 +9,7 @@ from .models import (
     PostImage,
     UserPlugin,
     UserSettings,
+    VideoTranscript,
 )
 
 
@@ -19,13 +20,20 @@ class PostImageInline(admin.TabularInline):
     readonly_fields = fields
 
 
+class VideoTranscriptInline(admin.StackedInline):
+    model = VideoTranscript
+    extra = 0
+    fields = ['status', 'language_code', 'is_generated', 'missing_reason', 'fetched_at', 'snippets']
+    readonly_fields = fields
+
+
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
     list_display = ['__str__', 'kind', 'community', 'author', 'short_text', 'first_seen_at']
     list_filter = ['platform', 'kind']
     search_fields = ['post_id', 'parent_post_id', 'author', 'community', 'text']
     date_hierarchy = 'first_seen_at'
-    inlines = [PostImageInline]
+    inlines = [PostImageInline, VideoTranscriptInline]
 
     @admin.display(description='text')
     def short_text(self, post):
@@ -37,6 +45,14 @@ class PostImageAdmin(admin.ModelAdmin):
     list_display = ['id', 'post', 'status', 'byte_size', 'source_url', 'created_at']
     list_filter = ['status']
     search_fields = ['source_url', 'post__post_id']
+    raw_id_fields = ['post']
+
+
+@admin.register(VideoTranscript)
+class VideoTranscriptAdmin(admin.ModelAdmin):
+    list_display = ['id', 'post', 'status', 'language_code', 'is_generated', 'fetched_at']
+    list_filter = ['status', 'is_generated']
+    search_fields = ['post__post_id', 'missing_reason']
     raw_id_fields = ['post']
 
 

@@ -18,6 +18,7 @@ class ImageHostAllowlistTests(TestCase):
             'https://external-preview.redd.it/abc.jpg',
             'https://b.thumbs.redditmedia.com/abc.jpg',
             'https://pbs.twimg.com/media/ABC?format=jpg&name=small',
+            'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
         ]:
             self.assertTrue(image_url_is_allowed(url), url)
 

@@ -19,7 +19,9 @@ from .models import (
     CLASSIFICATION_DONE,
     CLASSIFICATION_FAILED,
     IMAGE_REJECTED,
+    PLATFORM_YOUTUBE,
     POST_KIND_REPLY,
+    TRANSCRIPT_FETCHED,
     Post,
 )
 
@@ -32,12 +34,14 @@ INFERENCE_SOURCE_LOCAL = 'local'
 MAX_IMAGES_PER_POST = 4
 MAX_TEXT_CHARACTERS = 6000
 MAX_PARENT_TEXT_CHARACTERS = 1000
+# The opening of a video's transcript is enough to judge it and keeps each call cheap.
+MAX_TRANSCRIPT_WORDS = 2000
 REQUEST_TIMEOUT_SECONDS = 60
 MAX_RESPONSE_TOKENS = 500
 # An invalid answer is retried once before the classification is marked failed.
 ATTEMPTS_PER_CLASSIFICATION = 2
 
-PLATFORM_NAMES = {'reddit': 'Reddit', 'x': 'X'}
+PLATFORM_NAMES = {'reddit': 'Reddit', 'x': 'X', 'youtube': 'YouTube'}
 
 RESPONSE_INSTRUCTIONS = """\
 Classify the single post the user sends against the rubric above. Judge only
@@ -83,9 +87,9 @@ def system_prompt(plugin_version):
     return plugin_version.rubric_prompt + '\n\n' + RESPONSE_INSTRUCTIONS.format(labels=labels)
 
 
-def describe_post(platform, community, kind, text, parent_text, image_count):
+def describe_post(platform, community, kind, text, parent_text, image_count, transcript=None):
     """The post as the model reads it. parent_text is None when a reply's
-    parent post is unknown."""
+    parent post is unknown. transcript is None for a post that is not a video."""
     lines = [f"Platform: {PLATFORM_NAMES[platform]}"]
     if community:
         lines.append(f"Community: {community}")
@@ -100,7 +104,24 @@ def describe_post(platform, community, kind, text, parent_text, image_count):
     lines.append(f"Images attached: {image_count}")
     lines.append("Text:")
     lines.append(text[:MAX_TEXT_CHARACTERS] or "(no text)")
+    if transcript is not None:
+        lines.append("Transcript:")
+        lines.append(transcript)
     return '\n'.join(lines)
+
+
+def transcript_for_model(post):
+    """The opening words of a video's transcript, "(not available)" when it has
+    none, or None for a post that is not a video."""
+    if post.platform != PLATFORM_YOUTUBE:
+        return None
+    video_transcript = post.transcript
+    if video_transcript.status != TRANSCRIPT_FETCHED:
+        return "(not available)"
+    words = video_transcript.text().split()
+    if len(words) > MAX_TRANSCRIPT_WORDS:
+        return ' '.join(words[:MAX_TRANSCRIPT_WORDS]) + " ..."
+    return ' '.join(words)
 
 
 def build_messages(plugin_version, post_description, image_urls):
@@ -223,7 +244,8 @@ def run_classification(classification):
     if post.kind == POST_KIND_REPLY:
         parent_text = stored_parent_text(post)
     post_description = describe_post(
-        post.platform, post.community, post.kind, post.text, parent_text, len(images_with_data))
+        post.platform, post.community, post.kind, post.text, parent_text, len(images_with_data),
+        transcript_for_model(post))
 
     messages_to_send = build_messages(
         plugin_version, post_description, [data_url for _, data_url in images_with_data])

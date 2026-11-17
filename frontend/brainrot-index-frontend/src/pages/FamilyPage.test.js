@@ -56,7 +56,7 @@ describe('FamilyPage', () => {
   it('offers to start a family or enter a code when there is none', async () => {
     familyAnswer = { role: 'superadmin', family: null }
     renderElement(mountFamilyPage().el)
-    expect(await screen.findByText('Start a family')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Start a family' })).toBeInTheDocument()
     expect(screen.getByLabelText('Invite code')).toBeInTheDocument()
   })
 

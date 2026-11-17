@@ -24,6 +24,10 @@ are not in the cache yet; past that, such posts come back `allow` with
 `"notice": "daily_limit_reached"` and are not stored, while cached posts are
 still answered.
 
+Extension calls are answered 402 once an account's 7-day trial has ended
+without a subscription; `billing.access.account_has_access` decides it. See
+`DEPLOY.md`, Payments.
+
 | Endpoint | Auth | Purpose |
 | --- | --- | --- |
 | `GET /api/extension/config/` | extension token, verified email | master switch, mode, pending action |
@@ -32,6 +36,11 @@ still answered.
 | `GET, PATCH /api/settings/` | session | `{enabled, mode, allow_reveal}` |
 | `GET /api/plugins/` | session | `{plugins: [{slug, name, description, enabled, threshold, flagged_action}]}` |
 | `PATCH /api/plugins/<slug>/` | session | change `enabled`, `threshold`, `flagged_action` |
+| `GET /api/billing/` | session | trial days left, subscription status, `has_access` |
+| `POST /api/billing/checkout/` | session | a Stripe Checkout address for the $5/month plan |
+| `POST /api/billing/checkout/reconcile/` | session | `{session_id}`: reads a finished Checkout from Stripe |
+| `POST /api/billing/portal/` | session | a Stripe Customer Portal address |
+| `POST /api/stripe/webhook/` | Stripe signature | subscription and invoice events |
 | `POST /api/feedback/` | session, extension token, or none (20 an hour per address) | a problem report, stamped with the running commit |
 
 ## Working through feedback

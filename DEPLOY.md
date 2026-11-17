@@ -111,6 +111,71 @@ error page.
 - Throttle counters live in the database cache table `django_cache`, made by
   the backend entrypoint (`createcachetable`).
 
+## Payments (Stripe, test mode)
+
+Every account gets a 7-day free trial when it is created, with no card. When
+the trial ends, `/api/extension/config/` and `/api/classify/` answer 402 and
+the dashboard and extension popup say "Your free trial has ended. Subscribe to
+continue." Subscribing goes through Stripe Checkout ($5/month); the dashboard's
+Manage subscription button opens the Stripe Customer Portal (cancel, change card,
+invoices). A cancellation keeps access until the end of the paid month.
+
+Stripe uses `STRIPE_TEST_SECRET_KEY` from `.env`. Only test-mode keys are
+accepted by `setup_stripe`. The Stripe account is shared with YouArt Studios,
+so Checkout and the portal show that account's business name until Brainrot
+Index has its own account or the name is changed in the Stripe dashboard.
+
+### First setup (once per Stripe account)
+
+    docker compose exec backend python manage.py setup_stripe
+
+It creates the "Brainrot Index" product with its $5/month price (lookup key
+`brainrot_index_monthly`) and this site's Customer Portal configuration. It is
+safe to run again; whatever exists is left alone.
+
+Until the webhook exists, the site still works: the page Checkout returns to
+asks the backend to read the finished payment from Stripe, the dashboard reads
+the subscription from Stripe each time it loads, and when a paid month seems
+over the backend asks Stripe whether it renewed.
+
+### Free accounts
+
+    docker compose exec backend python manage.py grant_comp you@example.com
+    docker compose exec backend python manage.py grant_comp someone@example.com --revoke
+
+A comp account is never asked to pay. The admin at `/admin/` lists every
+subscription and the Stripe events received.
+
+### Go-live: the webhook (once the site is public)
+
+Stripe can only deliver webhooks to a public address, so this waits for
+`brainrotindex.com` (see Public address above).
+
+1. Deploy with `SITE_URL=https://brainrotindex.com`, so Checkout and the
+   portal return to the public site.
+2. Create the webhook endpoint and put its signing secret into `.env` without
+   it appearing on screen. Run from this checkout on spark:
+
+       secret=$(docker compose exec -T backend python manage.py setup_stripe --webhook-url https://brainrotindex.com/api/stripe/webhook/) && sed -i "s|^STRIPE_WEBHOOK_SECRET=.*|STRIPE_WEBHOOK_SECRET=${secret}|" .env; unset secret
+
+   With `--webhook-url` the command writes only the secret to standard output
+   (messages go to standard error) and refuses to run unless standard output is
+   a pipe. Stripe shows a signing secret only when the endpoint is created; if
+   an endpoint for that address exists already, the command stops and says so.
+3. Check that the line is filled without printing it:
+   `grep -c '^STRIPE_WEBHOOK_SECRET=whsec_' .env` prints `1`.
+4. `bash deploy.sh`, so the backend reads the new secret.
+5. In the Stripe dashboard (test mode), Developers -> Webhooks -> the new
+   endpoint -> Send test event. A `customer.subscription.updated` test event
+   for a customer that is not ours is answered 200 and ignored.
+
+### Go-live: live payments (not done)
+
+No live keys exist. Taking real money needs a live secret key in `.env` (the
+backend reads only `STRIPE_TEST_SECRET_KEY` today, and `setup_stripe` refuses
+non-test keys), then `setup_stripe` and the webhook steps above run again
+against the live account.
+
 ## Email
 
 `EMAIL_DELIVERY=console` (the default) writes every email, links included, to
@@ -135,7 +200,7 @@ plugins, classifications, user settings, invite codes, and feedback. Make an acc
 ## Useful commands
 
 - Logs: `docker compose logs -f web backend`
-- Backend tests: `docker compose exec backend python manage.py test api classification feedback`
+- Backend tests: `docker compose exec backend python manage.py test api billing classification feedback`
 - Evaluate a model against `eval/dataset.jsonl` (the folder is mounted, not built in; see `eval/README.md`): `docker compose run --rm --no-deps --user "$(id -u):$(id -g)" -v "$PWD/eval:/app/eval" --entrypoint python backend manage.py evaluate_plugins --dataset /app/eval/dataset.jsonl --inference-source openrouter --model google/gemini-2.5-flash-lite`
 - Worker logs: `docker compose logs -f worker`
 - Local model logs: `docker compose logs -f inference`

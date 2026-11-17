@@ -68,6 +68,15 @@ def payments_not_set_up():
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def billing_status(request):
+    # Changes made in the Customer Portal (a cancellation, a new card) reach
+    # the site by webhook, which cannot arrive while the site is private, so
+    # the dashboard reads the subscription from Stripe each time it loads.
+    subscription = subscription_for_user(request.user)
+    if subscription.stripe_subscription_id != '':
+        try:
+            refresh_subscription(subscription.stripe_subscription_id)
+        except stripe.StripeError:
+            logger.warning('Could not refresh subscription of user %s from Stripe', request.user.id)
     return Response(billing_payload(request.user))
 
 

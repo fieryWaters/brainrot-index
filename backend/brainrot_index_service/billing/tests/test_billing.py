@@ -222,6 +222,26 @@ class BillingTests(TestCase):
         self.assertEqual(self.subscription().status, STATUS_CANCELED)
         self.assertEqual(client.v1.subscriptions.retrieve.call_count, 2)
 
+    def test_dashboard_shows_portal_cancellation_without_webhook(self):
+        self.link_stripe_customer()
+        Subscription.objects.filter(user=self.user).update(
+            status=STATUS_ACTIVE,
+            stripe_subscription_id=SUBSCRIPTION_ID,
+            current_period_end=timezone.now() + timedelta(days=30),
+        )
+        client = MagicMock()
+        cancel_date = timezone.now() + timedelta(days=30)
+        canceled_in_portal = stripe_subscription(period_end=cancel_date)
+        canceled_in_portal['cancel_at'] = unix(cancel_date)
+        client.v1.subscriptions.retrieve.return_value = canceled_in_portal
+        self.client.force_login(self.user)
+
+        with fake_stripe(client):
+            billing = self.client.get(reverse('billing_status')).json()
+
+        self.assertTrue(billing['cancel_at_period_end'])
+        self.assertTrue(billing['has_access'])
+
     def test_renewal_without_webhook_keeps_access(self):
         self.link_stripe_customer()
         Subscription.objects.filter(user=self.user).update(

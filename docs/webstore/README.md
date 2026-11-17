@@ -50,7 +50,8 @@ made-up posts, which each picture says in a footnote.
    sign up `webstore-review@brainrotindex.com` (or any address you control) on the site, then
    `docker compose exec backend python manage.py mark_email_verified webstore-review@brainrotindex.com`
    and `docker compose exec backend python manage.py grant_comp webstore-review@brainrotindex.com`.
-   Keep the password for the Test instructions field.
+   Keep the password for the Test instructions field, in `docs/webstore/reviewer-account.local.txt`
+   (git-ignored) if it is kept in the checkout.
 5. **Build the zip** (see above) from the commit being submitted.
 6. **New item.** In the dashboard press **New item** and upload the zip.
 7. **Fill in the tabs** from the sections below: **Store listing** (text and images), **Privacy**,

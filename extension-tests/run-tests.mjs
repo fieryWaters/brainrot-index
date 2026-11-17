@@ -1,8 +1,8 @@
-// End-to-end tests of the extension in headed Brave against live Reddit and X.
+// End-to-end tests of the extension in headed Brave against live Reddit, X and YouTube.
 //
 // Usage:
-//   node run-tests.mjs [reddit] [x]
-//     Runs the named groups (both when none are named) against the mock server, which it starts.
+//   node run-tests.mjs [connect] [reddit] [x] [youtube]
+//     Runs the named groups (all when none are named) against the mock server, which it starts.
 //   BRAINROT_SERVER=https://brainrot.jacob-waters.com BRAINROT_TOKEN=<token> node run-tests.mjs
 //     Runs against a real server. The connect test is skipped (the real site needs a login), and the
 //     checks that depend on the mock's fixed rules (pending first, at least one blur and one hide)
@@ -18,7 +18,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { makeFreshProfileDir, launchBrave, launchBraveWithoutExtension, loadExtensionLater, EXTENSION_DIR } from "./browser.mjs";
+import { makeFreshProfileDir, withBrave, launchBraveWithoutExtension, loadExtensionLater, EXTENSION_DIR } from "./browser.mjs";
 import { startMockServer, MOCK_TOKEN, MOCK_CONFIG } from "./mock-server.mjs";
 
 const X_TEST_PROFILE_DIR = "/Users/jacob/git-repos/brainrot-test-profile";
@@ -404,12 +404,21 @@ function checkFeedbackCall(feedbackCall, expectedFields) {
 const UNFILTERED_POST_SELECTOR = {
   reddit: "shreddit-post:not([data-brainrot-index-action])",
   x: 'article[data-testid="tweet"]:not([data-brainrot-index-action]):has(a[href*="/status/"] time)',
+  youtube: 'ytd-page-manager > :not([hidden]) yt-lockup-view-model:not([data-brainrot-index-action]):has(h3 a[href^="/watch?v="]):not(:has([class*="ytLockupViewModelCollection"]))',
 };
+
+// Video tiles on YouTube.
+const YOUTUBE_TILE_SELECTOR = "yt-lockup-view-model, ytd-video-renderer, ytd-grid-video-renderer, ytm-shorts-lockup-view-model";
 
 // Runs in the page: the site's id for a post element.
 function readPostIdInPage(postElement, platform) {
   if (platform === "reddit") {
     return postElement.id;
+  }
+  if (platform === "youtube") {
+    const link = postElement.querySelector('a[href^="/watch?v="], a[href^="/shorts/"]');
+    const url = new URL(link.getAttribute("href"), location.origin);
+    return url.pathname === "/watch" ? url.searchParams.get("v") : url.pathname.split("/")[2];
   }
   return postElement.querySelector("a[href*='/status/'] time").closest("a").getAttribute("href").split("/")[3];
 }
@@ -547,6 +556,10 @@ function findTreatedElementInPage(postId) {
     if (timeLink && timeLink.getAttribute("href").split("/status/")[1].split("/")[0] === postId) {
       return element.dataset.brainrotIndexRevealed ?? "no";
     }
+    const videoLink = element.querySelector('a[href^="/watch?v="], a[href^="/shorts/"]');
+    if (videoLink && new RegExp("(v=|/shorts/)" + postId + "(&|$)").test(videoLink.getAttribute("href"))) {
+      return element.dataset.brainrotIndexRevealed ?? "no";
+    }
   }
   return null;
 }
@@ -618,9 +631,9 @@ async function testReportWrongControl(page, feedbackCalls, platform) {
   const form = notice.locator(".brainrot-index-report-form");
   check(await form.count() === 1, "Wrong? opens the report form on the label");
   check(await form.locator('.brainrot-index-choice[aria-pressed="true"]').textContent() === "Shown", "Shown is chosen");
-  // Real key presses on Reddit check that they stay in the form. On X, where single keys like and
-  // repost, the text is filled in without key presses so the test account can never act.
-  if (platform === "reddit") {
+  // Real key presses on Reddit and YouTube check that they stay in the form. On X, where single keys
+  // like and repost, the text is filled in without key presses so the test account can never act.
+  if (platform !== "x") {
     await form.locator(".brainrot-index-reason").pressSequentially("automated test: fine post");
   } else {
     await form.locator(".brainrot-index-reason").fill("automated test: fine post");
@@ -731,6 +744,22 @@ function readTreatmentsInPage(platform) {
       if (body !== null) {
         treatments.push({ id: comment.getAttribute("thingid"), kind: "reply", action: body.dataset.brainrotIndexAction ?? "allow" });
       }
+    }
+  } else if (platform === "youtube") {
+    // A tile the extension left untreated counts only once it has been on screen (marked by
+    // recordTileTimesInPage). The extension applies an answer to a tile when the tile comes near the
+    // screen, so a tile far below, or in a page the reader left, can still show nothing for a video
+    // another tile already got an answer for.
+    for (const tile of document.querySelectorAll("yt-lockup-view-model, ytd-video-renderer, ytd-grid-video-renderer, ytm-shorts-lockup-view-model")) {
+      const page = tile.closest("ytd-browse, ytd-search, ytd-watch-flexy");
+      const link = tile.querySelector('a[href^="/watch?v="], a[href^="/shorts/"]');
+      if (page === null || page.getClientRects().length === 0 || link === null
+          || (tile.dataset.testSeenOnScreen === undefined && tile.dataset.brainrotIndexAction === undefined)) {
+        continue;
+      }
+      const url = new URL(link.getAttribute("href"), location.origin);
+      const videoId = url.pathname === "/watch" ? url.searchParams.get("v") : url.pathname.split("/")[2];
+      treatments.push({ id: videoId, action: tile.dataset.brainrotIndexAction ?? "allow" });
     }
   } else {
     for (const tweet of document.querySelectorAll('article[data-testid="tweet"]')) {
@@ -916,7 +945,8 @@ async function checkFeed(page, serviceWorker, classifyCalls, platform, feedUrl) 
 // extension switched off, scrolls down, then switches it on, so the posts above the viewport are marked
 // pending and answered while the reader looks further down. It follows one visible post's position.
 async function testScrollStability(context, page, serviceWorker, platform, feedUrl) {
-  const postSelector = platform === "reddit" ? "shreddit-post" : 'article[data-testid="tweet"]';
+  const postSelectorByPlatform = { reddit: "shreddit-post", x: 'article[data-testid="tweet"]', youtube: YOUTUBE_TILE_SELECTOR };
+  const postSelector = postSelectorByPlatform[platform];
   await serviceWorker.evaluate(() => chrome.storage.session.clear());
   await serviceWorker.evaluate(() => chrome.storage.local.set({ extensionEnabled: false }));
   await page.goto(feedUrl, { waitUntil: "domcontentloaded" });
@@ -1152,8 +1182,7 @@ async function testScrollPerformance(context, serviceWorker, extensionId, classi
 }
 
 async function runRedditGroup() {
-  const { context, serviceWorker, extensionId } = await launchBrave(makeFreshProfileDir("reddit"));
-  try {
+  await withBrave(makeFreshProfileDir("reddit"), {}, async ({ context, serviceWorker, extensionId }) => {
     const classifyCalls = recordClassifyCalls(context);
     const feedbackCalls = recordFeedbackCalls(context);
     const page = context.pages()[0] ?? (await context.newPage());
@@ -1196,9 +1225,7 @@ async function runRedditGroup() {
       await runTest("7b. child mode blurs pending posts and removes reveal", () =>
         testChildMode(page, serviceWorker, classifyCalls, "https://www.reddit.com/r/popular/"));
     }
-  } finally {
-    await context.close();
-  }
+  });
 }
 
 // X removes tweets far from the viewport and creates new elements when they scroll back. The test marks
@@ -1318,8 +1345,7 @@ async function testXDiscoverMore(page, classifyCalls) {
 }
 
 async function runXGroup() {
-  const { context, serviceWorker, extensionId } = await launchBrave(X_TEST_PROFILE_DIR, { signedInProfile: true });
-  try {
+  await withBrave(X_TEST_PROFILE_DIR, { signedInProfile: true }, async ({ context, serviceWorker, extensionId }) => {
     await connectExtension(context, serviceWorker, extensionId, "X profile");
     await serviceWorker.evaluate(() => chrome.storage.session.clear());
     const classifyCalls = recordClassifyCalls(context);
@@ -1359,9 +1385,294 @@ async function runXGroup() {
     await runTest("4h. X scroll stability", () => testScrollStability(context, page, serviceWorker, "x", "https://x.com/home"));
     await runTest("4f. scroll performance on X", () =>
       testScrollPerformance(context, serviceWorker, extensionId, classifyCalls, "https://x.com/home"));
-  } finally {
-    await context.close();
+  });
+}
+
+// YouTube shows a logged-out profile an empty home page until it has watched something, so the
+// YouTube group first plays a video, muted, for half a minute. It opens on the watch page, whose
+// "up next" column is one of the surfaces under test.
+const YOUTUBE_FIRST_VIDEO_URL = "https://www.youtube.com/watch?v=UYhKDweME3A";
+
+// Brave's first navigation in a new profile is sometimes aborted; it is tried once more.
+async function gotoFirstPage(page, url) {
+  try {
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+  } catch (abortedNavigation) {
+    await page.waitForTimeout(2000);
+    await page.goto(url, { waitUntil: "domcontentloaded" });
   }
+}
+
+async function playFirstVideoForHalfAMinute(page) {
+  await gotoFirstPage(page, YOUTUBE_FIRST_VIDEO_URL);
+  await page.locator("video").waitFor({ state: "attached", timeout: 20000 });
+  await page.evaluate(() => {
+    const video = document.querySelector("video");
+    video.muted = true;
+    video.play();
+  });
+  await page.waitForTimeout(30000);
+}
+
+// Added to every page of the YouTube profile: for each video id, when a tile showing it first came
+// on screen, and when the extension first blurred or hid it (labelAt). Times are milliseconds since
+// the epoch, so they compare with the classify calls' times. A tile that has been on screen is marked
+// data-test-seen-on-screen.
+function recordTileTimesInPage() {
+  const tileSelector = "yt-lockup-view-model, ytd-video-renderer, ytd-grid-video-renderer, ytm-shorts-lockup-view-model";
+  const timesByVideoId = {};
+  window.brainrotTestTileTimes = timesByVideoId;
+  function videoIdOf(tile) {
+    const link = tile.querySelector('a[href^="/watch?v="], a[href^="/shorts/"]');
+    if (link === null) {
+      return null;
+    }
+    const url = new URL(link.getAttribute("href"), location.origin);
+    return url.pathname === "/watch" ? url.searchParams.get("v") : url.pathname.split("/")[2];
+  }
+  const onScreenObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      const videoId = videoIdOf(entry.target);
+      if (entry.isIntersecting) {
+        entry.target.dataset.testSeenOnScreen = "yes";
+      }
+      if (entry.isIntersecting && videoId !== null && timesByVideoId[videoId] === undefined) {
+        timesByVideoId[videoId] = { seenAt: Date.now(), labelAt: null };
+      }
+    }
+  });
+  new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type === "attributes") {
+        const action = mutation.target.dataset.brainrotIndexAction;
+        const times = timesByVideoId[videoIdOf(mutation.target)];
+        if ((action === "blur" || action === "hide") && times !== undefined && times.labelAt === null) {
+          times.labelAt = Date.now();
+        }
+        continue;
+      }
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+          continue;
+        }
+        if (node.matches(tileSelector)) {
+          onScreenObserver.observe(node);
+        }
+        for (const tile of node.querySelectorAll(tileSelector)) {
+          onScreenObserver.observe(tile);
+        }
+      }
+    }
+  }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-brainrot-index-action"] });
+}
+
+// The time from a tile coming on screen to its answer being shown: for a flagged video the label
+// appearing, for an allowed one the answer arriving. An answer shown before the tile came on screen
+// counts as 0.
+async function reportTileToAnswerTimes(page, classifyCalls, surfaceName) {
+  const timesByVideoId = await page.evaluate(() => window.brainrotTestTileTimes);
+  const doneAtById = new Map();
+  for (const call of classifyCalls) {
+    for (const result of call.results) {
+      if (result.status === "done" && !doneAtById.has(result.post_id)) {
+        doneAtById.set(result.post_id, call.answeredAt);
+      }
+    }
+  }
+  const allWaits = [];
+  const labelWaits = [];
+  for (const [videoId, times] of Object.entries(timesByVideoId)) {
+    if (times.labelAt !== null) {
+      labelWaits.push(Math.max(0, times.labelAt - times.seenAt));
+      allWaits.push(Math.max(0, times.labelAt - times.seenAt));
+    } else if (doneAtById.has(videoId)) {
+      allWaits.push(Math.max(0, doneAtById.get(videoId) - times.seenAt));
+    }
+  }
+  const median = (waits) => waits.length === 0 ? "none" : [...waits].sort((a, b) => a - b)[Math.floor(waits.length / 2)] + " ms";
+  console.log(`    tile on screen to answer shown (${surfaceName}): median ${median(allWaits)} over ${allWaits.length} tiles; `
+    + `to label shown: median ${median(labelWaits)} over ${labelWaits.length} flagged tiles`);
+}
+
+// One YouTube surface: every tile sent has a complete record, every answered tile shows its answer,
+// scrolling (when scrollTimes is not 0) sends more, and nothing answered is sent again after a reload.
+// The first video's watch page is already open, and every classify call so far came from it; its
+// "up next" column is all sent at once.
+async function checkYouTubeSurface(page, serviceWorker, classifyCalls, url, scrollTimes) {
+  let callsBefore = classifyCalls.length;
+  if (url === YOUTUBE_FIRST_VIDEO_URL) {
+    callsBefore = 0;
+  } else {
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+  }
+  await waitUntil(() => classifyCalls.length > callsBefore, 20000);
+  await waitForAnswersToSettle(page, classifyCalls);
+  const videos = allSentPosts(classifyCalls.slice(callsBefore));
+  check(videos.length > 0, `videos were sent (${videos.length})`);
+  check(videos.every((video) => video.platform === "youtube" && video.kind === "post" && /^[\w-]{11}$/.test(video.post_id)),
+    "every record is a YouTube post with an 11-character video id");
+  const incomplete = videos.filter((video) => video.text === "" || !video.url.endsWith(video.post_id));
+  check(incomplete.length === 0, "every record has a title and the video's address " + JSON.stringify(incomplete.slice(0, 2)));
+  check(videos.every((video) => video.image_urls.length === 1 && video.image_urls[0] === `https://i.ytimg.com/vi/${video.post_id}/hqdefault.jpg`),
+    "every record has the video's standard thumbnail");
+  console.log(`    records with a channel: ${videos.filter((video) => video.author !== "").length} of ${videos.length}`);
+  console.log("    sample record: " + JSON.stringify(videos[0]).slice(0, 400));
+  checkBatches(classifyCalls.slice(callsBefore));
+  const { actionCounts } = await checkPageMatchesAnswers(page, serviceWorker, "youtube");
+  const counts = { blur: actionCounts.blur, hide: actionCounts.hide };
+
+  if (scrollTimes > 0) {
+    const sentBeforeScroll = new Set(allSentPosts(classifyCalls).map((post) => post.post_id));
+    await scrollDown(page, scrollTimes);
+    await waitForAnswersToSettle(page, classifyCalls);
+    const newlySent = allSentPosts(classifyCalls).filter((post) => !sentBeforeScroll.has(post.post_id));
+    check(newlySent.length > 0, `scrolling sent new videos (${newlySent.length})`);
+    const afterScroll = await checkPageMatchesAnswers(page, serviceWorker, "youtube");
+    counts.blur = counts.blur + afterScroll.actionCounts.blur;
+    counts.hide = counts.hide + afterScroll.actionCounts.hide;
+  }
+  checkPendingThenDone(classifyCalls.slice(callsBefore));
+  checkReasksDoNotOverlap(classifyCalls.slice(callsBefore));
+  checkActedOn(counts, "video");
+  await reportTileToAnswerTimes(page, classifyCalls.slice(callsBefore), url);
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(6000);
+  checkNoResends(classifyCalls);
+}
+
+// YouTube's single-page app moves between pages without loading a document and fills tiles it
+// already has with other videos. After each move, every answered tile on screen must show its own
+// video's answer.
+async function testYouTubeNavigation(page, serviceWorker, classifyCalls) {
+  await page.goto("https://www.youtube.com/", { waitUntil: "domcontentloaded" });
+  await waitForAnswersToSettle(page, classifyCalls);
+  await page.locator("ytd-browse yt-lockup-view-model:not([data-brainrot-index-action]) h3 a").first().click();
+  await page.waitForURL(/\/watch\?v=/, { timeout: 15000, waitUntil: "commit" });
+  await waitForAnswersToSettle(page, classifyCalls);
+  console.log("    opened a video from the home feed");
+  await checkPageMatchesAnswers(page, serviceWorker, "youtube");
+  await page.goBack();
+  await page.waitForTimeout(3000);
+  await waitForAnswersToSettle(page, classifyCalls);
+  console.log("    went back to the home feed");
+  await checkPageMatchesAnswers(page, serviceWorker, "youtube");
+  for (const query of ["easy dinner recipes", "funny cats"]) {
+    await page.fill("input[name=search_query]", query);
+    await page.keyboard.press("Enter");
+    await page.waitForURL(/\/results\?search_query=/, { timeout: 15000, waitUntil: "commit" });
+    await page.waitForTimeout(3000);
+    await waitForAnswersToSettle(page, classifyCalls);
+    console.log(`    searched for "${query}" from the search box`);
+    await checkPageMatchesAnswers(page, serviceWorker, "youtube");
+  }
+  await page.locator("ytd-topbar-logo-renderer a").first().click();
+  await page.waitForTimeout(3000);
+  await waitForAnswersToSettle(page, classifyCalls);
+  console.log("    went home with the logo");
+  await checkPageMatchesAnswers(page, serviceWorker, "youtube");
+}
+
+// Hovering a tile plays a preview over it; over a blurred tile the preview must not be shown.
+async function testNoPreviewOverBlurredTile(page) {
+  await page.goto("https://www.youtube.com/", { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(8000);
+  const blurredTile = page.locator('ytd-rich-item-renderer yt-lockup-view-model[data-brainrot-index-action="blur"]:not([data-brainrot-index-revealed])').first();
+  if (await blurredTile.count() === 0) {
+    reportMissingTreatment("blur");
+    return;
+  }
+  await blurredTile.evaluate((tile) => tile.scrollIntoView({ block: "center" }));
+  await page.waitForTimeout(800);
+  const box = await blurredTile.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
+  await page.waitForTimeout(4000);
+  const shownPreviews = await page.evaluate(() => [...document.querySelectorAll("ytd-video-preview")]
+    .filter((preview) => preview.getBoundingClientRect().width > 0)
+    .map((preview) => [...document.querySelectorAll(":hover")].slice(-3).map((element) => element.tagName).join(" > ")));
+  await page.mouse.move(5, 5);
+  check(shownPreviews.length === 0, "no video preview is shown over a blurred tile " + JSON.stringify(shownPreviews));
+}
+
+// Runs in the page: the relative luminance (0 dark to 1 light) of an element's text colour.
+function readTextLuminance(element) {
+  const [red, green, blue] = getComputedStyle(element).color.match(/\d+/g).map(Number);
+  return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+}
+
+// YouTube keeps the reader's theme in its PREF cookie, as the "f6" field of "name=value&..." text;
+// 400 is dark. Answers the cookie as it was, to put back afterwards.
+async function setYouTubeTheme(context, themeValue) {
+  const cookies = await context.cookies("https://www.youtube.com");
+  const pref = cookies.find((cookie) => cookie.name === "PREF") ?? { name: "PREF", value: "", domain: ".youtube.com", path: "/", secure: true };
+  const fields = new URLSearchParams(pref.value);
+  fields.set("f6", themeValue);
+  await context.addCookies([{ ...pref, value: fields.toString() }]);
+  return pref;
+}
+
+// The labels read on YouTube's dark theme: a line of its own takes light text, the label over a
+// blurred tile keeps its own light-on-dark colours.
+async function testYouTubeDarkTheme(context, page, classifyCalls) {
+  const prefBefore = await setYouTubeTheme(context, "400");
+  try {
+    await page.goto("https://www.youtube.com/", { waitUntil: "domcontentloaded" });
+    await waitForAnswersToSettle(page, classifyCalls);
+    await scrollDown(page, 2);
+    check(await page.evaluate(() => document.documentElement.hasAttribute("dark")), "YouTube shows its dark theme");
+    const overLabel = page.locator(".brainrot-index-notice-over-post").first();
+    if (await overLabel.count() === 1) {
+      check(await overLabel.evaluate(readTextLuminance) > 0.8, "the label over a blurred tile has light text");
+    }
+    const ownLine = page.locator("ytd-page-manager > :not([hidden]) .brainrot-index-notice:not(.brainrot-index-notice-over-post)").first();
+    if (await ownLine.count() === 0) {
+      reportMissingTreatment("hide");
+      return;
+    }
+    await ownLine.evaluate((line) => line.scrollIntoView({ block: "center" }));
+    await page.waitForTimeout(800);
+    check(await ownLine.evaluate(readTextLuminance) > 0.8, "a hidden tile's line has light text on the dark page");
+    await saveScreenshotOfFilteredPost(page, "9h-youtube-dark-theme.png");
+  } finally {
+    if (prefBefore.value === "") {
+      await setYouTubeTheme(context, "0");
+    } else {
+      await context.addCookies([prefBefore]);
+    }
+  }
+}
+
+async function runYouTubeGroup() {
+  await withBrave(makeFreshProfileDir("youtube"), {}, async ({ context, serviceWorker, extensionId }) => {
+    await context.addInitScript(recordTileTimesInPage);
+    const classifyCalls = recordClassifyCalls(context);
+    const feedbackCalls = recordFeedbackCalls(context);
+    const page = context.pages()[0] ?? (await context.newPage());
+    await connectExtension(context, serviceWorker, extensionId, "YouTube profile");
+    await playFirstVideoForHalfAMinute(page);
+
+    await runSurfaceTest("9a. YouTube watch page: up next", classifyCalls, () =>
+      checkYouTubeSurface(page, serviceWorker, classifyCalls, YOUTUBE_FIRST_VIDEO_URL, 0), page);
+    await runSurfaceTest("9b. YouTube home feed", classifyCalls, () =>
+      checkYouTubeSurface(page, serviceWorker, classifyCalls, "https://www.youtube.com/", 2), page);
+    await runTest("9c. YouTube reveal: Show and Blur again on a blurred tile", () => testRevealBlurredPost(page));
+    await runTest("9d. YouTube reveal: Show and Hide again on a hidden tile", () => testRevealHiddenPost(page));
+    await runTest("9e. YouTube reveal: a click on a blurred tile reveals it without opening the video", () => testClickOnBlurredPost(page));
+    await runTest("9f. YouTube feedback: Wrong? control", () => testReportWrongControl(page, feedbackCalls, "youtube"));
+    await runTest("9g. YouTube feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "youtube"));
+    await runTest("9i. YouTube: no video preview over a blurred tile", () => testNoPreviewOverBlurredTile(page));
+    await runSurfaceTest("9j. YouTube search results", classifyCalls, () =>
+      checkYouTubeSurface(page, serviceWorker, classifyCalls, "https://www.youtube.com/results?search_query=minecraft", 2), page);
+    await runTest("9k. YouTube: answers follow the video through in-app navigation", () =>
+      testYouTubeNavigation(page, serviceWorker, classifyCalls));
+    await runTest("9h. YouTube dark theme labels", () => testYouTubeDarkTheme(context, page, classifyCalls));
+    await runTest("9l. YouTube: the grid does not move when answers arrive", () =>
+      testScrollStability(context, page, serviceWorker, "youtube", "https://www.youtube.com/"));
+    if (usingMockServer) {
+      await runTest("9m. scroll performance on YouTube", () =>
+        testScrollPerformance(context, serviceWorker, extensionId, classifyCalls, "https://www.youtube.com/"));
+    }
+  });
 }
 
 function pgrepFinds(pattern) {
@@ -1373,7 +1684,7 @@ function pgrepFinds(pattern) {
 }
 
 const requestedGroups = process.argv.slice(2);
-const groupsToRun = requestedGroups.length > 0 ? requestedGroups : ["connect", "reddit", "x"];
+const groupsToRun = requestedGroups.length > 0 ? requestedGroups : ["connect", "reddit", "x", "youtube"];
 const mockServer = usingMockServer ? await startMockServer(MOCK_PORT) : null;
 console.log("server: " + serverAddress + (usingMockServer ? " (mock)" : ""));
 try {
@@ -1389,6 +1700,9 @@ try {
   }
   if (groupsToRun.includes("reddit")) {
     await runRedditGroup();
+  }
+  if (groupsToRun.includes("youtube")) {
+    await runYouTubeGroup();
   }
 } finally {
   if (mockServer !== null) {

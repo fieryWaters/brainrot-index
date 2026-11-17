@@ -23,7 +23,7 @@ export const MOCK_CONFIG = {
   mode: "adult",
   pending_action: "blur",
   allow_reveal: true,
-  platforms: ["reddit", "x"],
+  platforms: ["reddit", "x", "youtube"],
 };
 
 const CONNECT_PAGE = `<!doctype html>

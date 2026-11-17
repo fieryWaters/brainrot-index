@@ -1,7 +1,7 @@
 # Extension tests
 
 End-to-end tests for the browser extension in `../extension/`, run in headed Brave against live
-Reddit and X. Headed because Reddit and X block headless browsers; Brave because branded Google
+Reddit, X and YouTube. Headed because Reddit and X block headless browsers; Brave because branded Google
 Chrome ignores `--load-extension`.
 
 ## Setup
@@ -15,6 +15,7 @@ Chrome ignores `--load-extension`.
     npm test -- connect   # connecting from a website tab opened before the extension was installed
     npm test -- reddit    # Reddit only: load, connect, feed, comments, feedback, reveal, performance
     npm test -- x         # X only: home feed, recycled tweets, feedback, reveal, replies, performance
+    npm test -- youtube   # YouTube only: watch page, home, search, reveal, feedback, navigation, dark theme
 
 The connect group opens https://brainrot.jacob-waters.com without signing in, even with the mock
 server, because the extension's default address is the only one it adds its listener to on install.
@@ -45,7 +46,7 @@ logged-in website session for the same account:
     BRAINROT_SERVER=... BRAINROT_TOKEN=... BRAINROT_SESSION_COOKIE=<sessionid> BRAINROT_CSRF_TOKEN=<csrftoken> npm test
 
 Against a real server the runner prints, for each surface (Reddit feed, Reddit comments, X feed,
-X replies): posts sent, how many were done on the first ask, the time from first send to done, the
+X replies, YouTube watch page, home and search): posts sent, how many were done on the first ask, the time from first send to done, the
 flags by plugin, and a few flagged examples.
 
 `BRAINROT_ONLY=4g npm test -- x` runs only the tests whose names start with "4g"; several prefixes
@@ -66,9 +67,16 @@ token is printed or saved. It needs `ssh spark` to work from this Mac.
 ## Profiles
 
 - Reddit tests use a new empty profile in `.profiles/` (git-ignored) on every run.
+- YouTube tests also use a new empty profile, logged out. YouTube shows such a profile an empty home
+  page until it has watched something, so the group starts by playing a video, muted, for 30 seconds.
+  For each YouTube surface the runner prints the median time from a tile coming on screen to its
+  answer being shown (to its label, for flagged videos).
 - X tests use the signed-in profile `/Users/jacob/git-repos/brainrot-test-profile`. They are read
   only. If a Brave window already has that profile open, the X group is reported as failed rather
   than run.
+
+Every browser a script opens is closed when the script ends or fails (`withBrave` in `browser.mjs`),
+and any still open after an hour is closed by a timer.
 
 ## Other scripts
 

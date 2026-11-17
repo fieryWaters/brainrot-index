@@ -1,6 +1,6 @@
 // Runs the extension tests against the live Brainrot Index server with a brand-new test account.
 //
-// Usage: node run-live-tests.mjs [reddit] [x] [--probe-only]
+// Usage: node run-live-tests.mjs [reddit] [x] [youtube] [--probe-only]
 //
 // 1. Makes a single-use invite code over `ssh spark`, signs up e2e+<random>@brainrotindex.com with it
 //    and a random password, reads the verification link from

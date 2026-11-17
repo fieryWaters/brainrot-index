@@ -7,6 +7,19 @@ import path from "node:path";
 export const TESTS_DIR = path.dirname(new URL(import.meta.url).pathname);
 export const EXTENSION_DIR = path.resolve(TESTS_DIR, "..", "extension");
 const BRAVE_BINARY = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
+// No test run takes this long; a browser still open after it was left behind by a stuck run.
+const MAX_BROWSER_LIFETIME_MS = 60 * 60 * 1000;
+
+// Closes the browser once it has been open for MAX_BROWSER_LIFETIME_MS. The timer does not keep the
+// test process alive. Callers still close the browser in a finally block when they are done.
+function closeWhenLeftOpen(context) {
+  const timer = setTimeout(() => {
+    console.log("closing a Brave window left open for an hour");
+    context.close();
+  }, MAX_BROWSER_LIFETIME_MS);
+  timer.unref();
+  context.on("close", () => clearTimeout(timer));
+}
 
 // A new empty profile inside extension-tests/.profiles/, so the owner's real profiles are never used.
 export function makeFreshProfileDir(name) {
@@ -35,30 +48,50 @@ export async function launchBrave(profileDir, { signedInProfile = false } = {}) 
     ],
     viewport: { width: 1280, height: 900 },
   });
-  let serviceWorker = context.serviceWorkers()[0];
-  if (serviceWorker === undefined) {
-    serviceWorker = await context.waitForEvent("serviceworker", { timeout: 15000 });
+  closeWhenLeftOpen(context);
+  // A browser whose extension never started is closed here, since the caller never receives it.
+  try {
+    let serviceWorker = context.serviceWorkers()[0];
+    if (serviceWorker === undefined) {
+      serviceWorker = await context.waitForEvent("serviceworker", { timeout: 15000 });
+    }
+    if (signedInProfile) {
+      const reloadedWorker = context.waitForEvent("serviceworker", { timeout: 15000 });
+      await loadExtensionLater(context);
+      serviceWorker = await reloadedWorker;
+    }
+    const extensionId = new URL(serviceWorker.url()).host;
+    return { context, serviceWorker, extensionId };
+  } catch (error) {
+    await context.close();
+    throw error;
   }
-  if (signedInProfile) {
-    const reloadedWorker = context.waitForEvent("serviceworker", { timeout: 15000 });
-    await loadExtensionLater(context);
-    serviceWorker = await reloadedWorker;
+}
+
+// Launches Brave with the extension, runs useBrowser({ context, serviceWorker, extensionId }), and
+// closes the browser afterwards, also when useBrowser throws.
+export async function withBrave(profileDir, launchOptions, useBrowser) {
+  const launched = await launchBrave(profileDir, launchOptions);
+  try {
+    return await useBrowser(launched);
+  } finally {
+    await launched.context.close();
   }
-  const extensionId = new URL(serviceWorker.url()).host;
-  return { context, serviceWorker, extensionId };
 }
 
 
 // Headed Brave with no extension yet. loadExtensionLater then installs it the way Load unpacked does,
 // so a test can open tabs first, as a person does before installing.
 export async function launchBraveWithoutExtension(profileDir) {
-  return chromium.launchPersistentContext(profileDir, {
+  const context = await chromium.launchPersistentContext(profileDir, {
     executablePath: BRAVE_BINARY,
     headless: false,
     ignoreDefaultArgs: ["--disable-extensions"],
     args: ["--enable-unsafe-extension-debugging"],
     viewport: { width: 1280, height: 900 },
   });
+  closeWhenLeftOpen(context);
+  return context;
 }
 
 export async function loadExtensionLater(context) {

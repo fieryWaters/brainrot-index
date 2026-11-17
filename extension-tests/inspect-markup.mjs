@@ -3,17 +3,15 @@
 //
 // Usage: node inspect-markup.mjs <url> [profile directory]
 // Without a profile directory a fresh empty profile is used (logged out).
-import { makeFreshProfileDir, launchBrave } from "./browser.mjs";
+import { makeFreshProfileDir, withBrave } from "./browser.mjs";
 
 const url = process.argv[2];
 const signedInProfileDir = process.argv[3];
-let context;
+let profileDir = signedInProfileDir;
 if (signedInProfileDir === undefined) {
-  ({ context } = await launchBrave(makeFreshProfileDir("inspect")));
-} else {
-  ({ context } = await launchBrave(signedInProfileDir, { signedInProfile: true }));
+  profileDir = makeFreshProfileDir("inspect");
 }
-try {
+await withBrave(profileDir, { signedInProfile: signedInProfileDir !== undefined }, async ({ context }) => {
   const page = context.pages()[0] ?? (await context.newPage());
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(8000);
@@ -61,6 +59,4 @@ try {
     };
   });
   console.log(JSON.stringify(report, null, 2));
-} finally {
-  await context.close();
-}
+});

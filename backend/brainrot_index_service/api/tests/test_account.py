@@ -10,7 +10,9 @@ from django.urls import reverse
 from billing.models import STATUS_ACTIVE, STATUS_TRIALING, Subscription
 from classification.models import Classification, ExtensionToken, Plugin, Post, UserPlugin, UserSettings
 from classification.tests.helpers import bearer, create_user_with_token, create_verified_user, seen_post
+from families.models import ROLE_CHILD, ROLE_SUPERADMIN, Family, FamilyMember
 from feedback.models import Feedback
+from store.models import PluginRating
 
 User = get_user_model()
 
@@ -170,6 +172,32 @@ class DeleteAccountTests(TestCase):
         self.assertEqual(response.status_code, 200)
         plugin.refresh_from_db()
         self.assertIsNone(plugin.author)
+
+    def test_the_last_superadmin_of_a_family_with_others_must_hand_over_first(self):
+        family = Family.objects.create(name='The Readers', created_by=self.user)
+        FamilyMember.objects.create(user=self.user, family=family, role=ROLE_SUPERADMIN)
+        child = create_verified_user('kid@example.com')
+        FamilyMember.objects.create(user=child, family=family, role=ROLE_CHILD)
+
+        response = self.client.post(reverse('account_delete'), {'email': 'reader@example.com'},
+                                    content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('superadmin', response.json()['error'])
+        self.assertTrue(User.objects.filter(id=self.user.id).exists())
+
+    def test_ratings_and_family_place_go_with_the_account(self):
+        family = Family.objects.create(name='Just me', created_by=self.user)
+        FamilyMember.objects.create(user=self.user, family=family, role=ROLE_SUPERADMIN)
+        plugin = Plugin.objects.filter(is_baseline=True).first()
+        PluginRating.objects.create(user=self.user, plugin=plugin, stars=4, review='Useful.')
+
+        response = self.client.post(reverse('account_delete'), {'email': 'reader@example.com'},
+                                    content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(PluginRating.objects.filter(review='Useful.').exists())
+        self.assertFalse(FamilyMember.objects.filter(family=family).exists())
 
     def paying(self):
         Subscription.objects.filter(user=self.user).update(

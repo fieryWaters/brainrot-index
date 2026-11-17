@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('classification', '0005_default_thresholds_for_gemini'),
+        ('classification', '0007_official_store_plugins'),
     ]
 
     operations = [

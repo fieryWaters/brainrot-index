@@ -53,7 +53,7 @@ describe('AccountPage', () => {
 
   it('says what deleting removes and keeps', () => {
     renderElement(mountAccountPage().el)
-    expect(screen.getByText('the reports and feedback you sent us')).toBeInTheDocument()
+    expect(screen.getByText('the reports and feedback you sent us, and your plugin ratings and reports')).toBeInTheDocument()
     expect(screen.getByText(/stay in the shared cache/)).toBeInTheDocument()
   })
 

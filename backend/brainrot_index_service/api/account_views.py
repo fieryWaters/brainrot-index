@@ -18,7 +18,10 @@ from rest_framework.response import Response
 from billing.access import PAYING_STATUSES, subscription_for_user
 from billing.stripe_sync import stripe_client
 from classification.models import ExtensionToken, Plugin, UserPlugin, UserSettings
+from families.models import ROLE_SUPERADMIN, FamilyMember
+from families.views import LAST_SUPERADMIN_MESSAGE
 from feedback.models import Feedback
+from store.models import PluginRating, PluginReport
 
 from .auth_views import _delete_sessions_for_user, _get_or_create_profile
 from .throttling import UserRateThrottle
@@ -138,7 +141,46 @@ def account_data(user):
             }
             for report in Feedback.objects.filter(user=user).order_by('created_at')
         ],
+        'family': family_data_for_export(user),
+        'published_plugins': [
+            {'slug': plugin.slug, 'name': plugin.name, 'author_name': plugin.author_name}
+            for plugin in Plugin.objects.filter(author=user).order_by('id')
+        ],
+        'plugin_ratings': [
+            {
+                'plugin': rating.plugin.slug,
+                'stars': rating.stars,
+                'review': rating.review,
+                'created_at': rating.created_at.isoformat(),
+            }
+            for rating in PluginRating.objects.filter(user=user).select_related('plugin').order_by('created_at')
+        ],
+        'plugin_reports': [
+            {'plugin': report.plugin.slug, 'reason': report.reason, 'created_at': report.created_at.isoformat()}
+            for report in PluginReport.objects.filter(user=user).select_related('plugin').order_by('created_at')
+        ],
     }
+
+
+def family_data_for_export(user):
+    membership = FamilyMember.objects.filter(user=user).select_related('family').first()
+    if membership is None:
+        return None
+    return {
+        'name': membership.family.name,
+        'role': membership.role,
+        'joined_at': membership.joined_at.isoformat(),
+    }
+
+
+def is_last_superadmin_of_a_family_with_others(user):
+    membership = FamilyMember.objects.filter(user=user).first()
+    if membership is None or membership.role != ROLE_SUPERADMIN:
+        return False
+    others = FamilyMember.objects.filter(family=membership.family).exclude(user=user)
+    if not others.exists():
+        return False
+    return not others.filter(role=ROLE_SUPERADMIN).exists()
 
 
 @api_view(['GET'])
@@ -164,6 +206,10 @@ def delete_account(request):
     if typed_email != user.email.lower():
         return Response({'error': 'Type your email address exactly as shown to confirm.'}, status=400)
 
+    # The same rule as leaving the family: the others must not be left without a superadmin.
+    if is_last_superadmin_of_a_family_with_others(user):
+        return Response({'error': LAST_SUPERADMIN_MESSAGE}, status=400)
+
     # A paid subscription is canceled first, so a deleted account is never charged again.
     subscription = subscription_for_user(user)
     if subscription.stripe_subscription_id != '' and subscription.status in PAYING_STATUSES:
@@ -178,7 +224,7 @@ def delete_account(request):
             )
 
     # A plugin the person published stays for the people who installed it, without an author.
-    Plugin.objects.filter(author=user).update(author=None)
+    Plugin.objects.filter(author=user).update(author=None, author_name='')
 
     user_id = user.id
     _delete_sessions_for_user(user_id, exclude_key=request.session.session_key)

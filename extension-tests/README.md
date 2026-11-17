@@ -74,4 +74,6 @@ token is printed or saved. It needs `ssh spark` to work from this Mac.
 
 - `node inspect-markup.mjs <url> [signed-in profile dir]` prints what a feed or thread page's markup
   looks like, for writing or fixing a site adapter.
-- `node make-icons.mjs` rewrites the extension's icon PNGs.
+- `node make-icons.mjs` redraws every PNG of the brand mark from the site's `favicon.svg`: the
+  extension's icons, the site's apple-touch icon and social preview image, and the Web Store promo
+  tile.

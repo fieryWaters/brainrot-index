@@ -6,6 +6,15 @@ them.
 
 ## Install in Brave (or Chrome)
 
+People outside the project install the packed zip from https://brainrotindex.com/install, which
+walks through unzipping it and Load unpacked. `node scripts/package-extension.mjs` makes that zip
+(`dist/brainrot-index-extension-<version>.zip`, the file for the Chrome Web Store too); the site's
+image builds it the same way. The packed manifest grants only `https://brainrotindex.com`; pass
+`--all-addresses` to keep the development addresses. The version comes from `manifest.json` and is
+only ever changed by hand. The Web Store listing is described in `docs/webstore/README.md`.
+
+To work on the extension from a checkout:
+
 1. In `extension-tests/`, run `npm install` once, then `node stamp-build-info.mjs`. This writes
    `extension/build-info.json` so feedback you send names the exact code version. Run it again after
    pulling new code. Without it the version shows as "unstamped".

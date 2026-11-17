@@ -44,6 +44,11 @@ without a subscription; `billing.access.account_has_access` decides it. See
 | `POST /api/billing/portal/` | session | a Stripe Customer Portal address |
 | `POST /api/stripe/webhook/` | Stripe signature | subscription and invoice events |
 | `POST /api/feedback/` | session, extension token, or none (20 an hour per address) | a problem report, stamped with the running commit |
+| `GET /api/onboarding/` | session | `{email_verified, extension_connected, feed_opened}` for the setup checklist |
+| `POST /api/account/change-password/` | session | `{current_password, new_password}`; other sessions end |
+| `POST /api/account/sign-out-everywhere/` | session | ends every session and disconnects every extension |
+| `GET /api/account/export/` | session | the account's data as a JSON file |
+| `POST /api/account/delete/` | session | `{email}` typed to confirm; cancels a paid subscription, deletes the account and its rows |
 
 ## Working through feedback
 
@@ -64,6 +69,9 @@ stamped with the site and extension commits they were written against.
 | `backend/brainrot_index_service/`   | Django + Django REST Framework API, run by gunicorn. Python via uv. |
 | `frontend/brainrot-index-frontend/` | Vite + Tailwind single-page app, no framework, served by nginx.   |
 | `docker-compose.yml`                | `db` (Postgres 17), `backend`, `worker`, `web`.                   |
+| `extension/`                        | The browser extension; see `extension/README.md`.                 |
+| `scripts/package-extension.mjs`     | Packs the extension into the zip the site serves and the Web Store takes. |
+| `docs/webstore/`                    | Chrome Web Store listing text, permission reasons, data disclosures. |
 | `deploy.sh`                         | Rebuilds and restarts the stack.                                  |
 | `.env.example`                      | Every setting the stack reads, with a one-line description.      |
 | `DEPLOY.md`                         | Ports, addresses, accounts, email, and going public.             |

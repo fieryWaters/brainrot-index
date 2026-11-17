@@ -115,6 +115,30 @@ error page.
   answered. Counts are `DailyNewPostCount` rows (in the admin).
 - Throttle counters live in the database cache table `django_cache`, made by
   the backend entrypoint (`createcachetable`).
+- People manage their own account on `/account`: change the password, sign out
+  of every browser and extension, download their data as JSON, and delete the
+  account (which cancels a paid Stripe subscription first; posts and
+  classifications stay, since they are not linked to anyone).
+
+## The extension download and the Web Store
+
+The `web` image packs `extension/` with `scripts/package-extension.mjs` while
+it builds (compose passes `extension/` and `scripts/` as named build contexts)
+and serves it at `/downloads/brainrot-index-extension.zip` (always the newest)
+and `/downloads/brainrot-index-extension-<version>.zip`. The version is the one
+in `extension/manifest.json`; bump it by hand when the extension changes. The
+packed manifest grants only `https://brainrotindex.com`.
+
+`/install` explains Load unpacked from that zip. Once the Chrome Web Store
+listing is live, set `WEBSTORE_URL=<listing address>` in `.env` and redeploy;
+the page then shows a single "Add to Brave or Chrome" button. Submitting the
+listing is described in `docs/webstore/README.md`.
+
+## Support mailbox
+
+The site, the error messages and the legal pages give
+`support@brainrotindex.com` as the contact address. It needs a real mailbox
+(or forwarding, for example Cloudflare Email Routing to a personal inbox).
 
 ## Payments (Stripe)
 

@@ -5,7 +5,7 @@
 import { apiFetch, errorMessageFrom } from '../lib/api.js'
 import { el } from '../lib/dom.js'
 import { createErrorBanner } from '../components/ErrorBanner.js'
-import { AMBER_BUTTON_CLASS, INPUT_CLASS, PRIMARY_BUTTON_CLASS } from '../components/styles.js'
+import { ACCENT_BUTTON_CLASS, INPUT_CLASS, PRIMARY_BUTTON_CLASS } from '../components/styles.js'
 
 export const SEARCH_DELAY_MS = 300
 
@@ -25,7 +25,7 @@ export function createInstallButton(plugin, showError) {
   button.type = 'button'
 
   function render() {
-    button.className = 'shrink-0 ' + (plugin.installed ? AMBER_BUTTON_CLASS : PRIMARY_BUTTON_CLASS)
+    button.className = 'shrink-0 ' + (plugin.installed ? ACCENT_BUTTON_CLASS : PRIMARY_BUTTON_CLASS)
     button.textContent = plugin.installed ? 'Uninstall' : 'Install'
   }
 
@@ -79,9 +79,9 @@ export function mountStorePage() {
   let isChild = false
 
   function createPluginCard(plugin) {
-    const nameLink = el('a', 'text-lg font-semibold text-white hover:text-amber-300', plugin.name)
+    const nameLink = el('a', 'text-lg font-semibold text-white hover:text-glow-300', plugin.name)
     nameLink.href = `/store/${plugin.slug}`
-    const detailsLink = el('a', 'text-sm text-amber-400 hover:text-amber-300', 'Rubric, samples and reviews')
+    const detailsLink = el('a', 'text-sm text-glow-400 hover:text-glow-300', 'Rubric, samples and reviews')
     detailsLink.href = `/store/${plugin.slug}`
 
     const stats = el('p', 'text-xs text-white/40', `${installSummary(plugin)} - ${ratingSummary(plugin)}`)

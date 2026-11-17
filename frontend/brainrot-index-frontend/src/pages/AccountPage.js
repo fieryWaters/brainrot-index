@@ -9,9 +9,9 @@ import { createPasswordField } from '../components/PasswordField.js'
 import { SUPPORT_EMAIL } from '../lib/site.js'
 
 const CARD_CLASS = 'rounded-2xl border border-white/10 bg-black/30 p-6 mb-6'
-const AMBER_BUTTON_CLASS = 'px-4 py-2 rounded-lg text-sm font-semibold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 transition-colors disabled:opacity-60'
+const ACCENT_BUTTON_CLASS = 'px-4 py-2 rounded-lg text-sm font-semibold bg-shield-400/25 hover:bg-shield-400/40 text-glow-300 transition-colors disabled:opacity-60'
 const DANGER_BUTTON_CLASS = 'px-4 py-2 rounded-lg text-sm font-semibold bg-red-500/80 hover:bg-red-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed'
-const INPUT_CLASS = 'w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder-white/30 focus:border-amber-500 focus:outline-none transition-colors'
+const INPUT_CLASS = 'w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder-white/30 focus:border-glow-400 focus:outline-none transition-colors'
 
 function statusLine() {
   const line = el('p', 'text-sm mt-3 text-white/60')
@@ -20,7 +20,7 @@ function statusLine() {
 }
 
 function createVerifyCard() {
-  const resendBtn = el('button', AMBER_BUTTON_CLASS, 'Resend email')
+  const resendBtn = el('button', ACCENT_BUTTON_CLASS, 'Resend email')
   resendBtn.type = 'button'
   resendBtn.addEventListener('click', async () => {
     resendBtn.disabled = true
@@ -41,7 +41,7 @@ function createVerifyCard() {
 // The reset link is the way to set a first password, or to change one you forgot:
 // it goes to the inbox, so a stolen session alone cannot take the account over.
 function createResetLinkButton(email, label) {
-  const button = el('button', 'shrink-0 ' + AMBER_BUTTON_CLASS, label)
+  const button = el('button', 'shrink-0 ' + ACCENT_BUTTON_CLASS, label)
   button.type = 'button'
   button.addEventListener('click', async () => {
     button.disabled = true
@@ -62,7 +62,7 @@ function createChangePasswordForm() {
   const next = createPasswordField({ placeholder: 'New password, at least 12 characters', autocomplete: 'new-password' })
   next.input.setAttribute('aria-label', 'New password')
   const status = statusLine()
-  const submit = el('button', AMBER_BUTTON_CLASS, 'Change password')
+  const submit = el('button', ACCENT_BUTTON_CLASS, 'Change password')
   submit.type = 'submit'
 
   const form = el('form', 'flex flex-col gap-3', current.el, next.el, el('div', '', submit), status)
@@ -119,7 +119,7 @@ function createSignInCard(email, authProvider) {
 
 function createSignOutEverywhereCard() {
   const status = statusLine()
-  const button = el('button', 'shrink-0 ' + AMBER_BUTTON_CLASS, 'Sign out everywhere')
+  const button = el('button', 'shrink-0 ' + ACCENT_BUTTON_CLASS, 'Sign out everywhere')
   button.type = 'button'
   button.addEventListener('click', async () => {
     button.disabled = true
@@ -143,7 +143,7 @@ function createSignOutEverywhereCard() {
 }
 
 function createExportCard() {
-  const download = el('a', 'shrink-0 ' + AMBER_BUTTON_CLASS, 'Download my data')
+  const download = el('a', 'shrink-0 ' + ACCENT_BUTTON_CLASS, 'Download my data')
   download.href = '/api/account/export/'
   download.setAttribute('download', '')
   return el('div', CARD_CLASS,

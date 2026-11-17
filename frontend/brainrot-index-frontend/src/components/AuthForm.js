@@ -12,6 +12,7 @@
 import { createErrorBanner } from './ErrorBanner.js'
 import { el } from '../lib/dom.js'
 import { createPasswordField } from './PasswordField.js'
+import { createLogoMark } from './LogoMark.js'
 
 export function createAuthForm({
   title,
@@ -23,6 +24,7 @@ export function createAuthForm({
   successMessage = '',
 }) {
   const card = el('div', 'rounded-2xl border border-white/10 bg-black/30 p-8',
+    createLogoMark('w-14 h-14 mb-4'),
     el('h1', 'text-2xl font-bold mb-1 text-white', title),
     subtitle ? el('p', 'text-sm text-white/60 mb-6', subtitle) : el('div', 'mb-6'),
   )
@@ -64,7 +66,7 @@ export function createAuthForm({
       fieldInput = pf.input
     } else {
       const input = el('input',
-        'w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder-white/30 focus:border-amber-500 focus:outline-none transition-colors')
+        'w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder-white/30 focus:border-glow-400 focus:outline-none transition-colors')
       input.type = field.type || 'text'
       input.placeholder = field.placeholder || ''
       input.autocomplete = field.autocomplete || 'off'
@@ -86,7 +88,7 @@ export function createAuthForm({
 
   // -- Submit button --
   const submitBtn = el('button',
-    'mt-2 w-full py-3 rounded-xl font-bold bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black transition-all disabled:opacity-60',
+    'mt-2 w-full py-3 rounded-xl font-bold bg-gradient-to-r from-shield-400 to-shield-600 hover:to-shield-400 hover:shadow-lg hover:shadow-glow-400/20 text-white transition-all disabled:opacity-60',
     submitLabel)
   submitBtn.type = 'submit'
   form.appendChild(submitBtn)

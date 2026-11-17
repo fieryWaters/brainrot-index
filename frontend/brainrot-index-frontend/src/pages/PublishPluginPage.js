@@ -46,7 +46,7 @@ export function mountPublishPluginPage() {
     placeholder: 'Flag posts that ...\n\nSignals:\n- ...\n\nDo not flag:\n- ...' })
 
   const thresholdLabel = el('span', 'text-sm text-white/70', thresholdDescription(60))
-  const thresholdSlider = el('input', 'w-full accent-amber-500')
+  const thresholdSlider = el('input', 'w-full accent-glow-400')
   thresholdSlider.type = 'range'
   thresholdSlider.min = '0'
   thresholdSlider.max = '100'
@@ -79,7 +79,7 @@ export function mountPublishPluginPage() {
     navigate(`/store/${data.slug}`)
   })
 
-  const storeLink = el('a', 'text-sm text-amber-400 hover:text-amber-300', 'Back to the store')
+  const storeLink = el('a', 'text-sm text-glow-400 hover:text-glow-300', 'Back to the store')
   storeLink.href = '/store'
 
   const container = el('div', 'max-w-2xl mx-auto px-4 py-12',

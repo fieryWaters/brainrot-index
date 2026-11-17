@@ -4,7 +4,7 @@
 
 import { apiFetch, errorMessageFrom } from '../lib/api.js'
 import { el } from '../lib/dom.js'
-import { AMBER_BUTTON_CLASS, INPUT_CLASS, LABEL_CLASS, SELECT_CLASS } from './styles.js'
+import { ACCENT_BUTTON_CLASS, INPUT_CLASS, LABEL_CLASS, SELECT_CLASS } from './styles.js'
 
 export function createTryRubricBox(getRubric) {
   const textBox = el('textarea', INPUT_CLASS + ' h-28')
@@ -22,7 +22,7 @@ export function createTryRubricBox(getRubric) {
 
   const result = el('div', 'text-sm')
   result.setAttribute('role', 'status')
-  const tryButton = el('button', AMBER_BUTTON_CLASS, 'Try it')
+  const tryButton = el('button', ACCENT_BUTTON_CLASS, 'Try it')
   tryButton.type = 'button'
   tryButton.addEventListener('click', async () => {
     const text = textBox.value.trim()

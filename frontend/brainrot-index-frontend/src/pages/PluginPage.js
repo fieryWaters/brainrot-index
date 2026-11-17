@@ -6,7 +6,7 @@ import { apiFetch, errorMessageFrom } from '../lib/api.js'
 import { el } from '../lib/dom.js'
 import { createErrorBanner } from '../components/ErrorBanner.js'
 import { createTryRubricBox } from '../components/TryRubricBox.js'
-import { AMBER_BUTTON_CLASS, CARD_CLASS, INPUT_CLASS, LABEL_CLASS, PRIMARY_BUTTON_CLASS, QUIET_BUTTON_CLASS, SELECT_CLASS } from '../components/styles.js'
+import { ACCENT_BUTTON_CLASS, CARD_CLASS, INPUT_CLASS, LABEL_CLASS, PRIMARY_BUTTON_CLASS, QUIET_BUTTON_CLASS, SELECT_CLASS } from '../components/styles.js'
 import { createInstallButton, installSummary, ratingSummary } from './StorePage.js'
 import { MAX_RUBRIC_CHARACTERS, RUBRIC_HELP } from './PublishPluginPage.js'
 
@@ -30,7 +30,7 @@ export function mountPluginPage({ slug }) {
     errorSlot = next
   }
 
-  const storeLink = el('a', 'text-sm text-amber-400 hover:text-amber-300', 'Back to the store')
+  const storeLink = el('a', 'text-sm text-glow-400 hover:text-glow-300', 'Back to the store')
   storeLink.href = '/store'
   const content = el('div', '', el('p', 'text-sm text-white/50', 'Loading...'))
   const container = el('div', 'max-w-3xl mx-auto px-4 py-12', storeLink, errorSlot, content)
@@ -67,7 +67,7 @@ export function mountPluginPage({ slug }) {
     const samples = plugin.samples.map((sample) => el('div', 'py-3 border-t border-white/10 first:border-t-0 text-sm',
       el('div', 'flex items-center justify-between gap-4 mb-1',
         el('span', 'text-xs text-white/40', PLATFORM_NAMES[sample.platform] || sample.platform),
-        el('span', sample.score >= plugin.default_threshold ? 'text-xs text-amber-300' : 'text-xs text-white/50',
+        el('span', sample.score >= plugin.default_threshold ? 'text-xs text-glow-300' : 'text-xs text-white/50',
           `Score ${sample.score}, ${sample.label}`)),
       el('p', 'text-white/80 break-words', sample.text || '(no text)'),
       el('p', 'text-white/50 mt-1', sample.reasoning)))
@@ -93,7 +93,7 @@ export function mountPluginPage({ slug }) {
     reviewBox.setAttribute('aria-label', 'Your review')
 
     const status = el('span', 'text-xs text-white/50')
-    const saveButton = createButton(AMBER_BUTTON_CLASS, plugin.my_rating ? 'Update rating' : 'Save rating')
+    const saveButton = createButton(ACCENT_BUTTON_CLASS, plugin.my_rating ? 'Update rating' : 'Save rating')
     saveButton.addEventListener('click', async () => {
       saveButton.disabled = true
       const { response, data } = await apiFetch(`/store/plugins/${plugin.slug}/rating/`, {
@@ -171,7 +171,7 @@ export function mountPluginPage({ slug }) {
     reasonBox.maxLength = 500
     reasonBox.placeholder = 'What is wrong with this plugin?'
     reasonBox.setAttribute('aria-label', 'Reason for the report')
-    const sendButton = createButton(AMBER_BUTTON_CLASS, 'Send report')
+    const sendButton = createButton(ACCENT_BUTTON_CLASS, 'Send report')
     const form = el('div', 'hidden mt-3 flex-col gap-3', reasonBox, el('div', 'flex justify-end', sendButton))
     const area = el('div', 'text-sm')
 

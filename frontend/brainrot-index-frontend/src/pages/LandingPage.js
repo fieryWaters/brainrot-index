@@ -5,8 +5,9 @@
 import { el } from '../lib/dom.js'
 import { getState } from '../lib/auth.js'
 import { PRICE_PER_MONTH, TRIAL_DAYS } from '../lib/site.js'
+import { createLogoMark } from '../components/LogoMark.js'
 
-const PRIMARY_LINK_CLASS = 'inline-block px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black transition-all'
+const PRIMARY_LINK_CLASS = 'inline-block px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-shield-400 to-shield-600 hover:to-shield-400 hover:shadow-lg hover:shadow-glow-400/20 text-white transition-all'
 const SECONDARY_LINK_CLASS = 'inline-block px-6 py-3 rounded-xl font-medium bg-white/10 hover:bg-white/20 transition-colors'
 const SECTION_CLASS = 'max-w-5xl mx-auto px-4 py-16 sm:py-20'
 const SECTION_TITLE_CLASS = 'text-2xl sm:text-3xl font-bold text-white'
@@ -72,9 +73,9 @@ function noticeText(flag) {
 }
 
 function noticeLine(flag, className) {
-  return el('div', `flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs ${className}`,
+  return el('div', `flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs inset-shadow-[3px_0_0_var(--color-shield-300)] ${className}`,
     el('span', 'flex-1 min-w-0', noticeText(flag)),
-    el('span', 'font-semibold text-amber-300', 'Show'))
+    el('span', 'font-semibold text-glow-300', 'Show'))
 }
 
 function mockFeed(title, filtered) {
@@ -92,16 +93,17 @@ function mockFeed(title, filtered) {
         noticeLine(post.flag, 'bg-zinc-900/90 border border-white/15 text-zinc-100 shadow-lg')))
   })
   return el('figure', 'min-w-0',
-    el('figcaption', filtered ? 'mb-3 text-sm font-semibold text-amber-300' : 'mb-3 text-sm font-semibold text-white/50', title),
-    el('ul', 'rounded-2xl border border-white/10 bg-gray-900/60', ...items))
+    el('figcaption', filtered ? 'mb-3 text-sm font-semibold text-glow-300' : 'mb-3 text-sm font-semibold text-white/50', title),
+    el('ul', 'rounded-2xl border border-white/10 bg-navy-900/60', ...items))
 }
 
 // -- Sections --
 
 function heroSection() {
   const howLink = link(SECONDARY_LINK_CLASS, 'See how it works', '#how-it-works')
-  return el('section', 'max-w-5xl mx-auto px-4 pt-16 pb-10 sm:pt-24 text-center',
-    el('h1', 'mx-auto max-w-3xl text-4xl sm:text-6xl font-extrabold leading-tight tracking-tight bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 bg-clip-text text-transparent',
+  return el('section', 'max-w-5xl mx-auto px-4 pt-12 pb-10 sm:pt-16 text-center',
+    createLogoMark('mx-auto mb-6 w-28 h-28 sm:w-36 sm:h-36'),
+    el('h1', 'mx-auto max-w-3xl text-4xl sm:text-6xl font-extrabold leading-tight tracking-tight bg-gradient-to-r from-glow-200 via-glow-300 to-glow-400 bg-clip-text text-transparent',
       'A calmer feed on X and Reddit'),
     el('p', 'mx-auto mt-6 max-w-2xl text-lg sm:text-xl text-white/70',
       'Brainrot Index is a browser extension that reads your feed with AI and hides the brainrot, ragebait and engagement bait before you scroll past it. You choose what goes.'),
@@ -128,7 +130,7 @@ function howItWorksSection() {
     el('h2', SECTION_TITLE_CLASS + ' text-center', 'How it works'),
     el('ol', 'mt-10 grid gap-6 sm:grid-cols-3',
       ...steps.map(([title, text], index) => el('li', 'rounded-2xl border border-white/10 bg-black/30 p-6',
-        el('span', 'w-9 h-9 rounded-full bg-amber-500/20 text-amber-300 font-bold flex items-center justify-center', String(index + 1)),
+        el('span', 'w-9 h-9 rounded-full bg-shield-400/25 text-glow-300 font-bold flex items-center justify-center', String(index + 1)),
         el('h3', 'mt-4 font-semibold text-white', title),
         el('p', 'mt-2 text-sm text-white/60', text)))))
   section.id = 'how-it-works'
@@ -153,7 +155,7 @@ function filtersSection() {
     el('p', 'mt-3 max-w-2xl text-white/60', 'Each filter is a detailed rubric an AI model applies to every post and reply, with its text and images. Turn each one on or off.'),
     el('div', 'mt-8 grid gap-4 sm:grid-cols-2',
       ...filters.map(([name, text]) => el('div', 'rounded-2xl border border-white/10 bg-black/30 p-5',
-        el('h3', 'font-semibold text-amber-300', name),
+        el('h3', 'font-semibold text-glow-300', name),
         el('p', 'mt-1 text-sm text-white/70', text)))),
     el('h3', 'mt-12 text-xl font-semibold text-white', 'You stay in control'),
     el('dl', 'mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-2',
@@ -165,7 +167,7 @@ function filtersSection() {
 function pricingSection() {
   const section = el('section', SECTION_CLASS + ' text-center',
     el('h2', SECTION_TITLE_CLASS, 'One plan, one price'),
-    el('div', 'mx-auto mt-8 max-w-sm rounded-2xl border border-amber-500/30 bg-black/30 p-8',
+    el('div', 'mx-auto mt-8 max-w-sm rounded-2xl border border-glow-400/30 bg-black/30 p-8',
       el('p', 'text-5xl font-extrabold text-white', PRICE_PER_MONTH,
         el('span', 'text-lg font-medium text-white/50', ' / month')),
       el('ul', 'mt-6 space-y-2 text-sm text-white/70 text-left',
@@ -198,7 +200,7 @@ const FAQ = [
 ]
 
 function faqSection() {
-  const privacyLink = link('text-amber-400 hover:text-amber-300 underline', 'Read the Privacy Policy', '/privacy')
+  const privacyLink = link('text-glow-400 hover:text-glow-300 underline', 'Read the Privacy Policy', '/privacy')
   const section = el('section', SECTION_CLASS,
     el('h2', SECTION_TITLE_CLASS, 'Questions'),
     el('div', 'mt-8 divide-y divide-white/10 rounded-2xl border border-white/10 bg-black/30',
@@ -220,7 +222,8 @@ function closingSection() {
 }
 
 export function mountLandingPage() {
-  const root = el('div', '',
+  // The logo's navy, lit from above, behind the top of the page.
+  const root = el('div', 'bg-[radial-gradient(ellipse_70%_900px_at_50%_0%,var(--color-navy-800),transparent)]',
     heroSection(),
     beforeAfterSection(),
     howItWorksSection(),

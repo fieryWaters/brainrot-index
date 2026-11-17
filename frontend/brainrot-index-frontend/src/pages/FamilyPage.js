@@ -9,7 +9,7 @@ import { ROLE_DESCRIPTIONS, ROLE_NAMES } from '../lib/roles.js'
 import { createErrorBanner } from '../components/ErrorBanner.js'
 import { createFilterSettingsCard, createInstalledPluginsCard } from '../components/FilterSettings.js'
 import {
-  AMBER_BUTTON_CLASS, CARD_CLASS, INPUT_CLASS, LABEL_CLASS, PRIMARY_BUTTON_CLASS, QUIET_BUTTON_CLASS, SELECT_CLASS,
+  ACCENT_BUTTON_CLASS, CARD_CLASS, INPUT_CLASS, LABEL_CLASS, PRIMARY_BUTTON_CLASS, QUIET_BUTTON_CLASS, SELECT_CLASS,
 } from '../components/styles.js'
 
 const ROLE_OPTIONS = ['superadmin', 'admin', 'child']
@@ -104,7 +104,7 @@ export function mountFamilyPage() {
     const codeInput = el('input', INPUT_CLASS)
     codeInput.placeholder = 'ABCDE-23456'
     codeInput.setAttribute('aria-label', 'Invite code')
-    const codeButton = createButton(AMBER_BUTTON_CLASS + ' shrink-0', 'Continue')
+    const codeButton = createButton(ACCENT_BUTTON_CLASS + ' shrink-0', 'Continue')
     codeButton.addEventListener('click', () => {
       const code = codeInput.value.trim()
       if (!code) {
@@ -230,7 +230,7 @@ export function mountFamilyPage() {
     linkInput.readOnly = true
     linkInput.value = link
     linkInput.setAttribute('aria-label', 'Invite link')
-    const copyButton = createButton(AMBER_BUTTON_CLASS + ' shrink-0', 'Copy link')
+    const copyButton = createButton(ACCENT_BUTTON_CLASS + ' shrink-0', 'Copy link')
     copyButton.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(link)
@@ -240,7 +240,7 @@ export function mountFamilyPage() {
         copyButton.textContent = 'Press Ctrl+C to copy'
       }
     })
-    return el('div', 'rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex flex-col gap-3',
+    return el('div', 'rounded-xl border border-glow-400/20 bg-shield-400/10 p-4 flex flex-col gap-3',
       el('p', 'text-sm text-white/70', `${ROLE_NAMES[invite.role]} invite created. It is shown only now, so copy it before leaving this page.`),
       el('div', 'flex flex-col sm:flex-row gap-3', linkInput, copyButton),
       el('p', 'text-sm text-white/60', 'Code: ', el('span', 'font-mono text-white', invite.code)))
@@ -265,7 +265,7 @@ export function mountFamilyPage() {
     }
 
     const isSuperadmin = data.role === 'superadmin'
-    const dashboardLink = el('a', 'text-amber-400 hover:text-amber-300', 'dashboard')
+    const dashboardLink = el('a', 'text-glow-400 hover:text-glow-300', 'dashboard')
     dashboardLink.href = '/dashboard'
 
     content.replaceChildren(

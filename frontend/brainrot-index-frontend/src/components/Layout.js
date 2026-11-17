@@ -4,6 +4,7 @@
 import { getState, subscribe, logout } from '../lib/auth.js'
 import { el } from '../lib/dom.js'
 import { createFeedbackButton } from './FeedbackButton.js'
+import { createLogoMark } from './LogoMark.js'
 import { onNavigate, navigate } from '../lib/router.js'
 import { SUPPORT_EMAIL } from '../lib/site.js'
 
@@ -13,7 +14,9 @@ const GIT_COMMIT = import.meta.env.VITE_GIT_COMMIT || 'unknown'
 export function createLayout() {
   // -- Navigation --
 
-  const logo = el('a', 'text-xl font-bold bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent', 'Brainrot Index')
+  const logo = el('a', 'flex items-center gap-2',
+    createLogoMark('w-9 h-9'),
+    el('span', 'text-xl font-bold bg-gradient-to-r from-glow-200 to-glow-400 bg-clip-text text-transparent', 'Brainrot Index'))
   logo.href = '/'
 
   // Right slot: replaced on auth state changes
@@ -22,7 +25,7 @@ export function createLayout() {
   // -- Profile dropdown (created once, toggled) --
   let dropdownOpen = false
 
-  const avatarBtn = el('button', 'w-9 h-9 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-sm font-bold hover:ring-2 hover:ring-amber-400/50 transition-all')
+  const avatarBtn = el('button', 'w-9 h-9 rounded-full bg-gradient-to-br from-shield-400 to-shield-600 flex items-center justify-center text-sm font-bold hover:ring-2 hover:ring-glow-400/50 transition-all')
 
   const emailP = el('p', 'text-sm font-medium truncate')
 
@@ -45,7 +48,7 @@ export function createLayout() {
     navigate('/')
   })
 
-  const dropdown = el('div', 'absolute right-0 mt-2 w-72 bg-gray-900 border border-white/10 rounded-xl shadow-2xl shadow-black/50 overflow-hidden z-50 hidden',
+  const dropdown = el('div', 'absolute right-0 mt-2 w-72 bg-navy-900 border border-white/10 rounded-xl shadow-2xl shadow-black/50 overflow-hidden z-50 hidden',
     el('div', 'px-4 py-3 border-b border-white/10', emailP),
     el('div', 'p-1', dashboardLink, storeLink, familyLink, accountLink, signOutBtn))
 
@@ -91,7 +94,7 @@ export function createLayout() {
 
       // One auth button, not two: the login page cross-links to signup, so
       // the nav stays uncluttered on mobile.
-      const loginLink = el('a', 'px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black transition-all', 'Sign in')
+      const loginLink = el('a', 'px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-shield-400 to-shield-600 hover:to-shield-400 hover:shadow-lg hover:shadow-glow-400/20 text-white transition-all', 'Sign in')
       loginLink.href = '/login'
 
       rightSlot.replaceChildren(loginLink)
@@ -127,7 +130,7 @@ export function createLayout() {
 
   // -- Assemble shell --
 
-  const nav = el('nav', 'border-b border-white/10 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-50',
+  const nav = el('nav', 'border-b border-white/10 bg-navy-950/80 backdrop-blur-sm sticky top-0 z-50',
     el('div', 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8',
       el('div', 'flex items-center justify-between h-16',
         logo,
@@ -152,7 +155,7 @@ export function createLayout() {
     el('p', 'mt-4', 'Brainrot Index'),
     el('p', 'mt-1 text-xs text-white/25', `Version ${GIT_COMMIT}`))
 
-  const shell = el('div', 'min-h-screen bg-gray-950 text-white flex flex-col',
+  const shell = el('div', 'min-h-screen bg-navy-950 text-white flex flex-col',
     nav, serverBanner, outlet, footer, feedbackButton.el)
 
   // Initial render of nav right slot

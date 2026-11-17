@@ -6,7 +6,7 @@ import { apiFetch } from '../lib/api.js'
 import { el } from '../lib/dom.js'
 import { billingSummary } from '../components/BillingCard.js'
 
-const DASHBOARD_LINK_CLASS = 'inline-block px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black transition-all'
+const DASHBOARD_LINK_CLASS = 'inline-block px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-shield-400 to-shield-600 hover:to-shield-400 hover:shadow-lg hover:shadow-glow-400/20 text-white transition-all'
 
 function dashboardLink() {
   const link = el('a', DASHBOARD_LINK_CLASS, 'Go to dashboard')

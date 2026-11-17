@@ -7,7 +7,7 @@
 import { apiFetch, errorMessageFrom } from '../lib/api.js'
 import { el } from '../lib/dom.js'
 import { createErrorBanner } from './ErrorBanner.js'
-import { CARD_CLASS, QUIET_BUTTON_CLASS, SELECT_CLASS, AMBER_BUTTON_CLASS } from './styles.js'
+import { CARD_CLASS, QUIET_BUTTON_CLASS, SELECT_CLASS, ACCENT_BUTTON_CLASS } from './styles.js'
 
 const SAVE_FAILED_MESSAGE = 'Could not save that change. Please try again.'
 const MANAGED_BY_FAMILY_MESSAGE = "Your family's superadmin manages these settings."
@@ -17,7 +17,7 @@ export function thresholdDescription(threshold) {
 }
 
 function createCheckbox(checked, label, disabled) {
-  const checkbox = el('input', 'w-4 h-4 accent-amber-500 disabled:opacity-60')
+  const checkbox = el('input', 'w-4 h-4 accent-glow-400 disabled:opacity-60')
   checkbox.type = 'checkbox'
   checkbox.checked = checked
   checkbox.disabled = disabled
@@ -135,7 +135,7 @@ export function createInstalledPluginsCard({ basePath = '', title = 'My plugins'
     })
 
     const thresholdLabel = el('span', 'text-white/70', thresholdDescription(plugin.threshold))
-    const thresholdSlider = el('input', 'w-full accent-amber-500 disabled:opacity-60')
+    const thresholdSlider = el('input', 'w-full accent-glow-400 disabled:opacity-60')
     thresholdSlider.type = 'range'
     thresholdSlider.min = '0'
     thresholdSlider.max = '100'
@@ -150,7 +150,7 @@ export function createInstalledPluginsCard({ basePath = '', title = 'My plugins'
     const actionSelect = createSelect([['hide', 'Hide'], ['blur', 'Blur']], plugin.flagged_action, `${plugin.name} action`, locked)
     actionSelect.addEventListener('change', () => save(plugin, { flagged_action: actionSelect.value }))
 
-    const nameLink = el('a', 'font-semibold text-white hover:text-amber-300', plugin.name)
+    const nameLink = el('a', 'font-semibold text-white hover:text-glow-300', plugin.name)
     nameLink.href = `/store/${plugin.slug}`
 
     const uninstallButton = el('button', QUIET_BUTTON_CLASS, 'Uninstall')
@@ -202,7 +202,7 @@ export function createInstalledPluginsCard({ basePath = '', title = 'My plugins'
       ...others.map((plugin) => [plugin.slug, plugin.name]),
     ]
     const pluginSelect = createSelect(options, options[0][0], 'Plugin to add', false)
-    const addButton = el('button', AMBER_BUTTON_CLASS, 'Add')
+    const addButton = el('button', ACCENT_BUTTON_CLASS, 'Add')
     addButton.type = 'button'
     addButton.addEventListener('click', async () => {
       addButton.disabled = true
@@ -235,7 +235,7 @@ export function createInstalledPluginsCard({ basePath = '', title = 'My plugins'
     enabledLimit = data.enabled_limit
     updateEnabledCount()
 
-    const storeLink = el('a', 'text-amber-400 hover:text-amber-300', 'Browse the plugin store')
+    const storeLink = el('a', 'text-glow-400 hover:text-glow-300', 'Browse the plugin store')
     storeLink.href = '/store'
 
     const rows = plugins.length > 0

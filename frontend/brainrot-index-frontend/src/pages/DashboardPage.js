@@ -7,7 +7,7 @@ import { el } from '../lib/dom.js'
 import { createErrorBanner } from '../components/ErrorBanner.js'
 import { mountBillingCard } from '../components/BillingCard.js'
 import { createFilterSettingsCard, createInstalledPluginsCard } from '../components/FilterSettings.js'
-import { CARD_CLASS, AMBER_BUTTON_CLASS } from '../components/styles.js'
+import { CARD_CLASS, ACCENT_BUTTON_CLASS } from '../components/styles.js'
 import { pendingFamilyInviteCode } from './JoinFamilyPage.js'
 import { createOnboardingChecklist } from '../components/OnboardingChecklist.js'
 import { detectExtension } from '../lib/extension.js'
@@ -30,7 +30,7 @@ export function mountDashboardPage() {
   // -- Connect extension --
   let extensionAnswerTimer = null
   const connectStatus = el('p', 'text-sm text-white/60')
-  const connectButton = el('button', 'shrink-0 ' + AMBER_BUTTON_CLASS, 'Connect extension')
+  const connectButton = el('button', 'shrink-0 ' + ACCENT_BUTTON_CLASS, 'Connect extension')
   connectButton.type = 'button'
   connectButton.addEventListener('click', async () => {
     connectButton.disabled = true
@@ -67,7 +67,7 @@ export function mountDashboardPage() {
         el('h2', 'text-lg font-semibold text-white mb-1', 'Browser extension'),
         connectStatus),
       connectButton))
-  const installLink = el('a', 'text-amber-400 hover:text-amber-300 underline', 'Install it first')
+  const installLink = el('a', 'text-glow-400 hover:text-glow-300 underline', 'Install it first')
   installLink.href = '/install'
   connectStatus.append('The extension is not installed in this browser yet. ', installLink, '.')
 
@@ -88,9 +88,9 @@ export function mountDashboardPage() {
   // An invite opened while signed out waits here until it is answered.
   const inviteCode = pendingFamilyInviteCode()
   if (inviteCode) {
-    const inviteLink = el('a', AMBER_BUTTON_CLASS + ' shrink-0', 'Review invite')
+    const inviteLink = el('a', ACCENT_BUTTON_CLASS + ' shrink-0', 'Review invite')
     inviteLink.href = `/family/join?code=${encodeURIComponent(inviteCode)}`
-    container.append(el('div', 'rounded-2xl border border-amber-500/20 bg-amber-500/5 p-6 mb-6 flex items-center justify-between gap-4',
+    container.append(el('div', 'rounded-2xl border border-glow-400/20 bg-shield-400/10 p-6 mb-6 flex items-center justify-between gap-4',
       el('p', 'text-sm text-white/70', 'You have an invite to join a family.'),
       inviteLink))
   }

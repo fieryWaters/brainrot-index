@@ -8,8 +8,8 @@ import { getState, resendVerification } from '../lib/auth.js'
 import { el } from '../lib/dom.js'
 
 const CARD_CLASS = 'rounded-2xl border border-white/10 bg-black/30 p-6 mb-6'
-const AMBER_BUTTON_CLASS = 'px-3 py-1.5 rounded-lg text-sm font-semibold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 transition-colors disabled:opacity-60'
-const LINK_CLASS = 'text-amber-400 hover:text-amber-300 underline'
+const ACCENT_BUTTON_CLASS = 'px-3 py-1.5 rounded-lg text-sm font-semibold bg-shield-400/25 hover:bg-shield-400/40 text-glow-300 transition-colors disabled:opacity-60'
+const LINK_CLASS = 'text-glow-400 hover:text-glow-300 underline'
 
 function link(text, href, external = false) {
   const anchor = el('a', LINK_CLASS, text)
@@ -42,7 +42,7 @@ function stepRow(done, title, ...hint) {
 }
 
 function resendButton() {
-  const button = el('button', AMBER_BUTTON_CLASS, 'Resend the email')
+  const button = el('button', ACCENT_BUTTON_CLASS, 'Resend the email')
   button.type = 'button'
   button.addEventListener('click', async () => {
     button.disabled = true

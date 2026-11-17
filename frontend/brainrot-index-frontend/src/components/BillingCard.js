@@ -8,8 +8,8 @@ export const PRICE_TEXT = '$5 per month'
 export const TRIAL_ENDED_TEXT = 'Your free trial has ended. Subscribe to continue.'
 
 const CARD_CLASS = 'rounded-2xl border border-white/10 bg-black/30 p-6 mb-6'
-const PRIMARY_BUTTON_CLASS = 'shrink-0 px-4 py-2 rounded-lg text-sm font-bold bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black transition-all disabled:opacity-60'
-const AMBER_BUTTON_CLASS = 'shrink-0 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 transition-colors disabled:opacity-60'
+const PRIMARY_BUTTON_CLASS = 'shrink-0 px-4 py-2 rounded-lg text-sm font-bold bg-gradient-to-r from-shield-400 to-shield-600 hover:to-shield-400 hover:shadow-lg hover:shadow-glow-400/20 text-white transition-all disabled:opacity-60'
+const ACCENT_BUTTON_CLASS = 'shrink-0 px-4 py-2 rounded-lg text-sm font-semibold bg-shield-400/25 hover:bg-shield-400/40 text-glow-300 transition-colors disabled:opacity-60'
 
 function formatDate(isoDate) {
   return new Date(isoDate).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
@@ -64,7 +64,7 @@ export function createBillingCard(billing) {
   let button = null
   if (!billing.comp) {
     if (hasLiveSubscription(billing)) {
-      button = el('button', AMBER_BUTTON_CLASS, 'Manage subscription')
+      button = el('button', ACCENT_BUTTON_CLASS, 'Manage subscription')
       button.addEventListener('click', () => openStripePage(button, '/billing/portal/', statusLine))
     } else {
       button = el('button', PRIMARY_BUTTON_CLASS, 'Subscribe')

@@ -4,7 +4,7 @@ import { requestPasswordReset } from '../lib/auth.js'
 export function mountForgotPasswordPage() {
   const footer = document.createElement('div')
   footer.innerHTML =
-    'Remembered it? <a href="/login" class="text-amber-400 hover:text-amber-300">Sign in</a>'
+    'Remembered it? <a href="/login" class="text-glow-400 hover:text-glow-300">Sign in</a>'
 
   const form = createAuthForm({
     title: 'Forgot password',

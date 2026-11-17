@@ -24,24 +24,24 @@ function failureMessage(response) {
 
 export function createFeedbackButton() {
   const toggleButton = el('button',
-    'px-4 py-2 rounded-full text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-black/40 transition-colors',
+    'px-4 py-2 rounded-full text-sm font-semibold bg-shield-400 hover:bg-shield-500 text-white shadow-lg shadow-black/40 transition-colors',
     'Feedback')
   toggleButton.type = 'button'
   toggleButton.setAttribute('aria-expanded', 'false')
 
   const textBox = el('textarea',
-    'w-full h-28 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-white/30 focus:border-amber-500 focus:outline-none')
+    'w-full h-28 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-white/30 focus:border-glow-400 focus:outline-none')
   textBox.placeholder = 'What went wrong, or what should change?'
   textBox.setAttribute('aria-label', 'Feedback')
 
   const status = el('p', 'text-xs text-white/60')
   status.setAttribute('role', 'status')
   const sendButton = el('button',
-    'px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 transition-colors disabled:opacity-60',
+    'px-3 py-1.5 rounded-lg text-xs font-semibold bg-shield-400/25 hover:bg-shield-400/40 text-glow-300 transition-colors disabled:opacity-60',
     'Send')
   sendButton.type = 'button'
 
-  const panel = el('div', 'hidden mb-2 w-80 p-4 rounded-xl bg-gray-900 border border-white/10 shadow-2xl shadow-black/50 flex-col gap-2',
+  const panel = el('div', 'hidden mb-2 w-80 p-4 rounded-xl bg-navy-900 border border-white/10 shadow-2xl shadow-black/50 flex-col gap-2',
     el('p', 'text-sm font-semibold text-white', 'Send feedback'),
     textBox,
     el('p', 'text-xs text-white/40', `Sent with this page's address and site version ${GIT_COMMIT}.`),

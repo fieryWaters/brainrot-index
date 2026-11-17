@@ -18,7 +18,7 @@ const CHECK_ICON_SVG = `
 function navButton(label, path, primary = false) {
   const button = el('button',
     primary
-      ? 'px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-bold transition-all'
+      ? 'px-6 py-3 rounded-xl bg-gradient-to-r from-shield-400 to-shield-600 hover:to-shield-400 hover:shadow-lg hover:shadow-glow-400/20 text-white font-bold transition-all'
       : 'px-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 transition-colors font-medium',
     label)
   button.addEventListener('click', () => navigate(path))
@@ -79,7 +79,7 @@ export function mountConfirmationPage({ statusEndpoint, errorBack, buildSuccess 
       checkIcon,
       el('h1', 'text-2xl font-bold mb-2', heading),
       emailLine,
-      el('div', 'rounded-xl border border-white/10 bg-gray-900 p-5 text-left mb-8 space-y-2',
+      el('div', 'rounded-xl border border-white/10 bg-navy-900 p-5 text-left mb-8 space-y-2',
         ...rows.map(([label, value, valueClass = '']) =>
           el('div', 'flex justify-between',
             el('span', 'text-white/50', label),

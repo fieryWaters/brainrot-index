@@ -1,5 +1,28 @@
 @import "tailwindcss";
 
+/* The brand palette, sampled from the logo (brand/logo-source.webp). Each colour becomes a Tailwind
+   class name: bg-navy-950, text-glow-300, from-shield-500 and so on.
+   navy:   the logo's background; the page and its panels.
+   shield: the shield's blue; buttons and solid fills. White text passes WCAG AA on 400 and darker.
+   glow:   the brain's light cyan; accent text, links and focus on the dark navy page.
+   Warnings stay Tailwind's amber, errors red and success emerald, apart from the brand. */
+@theme {
+  --color-navy-950: #0b1830;
+  --color-navy-900: #11243f;
+  --color-navy-800: #183453;
+  --color-navy-700: #225172;
+
+  --color-shield-300: #3796d1;
+  --color-shield-400: #2776bb;
+  --color-shield-500: #2068ad;
+  --color-shield-600: #1a5797;
+  --color-shield-700: #144681;
+
+  --color-glow-200: #d2ffff;
+  --color-glow-300: #9eeef5;
+  --color-glow-400: #4cbbe1;
+}
+
 /* Long-form text on the Privacy Policy and Terms of Service pages. */
 @layer components {
   .legal-text {
@@ -18,7 +41,7 @@
     @apply mb-4 ml-6 list-disc space-y-1;
   }
   .legal-text a {
-    @apply text-amber-400 underline hover:text-amber-300;
+    @apply text-glow-400 underline hover:text-glow-300;
   }
   .legal-text strong {
     @apply text-white;

@@ -11,7 +11,7 @@ export function createPasswordField({ id, placeholder = 'Password', autocomplete
   input.placeholder = placeholder
   input.autocomplete = autocomplete
   input.className =
-    'w-full px-4 py-3 pr-12 rounded-xl bg-black/30 border border-white/10 text-white placeholder-white/30 focus:border-amber-500 focus:outline-none transition-colors'
+    'w-full px-4 py-3 pr-12 rounded-xl bg-black/30 border border-white/10 text-white placeholder-white/30 focus:border-glow-400 focus:outline-none transition-colors'
 
   const toggle = document.createElement('button')
   toggle.type = 'button'

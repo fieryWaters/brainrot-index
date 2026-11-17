@@ -20,7 +20,7 @@ export function mountVerifyEmailPage() {
   const homeLink = document.createElement('a')
   homeLink.href = '/'
   homeLink.className =
-    'inline-block px-5 py-2.5 rounded-xl font-semibold bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black transition-all'
+    'inline-block px-5 py-2.5 rounded-xl font-semibold bg-gradient-to-r from-shield-400 to-shield-600 hover:to-shield-400 hover:shadow-lg hover:shadow-glow-400/20 text-white transition-all'
   homeLink.textContent = 'Go home'
   homeLink.style.display = 'none'
   card.appendChild(homeLink)

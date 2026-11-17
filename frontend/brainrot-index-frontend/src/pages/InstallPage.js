@@ -7,10 +7,10 @@ import { getState } from '../lib/auth.js'
 import { detectExtension } from '../lib/extension.js'
 import { EXTENSION_ZIP_URL, WEBSTORE_URL } from '../lib/site.js'
 
-const PRIMARY_LINK_CLASS = 'inline-block px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black transition-all'
+const PRIMARY_LINK_CLASS = 'inline-block px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-shield-400 to-shield-600 hover:to-shield-400 hover:shadow-lg hover:shadow-glow-400/20 text-white transition-all'
 const SMALL_BUTTON_CLASS = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 transition-colors'
 const TAB_CLASS = 'px-4 py-2 rounded-lg text-sm font-semibold transition-colors'
-const SELECTED_TAB_CLASS = `${TAB_CLASS} bg-amber-500/20 text-amber-300`
+const SELECTED_TAB_CLASS = `${TAB_CLASS} bg-shield-400/25 text-glow-300`
 const UNSELECTED_TAB_CLASS = `${TAB_CLASS} text-white/60 hover:text-white hover:bg-white/5`
 
 const BROWSERS = {
@@ -26,7 +26,7 @@ function detectBrowser() {
 
 function step(number, title, ...body) {
   return el('li', 'flex gap-4',
-    el('span', 'shrink-0 w-8 h-8 rounded-full bg-amber-500/20 text-amber-300 font-bold flex items-center justify-center', String(number)),
+    el('span', 'shrink-0 w-8 h-8 rounded-full bg-shield-400/25 text-glow-300 font-bold flex items-center justify-center', String(number)),
     el('div', 'pt-1 min-w-0',
       el('h3', 'font-semibold text-white', title),
       el('div', 'mt-1 text-white/70 space-y-2', ...body)))
@@ -42,7 +42,7 @@ function strong(text) {
 
 // The extensions page address, with a Copy button: web pages cannot link to it.
 function copyableAddress(address) {
-  const code = el('code', 'px-2 py-1 rounded bg-black/40 border border-white/10 text-amber-200 text-sm', address)
+  const code = el('code', 'px-2 py-1 rounded bg-black/40 border border-white/10 text-glow-200 text-sm', address)
   const copyButton = el('button', SMALL_BUTTON_CLASS, 'Copy')
   copyButton.type = 'button'
   copyButton.addEventListener('click', async () => {
@@ -61,7 +61,7 @@ function manualSteps(browser) {
   downloadLink.href = EXTENSION_ZIP_URL
   downloadLink.setAttribute('download', '')
 
-  const dashboardLink = el('a', 'text-amber-400 hover:text-amber-300 underline', 'your dashboard')
+  const dashboardLink = el('a', 'text-glow-400 hover:text-glow-300 underline', 'your dashboard')
   dashboardLink.href = getState().isAuthenticated ? '/dashboard' : '/signup'
 
   return el('ol', 'space-y-8',
@@ -103,7 +103,7 @@ export function mountInstallPage() {
     storeLink.href = WEBSTORE_URL
     storeLink.target = '_blank'
     storeLink.rel = 'noopener'
-    const dashboardLink = el('a', 'text-amber-400 hover:text-amber-300 underline', 'your dashboard')
+    const dashboardLink = el('a', 'text-glow-400 hover:text-glow-300 underline', 'your dashboard')
     dashboardLink.href = getState().isAuthenticated ? '/dashboard' : '/signup'
     container.append(
       el('div', 'mt-8 rounded-2xl border border-white/10 bg-black/30 p-6',
@@ -133,8 +133,8 @@ export function mountInstallPage() {
     render()
 
     container.append(
-      el('div', 'mt-6 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-white/70',
-        el('p', 'font-semibold text-amber-300', 'A one-click install is coming'),
+      el('div', 'mt-6 rounded-xl border border-glow-400/20 bg-shield-400/10 p-4 text-sm text-white/70',
+        el('p', 'font-semibold text-glow-300', 'A one-click install is coming'),
         el('p', 'mt-1', 'Brainrot Index is waiting for its listing in the Chrome Web Store. Until then you install it by hand, which takes about two minutes and is done once.')),
       tabs,
       stepsSlot,

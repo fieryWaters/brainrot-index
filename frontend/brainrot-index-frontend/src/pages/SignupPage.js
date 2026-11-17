@@ -31,7 +31,7 @@ export function mountSignupPage() {
   const loginRow = document.createElement('div')
   loginRow.className = 'mt-2'
   loginRow.innerHTML =
-    'Already have an account? <a href="/login" class="text-amber-400 hover:text-amber-300">Sign in</a>'
+    'Already have an account? <a href="/login" class="text-glow-400 hover:text-glow-300">Sign in</a>'
   footer.appendChild(loginRow)
 
   const termsRow = document.createElement('p')
@@ -82,11 +82,11 @@ export function mountSignupPage() {
     const panel = document.createElement('div')
     panel.className = 'text-center text-white/80 max-w-md mx-auto'
     panel.innerHTML =
-      '<h2 class="text-2xl text-amber-400 mb-3">Check your inbox</h2>' +
+      '<h2 class="text-2xl text-glow-400 mb-3">Check your inbox</h2>' +
       '<p>If that email is available, we just sent a verification link. ' +
       'Click it to finish setting up your account.</p>' +
       '<p class="mt-4 text-sm text-white/60">While you wait, you can ' +
-      '<a href="/install" class="text-amber-400 hover:text-amber-300 underline">install the extension</a>.</p>'
+      '<a href="/install" class="text-glow-400 hover:text-glow-300 underline">install the extension</a>.</p>'
     wrapper.appendChild(panel)
   }
 

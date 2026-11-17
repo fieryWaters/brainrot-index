@@ -7,7 +7,7 @@ import { getState } from '../lib/auth.js'
 import { el } from '../lib/dom.js'
 import { navigate } from '../lib/router.js'
 import { createErrorBanner } from '../components/ErrorBanner.js'
-import { CARD_CLASS, PRIMARY_BUTTON_CLASS, AMBER_BUTTON_CLASS } from '../components/styles.js'
+import { CARD_CLASS, PRIMARY_BUTTON_CLASS, ACCENT_BUTTON_CLASS } from '../components/styles.js'
 import { ROLE_DESCRIPTIONS, ROLE_NAMES } from '../lib/roles.js'
 
 const PENDING_INVITE_KEY = 'brainrot-index-family-invite'
@@ -53,7 +53,7 @@ export function mountJoinFamilyPage() {
 
   if (!code) {
     showMessage('This invite link is missing its code. Ask for the link again, or enter the code on the family page.',
-      link('Family page', '/family', AMBER_BUTTON_CLASS))
+      link('Family page', '/family', ACCENT_BUTTON_CLASS))
     return { el: container }
   }
 
@@ -61,7 +61,7 @@ export function mountJoinFamilyPage() {
     rememberInviteCode(code)
     showMessage('Sign in or create an account to accept this invite. Your dashboard will bring you back here.',
       link('Sign in', '/login', PRIMARY_BUTTON_CLASS),
-      link('Create an account', '/signup', AMBER_BUTTON_CLASS))
+      link('Create an account', '/signup', ACCENT_BUTTON_CLASS))
     return { el: container }
   }
 
@@ -69,12 +69,12 @@ export function mountJoinFamilyPage() {
     if (!response.ok) {
       rememberInviteCode('')
       showMessage(errorMessageFrom(data, 'Could not check this invite. Please reload the page.'),
-        link('Go to the dashboard', '/dashboard', AMBER_BUTTON_CLASS))
+        link('Go to the dashboard', '/dashboard', ACCENT_BUTTON_CLASS))
       return
     }
     if (data.already_in_a_family) {
       showMessage(`You are already in a family. To join ${data.family_name}, leave your family first.`,
-        link('Family page', '/family', AMBER_BUTTON_CLASS))
+        link('Family page', '/family', ACCENT_BUTTON_CLASS))
       return
     }
 
@@ -95,7 +95,7 @@ export function mountJoinFamilyPage() {
       navigate('/family')
     })
 
-    const declineButton = el('button', AMBER_BUTTON_CLASS, 'Not now')
+    const declineButton = el('button', ACCENT_BUTTON_CLASS, 'Not now')
     declineButton.type = 'button'
     declineButton.addEventListener('click', () => {
       rememberInviteCode('')

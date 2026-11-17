@@ -37,7 +37,7 @@ export function mountResetPasswordPage() {
     const cta = document.createElement('button')
     cta.type = 'button'
     cta.className =
-      'w-full py-3 rounded-xl font-bold bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black transition-all'
+      'w-full py-3 rounded-xl font-bold bg-gradient-to-r from-shield-400 to-shield-600 hover:to-shield-400 hover:shadow-lg hover:shadow-glow-400/20 text-white transition-all'
     cta.textContent = 'Continue'
     cta.addEventListener('click', () => navigate('/'))
     card.appendChild(cta)

@@ -22,14 +22,14 @@ export function mountLoginPage() {
   forgotRow.className = 'mt-2'
   const forgotLink = document.createElement('a')
   forgotLink.href = '/forgot-password'
-  forgotLink.className = 'text-amber-400 hover:text-amber-300'
+  forgotLink.className = 'text-glow-400 hover:text-glow-300'
   forgotLink.textContent = 'Forgot password?'
   forgotRow.appendChild(forgotLink)
   footer.appendChild(forgotRow)
 
   const signupRow = document.createElement('div')
   signupRow.innerHTML =
-    'New here? <a href="/signup" class="text-amber-400 hover:text-amber-300">Create an account</a>'
+    'New here? <a href="/signup" class="text-glow-400 hover:text-glow-300">Create an account</a>'
   footer.appendChild(signupRow)
 
   const form = createAuthForm({

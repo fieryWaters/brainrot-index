@@ -1,189 +1,275 @@
 # Chrome Web Store submission kit
 
-Everything the Chrome Web Store Developer Dashboard asks for, written to match what the extension
-really does (checked against the code on 2026-11-16). Copy each block into the field of the same
-name. Brave installs extensions from the Chrome Web Store, so one listing covers both browsers.
+Everything the Chrome Web Store Developer Dashboard asks for, checked against the code on
+2026-11-17 (`extension/manifest.json`, `background.js`, `content/`, `sites/`, `popup/`, `options/`)
+and against the live Privacy Policy at https://brainrotindex.com/privacy. Copy each block into the
+field of the same name. Brave installs extensions from the Chrome Web Store, so one listing covers
+both browsers.
 
-Requirements were checked on 2026-11-16 against Google's pages:
+Google's pages for these fields:
 [images](https://developer.chrome.com/docs/webstore/images),
 [listing](https://developer.chrome.com/docs/webstore/cws-dashboard-listing),
 [privacy fields](https://developer.chrome.com/docs/webstore/cws-dashboard-privacy),
-[best practices](https://developer.chrome.com/docs/webstore/best-listing),
+[distribution](https://developer.chrome.com/docs/webstore/cws-dashboard-distribution),
+[test instructions](https://developer.chrome.com/docs/webstore/cws-dashboard-test-instructions),
 [Limited Use](https://developer.chrome.com/docs/webstore/program-policies/limited-use).
 The dashboard's own wording wins where it differs from this file.
 
+## What is in this folder
+
+| File | Use |
+| --- | --- |
+| `screenshot-1-1280x800.png` to `screenshot-5-1280x800.png` | The five screenshots, in this order |
+| `promo-tile-440x280.png` | Small promo tile |
+| `../../extension/icons/icon128.png` | Store icon (also inside the zip) |
+
+The zip is not committed (`dist/` is ignored). Build it from a clean checkout of the commit being
+submitted: `node scripts/package-extension.mjs` writes `dist/brainrot-index-extension-1.0.0.zip`.
+Upload that zip, never a zip of the `extension/` folder made by hand: the script takes the
+development addresses (localhost, 127.0.0.1, brainrot.jacob-waters.com) out of the manifest, so the
+published copy asks for access to https://brainrotindex.com only.
+
+The screenshots are redrawn by `node extension-tests/screenshot-webstore.mjs` and the promo tile by
+`node extension-tests/make-icons.mjs`. The screenshots show the real extension on stand-in pages with
+made-up posts, which each picture says in a footnote.
+
 ## Steps for the owner
 
-1. Register a developer account at https://chrome.google.com/webstore/devconsole with the Google
-   account that should own the listing. Google charges a one-time registration fee (it has long been
-   US $5; the dashboard shows the current amount). Use a contact email that is read, such as
-   support@brainrotindex.com, and verify it.
-2. Verify brainrotindex.com in Google Search Console with the same Google account, so it can be
-   chosen as the listing's Official URL.
-3. Build the zip from a clean, committed checkout:
-   `node scripts/package-extension.mjs` writes `dist/brainrot-index-extension-<version>.zip`.
-   The zip grants only `https://brainrotindex.com`; the development addresses are left out.
-4. Dashboard: **Items, New item**, upload the zip.
-5. Fill in **Store listing**, **Privacy practices** and **Distribution** from the sections below,
-   and upload the images listed under Images.
-6. Submit for review. Review usually takes from a day to a few weeks.
-7. When the listing is live, put its address in `.env` as `WEBSTORE_URL=` and redeploy. The site's
-   install page then shows one "Add to Brave or Chrome" button instead of the manual steps.
-8. Every later upload needs a higher `version` in `extension/manifest.json`; bump it by hand in the
-   commit that changes the extension, then package again.
+1. **Register.** Open https://chrome.google.com/webstore/devconsole and sign in with the Google
+   account that should own the listing. That account needs 2-Step Verification turned on. Accept the
+   developer agreement and pay the one-time registration fee (US $5 when last checked; the page
+   shows the current amount).
+2. **Account tab.** Set the publisher name (`BrainRot Index`) and a contact email that is read, such
+   as support@brainrotindex.com, and verify it from the email Google sends. Declare **trader**
+   status: BrainRot Index is sold for $5 a month, so it is a trader under EU law, and Google then
+   asks for an address and phone number that it shows to people in the EU.
+3. **Optional: verify the domain.** Verify brainrotindex.com in Google Search Console with the same
+   Google account. It can then be chosen as the listing's Official URL and shows as verified.
+4. **Make a reviewer account.** The extension does nothing without a signed-in, paid or trial
+   account, and the trial may run out while the review waits. On the server:
+   sign up `webstore-review@brainrotindex.com` (or any address you control) on the site, then
+   `docker compose exec backend python manage.py mark_email_verified webstore-review@brainrotindex.com`
+   and `docker compose exec backend python manage.py grant_comp webstore-review@brainrotindex.com`.
+   Keep the password for the Test instructions field.
+5. **Build the zip** (see above) from the commit being submitted.
+6. **New item.** In the dashboard press **New item** and upload the zip.
+7. **Fill in the tabs** from the sections below: **Store listing** (text and images), **Privacy**,
+   **Distribution**, **Test instructions**.
+8. **Distribution: choose Unlisted** for the first submission. An unlisted item passes the same
+   review but is reachable only by its link, so it can be installed and checked from the store before
+   anyone finds it. Leave all regions on. If the dashboard asks about payments or in-app purchases,
+   answer that the extension is free to install and the subscription is sold on the website, not
+   through the store.
+9. **Submit for review.** Leave "publish automatically after approval" on or off as you like.
+   Review usually takes from a day to a few weeks; extensions that read site content take longer.
+10. **After approval.** Install it from the unlisted link in a fresh Brave profile, sign in, press
+    Connect extension on the dashboard and check that a feed is filtered. Then switch Distribution to
+    **Public** (a change of visibility for the same package; if the dashboard sends it to review
+    again, it is the package already approved). To make the site
+    offer the store button, put the listing's address in `.env` as `WEBSTORE_URL=` and redeploy.
+11. **Every later upload** needs a higher `version` in `extension/manifest.json`; bump it in the
+    commit that changes the extension, then build the zip again.
 
 ## Store listing
 
-**Title** (from the manifest name)
+**Title** (comes from the manifest name; cannot be typed in the dashboard)
 
     BrainRot Index
 
-**Summary** (132 characters at most; this is the manifest description)
+**Summary** (comes from the manifest description, 132 characters at most)
 
     BrainRot Index - The algorithm that works for you
 
 **Description**
 
-    BrainRot Index - The algorithm that works for you.
+    The algorithm that works for you.
 
-    Your feeds are tuned to keep you scrolling. BrainRot Index is tuned by you. It works on X,
-    Reddit and YouTube.
+    Your feeds are tuned to keep you scrolling. BrainRot Index is tuned by you. It reads your social feeds with AI as you scroll and clears out the ragebait, engagement bait and brainrot before you reach it. You choose what goes.
 
-    As you scroll, the extension checks each post, reply and video with AI and blurs or hides the
-    ones your filters flag. Each hidden post leaves a one-line label saying why, for example
-    "Hidden - Ragebait: Blames a group (91/100)", and one click shows it.
+    HOW IT WORKS
+    As posts, replies and videos come onto your screen, the extension sends them to the BrainRot Index service, where AI filters score each one with its text and images. Posts your filters flag are blurred, or folded into a single line that says which filter caught them. One click shows any of them.
 
+    FILTERS YOU CONTROL
     Four filters are built in:
     - Engagement bait: posts made to farm replies, likes and shares.
     - Ragebait: posts built to make you angry, such as blaming whole groups of people.
-    - Brainrot: attention sinks with nothing inside, such as meme-slang loops.
+    - Brainrot: attention sinks with nothing inside.
     - AI slop: mass-produced generated content and reply-guy promotion.
+    On your dashboard you turn each filter on or off, set how strict it is, and choose whether flagged posts are blurred or hidden. The plugin store has more filters, written by other people. Child mode keeps posts blurred until they have been checked and does not let filtered posts be revealed.
 
-    On your dashboard at brainrotindex.com you choose which filters run, how strict each one is,
-    and whether flagged posts are blurred or hidden. Child mode keeps posts blurred until they have
-    been checked and does not let filtered posts be revealed.
+    TEACH IT
+    Thumbs up or down on any post tells the filters whether they got it right. Right-click a post to report one they missed. The toolbar button turns filtering off and on and shows how many posts were checked.
 
-    Report a mistake with the "Wrong?" link on any label, or right-click any post.
-
-    How to start:
+    GETTING STARTED
     1. Create an account at brainrotindex.com. The first 7 days are free and need no card.
-    2. Install this extension.
+    2. Add this extension.
     3. Open your dashboard and press Connect extension.
+    An account is required. After the free trial BrainRot Index costs $5 a month, paid on the website.
 
-    BrainRot Index costs $5 a month after the free trial.
+    WHERE IT WORKS
+    X, Reddit and YouTube, in Chrome, Brave and other Chromium browsers on a computer.
 
-    Privacy: while it is switched on, the extension sends the posts and videos it checks on X, Reddit
-    and YouTube to the BrainRot Index server, where AI models classify them. For a YouTube video it
-    reads the video's captions in your browser and sends them with the video. Posts and videos are
-    stored together with the account that sent them and used to run the service, improve the filters
-    and prevent abuse. The extension does not read your messages, what you type, or any other site.
-    We do not sell your data or use it for advertising. Full details: https://brainrotindex.com/privacy
+    PRIVACY
+    While filtering is on, the extension sends the posts and videos it checks on those sites to the BrainRot Index service: their text, links, author names and image addresses, and for a video its captions, which the extension reads in your browser. They are stored with your account to run and improve the filters and to prevent abuse. The extension does not read your messages, what you type, or any other site. We do not sell your data or use it for advertising. Details: https://brainrotindex.com/privacy
 
-**Category**: Social Media & Networking (in the 2023 category list; pick the closest current name).
+The one line naming the supported sites is kept on purpose: the install prompt names them anyway,
+and a listing that hides where the extension works invites a "misleading description" rejection.
+It is the only place they are named.
+
+**Category**: Lifestyle, Well-being. (Second choice: Social Networking.)
 
 **Language**: English.
 
-**Official URL**: https://brainrotindex.com (after step 2 above).
+**Official URL**: https://brainrotindex.com (only after step 3; otherwise leave it unset).
 **Homepage URL**: https://brainrotindex.com
-**Support URL**: mailto:support@brainrotindex.com, or https://brainrotindex.com/install
+**Support URL**: https://brainrotindex.com/install (or mailto:support@brainrotindex.com)
 
 **Mature content**: No.
 
 ## Images
 
-| Asset | Size | Required | Status |
+| Asset | Size | Required | File |
 | --- | --- | --- | --- |
-| Store icon | 128 x 128 PNG, artwork 96 x 96 with 16 px transparent margin | yes | Done: `extension/icons/icon128.png`, inside the zip |
-| Screenshots | 1280 x 800 (preferred) or 640 x 400, square corners, full bleed; 1 to 5 | at least 1 | To do, see below |
-| Small promo tile | 440 x 280 | no, but listings without it rank lower | Done: `docs/webstore/promo-tile-440x280.png` |
-| Marquee promo tile | 1400 x 560 | only for being featured | Not made |
+| Store icon | 128 x 128 PNG, artwork 96 x 96 with 16 px transparent margin | yes | `extension/icons/icon128.png` (inside the zip) |
+| Screenshots | 1280 x 800, square corners, full bleed; 1 to 5 | at least 1 | `screenshot-1` to `screenshot-5`, upload in order |
+| Small promo tile | 440 x 280 | no, but listings without it rank lower | `promo-tile-440x280.png` |
+| Marquee promo tile | 1400 x 560 | only for being featured | not made |
 
-The icon is the glowing blue shield with a line-art brain, on a transparent background; the promo
-tile and the site's social preview put it on the logo's deep navy with a light cyan headline. All
-brand images are drawn from `brand/logo-source.webp` by `node extension-tests/make-icons.mjs` (run
-`npm install` in `extension-tests` first). The site's palette is defined once in
-`frontend/brainrot-index-frontend/src/index.css`.
+What each screenshot shows:
 
-Screenshots to take at 1280 x 800 (a Brave window of that size, with a signed-in account; do not
-show other people's identifiable posts prominently, or crop them):
+1. "The algorithm that works for you": a dark feed with a hidden post's line (reason, Show, thumbs)
+   and a blurred post.
+2. "Every post and reply, checked as you scroll": a light thread with a blurred post, a hidden post
+   and a hidden reply.
+3. "Videos too": a dark video grid with one hidden and one blurred video.
+4. "You choose what goes": the dashboard's My plugins card with strictness sliders and Blur or Hide.
+5. "Tell it when it is wrong": the thumbs-down details box, and the toolbar popup.
 
-1. A Reddit feed with one post blurred and its label showing, and one hidden post's one-line label.
-2. An X feed with a hidden post's label and the Show and Wrong? buttons.
-3. The dashboard: filters with their strictness sliders and Blur or Hide.
-4. A YouTube home page with blurred video tiles and their labels.
-5. The extension's popup over a feed, showing "Connected to your account" and the counts.
-The landing page's before and after picture (https://brainrotindex.com, top of the page) can replace
-any of these; five is the most the listing takes.
-
-## Privacy practices
+## Privacy tab
 
 **Single purpose**
 
-    BrainRot Index hides unwanted posts in social media feeds: it sends the posts and videos shown
-    on X, Reddit and YouTube to the BrainRot Index server, which classifies them with the user's
-    chosen filters, and blurs or hides the ones the server flags.
+    BrainRot Index filters unwanted posts out of social media feeds: it sends the posts and videos shown on supported sites to the BrainRot Index service, which scores them with the filters the user chose, and it blurs or hides the ones the service flags.
 
-**Permission justifications** (one per entry in `manifest.json`)
+**Permission justifications** (one box per permission; the dashboard also asks about host access)
 
 | Permission | Justification |
 | --- | --- |
-| `storage` | Keeps the account connection key, the on/off switch and the server address, and remembers the server's answers for posts during the browser session so a post is not sent twice. |
-| `contextMenus` | Adds "BrainRot Index: report this post" to the right-click menu on X, Reddit and YouTube, so the user can report a post or video the filters got wrong. |
-| `activeTab` | When the user sends feedback from the toolbar popup, reads the address of the tab they are on to attach it to the report. |
+| `storage` | Keeps the account connection key, the on/off switch and the service address, and remembers the service's answers for posts during the browser session so a post is not sent twice. |
+| `contextMenus` | Adds "BrainRot Index: report this post" to the right-click menu on the supported sites, so the user can report a post the filters missed or got wrong. |
+| `activeTab` | When the user sends feedback from the toolbar popup, reads the address of the current tab to attach it to the report. |
 | `scripting` | Right after install, adds the connect script to brainrotindex.com tabs that were already open, so the site's Connect extension button works without reloading the page. |
-| Host permission `https://brainrotindex.com/*` | The extension's server: it sends posts there for classification, reads the user's settings, sends feedback, and receives the account connection key from the site's Connect extension button. |
-| Content scripts on `https://www.reddit.com/*` and `https://x.com/*` | Read the posts and replies shown in the feed and in threads, and blur or hide the ones the server flags. |
-| Content script on `https://www.youtube.com/*` | Reads the video tiles on the home page, in search results, beside a playing video and in Shorts shelves, and blurs or hides the ones the server flags. For a video the server has not seen before, it fetches that video's captions from www.youtube.com (without the user's YouTube cookies) and sends them with the video, so the filters can judge what is said in it. |
+| Host permission `https://brainrotindex.com/*` | The extension's own service: it sends posts there to be scored, reads the user's filter settings, sends feedback, and receives the account connection key from the site's Connect extension button. |
+| Content scripts on `https://x.com/*`, `https://www.reddit.com/*` | Read the posts and replies shown in the feed and in threads, and blur or hide the ones the service flags. |
+| Content script on `https://www.youtube.com/*` | Reads the video tiles on the home page, in search results, beside a playing video and in Shorts shelves, and blurs or hides the ones the service flags. For a video the service has not seen before, it fetches that video's captions from www.youtube.com, without the user's YouTube cookies, and sends them with the video so the filters can judge what is said in it. |
 
-**Remote code**: No, I am not using remote code. (All JavaScript is in the package; the server
-only returns JSON data.)
+**Remote code**: "No, I am not using remote code." All JavaScript is in the package; the service and
+YouTube only return JSON data.
 
-**Data usage**: tick these categories.
+**Data usage**: tick these.
 
-- **Website content**: yes. The text of every post and reply the extension sees on X and Reddit,
-  its address, its community, and the addresses of its images; for every YouTube video tile, the
-  video's id, title, channel name, description snippet (search results only) and thumbnail
-  address, and for a video the server has not seen before, the first 2500 words of its captions,
-  with their language and whether they are automatic. All of it is stored with the account that
-  sent it. The server downloads and stores the images and thumbnails too.
-- **Personally identifiable information**: yes. The account's email address, which the posts are
-  stored with, and the usernames of post authors, which are sent with each post.
+- **Website content**: yes. For each post and reply on X and Reddit: its text, address, community,
+  author's username and image addresses. For each YouTube video tile: the video id, title, channel
+  name, description snippet (search results only) and thumbnail address, and for a video the service
+  has not seen before up to the first 2500 words of its captions, with their language and whether
+  they are automatic. Stored with the account that sent them; the service also downloads and stores
+  the images. Also the thumbs up or down, severity, filter and optional note the user gives a post.
+- **Personally identifiable information**: yes. The usernames of post authors are sent with each
+  post, and posts are stored with the account, which carries the user's email address.
 - **Authentication information**: yes. The extension stores and sends an account connection key.
-- **User activity**: no. It does not record clicks, keystrokes or scrolling.
-- **Web history**: yes. The server keeps, with the account, the addresses of the X and Reddit posts
-  and YouTube videos the extension saw, and when each was first and last sent, which is a record of
-  what the user scrolled past on those sites. The feedback
-  form also attaches the address of the current tab when the user sends a report. It never sends
-  the list of other pages visited.
-- **Location, health, financial and payment, personal communications**: no. (Payments happen on the
-  website through Stripe, not in the extension.)
+- **Web history**: yes. The service keeps, with the account, the addresses of the posts and videos
+  the extension saw on the supported sites and when each was first and last sent, which is a record
+  of what the user scrolled past there. Feedback sent from the popup carries the current tab's
+  address. The list of other pages visited is never sent.
+- **User activity**: no. Clicks, keystrokes, mouse movement and scrolling are not recorded.
+- **Location, health, financial and payment, personal communications**: no. Payments happen on the
+  website through Stripe, not in the extension.
 
-**Certifications**: all three can be ticked truthfully, with the notes below.
+**Certifications**: all three can be ticked truthfully.
 
 - I do not sell or transfer user data to third parties, outside of the approved use cases.
-  (Post content goes to the AI model providers OpenRouter and Google only to classify it; the other
-  services that run the site, Stripe, Resend and Cloudflare, receive only what they need for that.
-  Nothing is sold or used for advertising.)
+  (Post content goes to the AI model provider, OpenRouter, which runs Google's Gemini model, only to
+  score it; Stripe, Resend and Cloudflare receive only what they need to run the site. Nothing is
+  sold or used for advertising.)
 - I do not use or transfer user data for purposes that are unrelated to my item's single purpose.
-  (Stored posts are used to run the filtering, to improve the filters, mostly through automated and
-  aggregate analysis and the posts users report with "Wrong?", and to detect and investigate abuse.)
+  (Stored posts are used to run the filters, to improve them, and to detect and investigate abuse.)
 - I do not use or transfer user data to determine creditworthiness or for lending purposes.
 
-How this meets Limited Use's rule on people reading user data: a person on our side reads an
-individual stored post only when the user reports it (their consent), when investigating abuse or a
-security problem, or when the law requires it. Those are the exceptions the policy allows. Other
-work on the filters uses automated and aggregate analysis.
+People reading stored posts, under Limited Use: a person on our side reads an individual stored post
+only when the user reports it (thumbs or report form), to investigate abuse or a security problem, or
+when the law requires it, as the Privacy Policy says. Those are the cases the policy allows. Keep the
+admin used that way.
 
 **Privacy policy URL**: https://brainrotindex.com/privacy
 
-### Decisions the owner must make before submitting
+## Test instructions tab
 
-- **People reading stored posts.** Decided: only reported posts, abuse or security investigations,
-  and legal requirements, as the Privacy Policy now says. Keep the admin used that way; browsing
-  stored posts for any other reason would break both the policy and Limited Use.
-- **Posts stored with the account.** Built on 2026-11-17: every post and video a classify request
-  carries is recorded with the account and extension connection that sent it (PostSubmission),
-  included in the data export and deleted with the account.
-- **"Data mining" the cache.** Using stored posts to improve the filters fits the single purpose.
-  Any other use (research unrelated to filtering, selling datasets, training general models) would
-  not, and would also contradict the Privacy Policy as written.
+Fill in the reviewer account from step 4, and paste:
+
+    BrainRot Index needs an account; this one is free and already verified.
+    1. Install the extension, then sign in at https://brainrotindex.com/login with the account above.
+    2. Open https://brainrotindex.com/dashboard and press "Connect extension". The toolbar popup then says "Connected to your account".
+    3. Open https://www.reddit.com/r/popular/ or https://www.youtube.com/ (no sign-in needed). Within a few seconds posts the filters flag show a "Blurred" or "Hidden" label with the filter's name; "Show" reveals one.
+    4. On the dashboard, under My plugins, move a filter's slider left to filter more posts, or switch it between Blur and Hide.
+
+## Things a reviewer may question
+
+Ordered from most to least likely to cause trouble.
+
+1. **YouTube captions fetched as YouTube's Android app** (`extension/sites/youtube-transcript.js`).
+   Risk: medium, mostly after approval rather than at review. To get a video's captions the content
+   script posts to YouTube's internal player endpoint (`/youtubei/v1/player`) with
+   `clientName: "ANDROID"`, a fixed app version, so that YouTube answers with caption addresses that
+   do not need the proof-of-origin token its web player makes. The file's own comment says this is
+   why. What it is: not a remote-code or permission problem (the request goes to the page's own
+   origin, so no extra permission shows up, and only JSON comes back), and it is rate-limited (only
+   videos the service never saw, two at a time, 20 a minute, stops for the session at the first
+   refusal), sends no cookies and is disclosed in the listing as "reads captions in your browser".
+   What a careful reviewer or YouTube could object to: it presents itself as another client to get
+   around a protection YouTube put on its web captions, through an undocumented interface, which
+   YouTube's terms forbid. YouTube belongs to Google, which also runs the store, so a complaint from
+   YouTube is the likeliest way this becomes a takedown. It can also break without warning when
+   YouTube changes the Android client, and because the requests come from the user's own address, a
+   heavy user could in principle be shown YouTube's "confirm you're not a bot" page. Options for the
+   owner: keep it as is (automated review will very likely pass it); soften the comment so it
+   describes rather than advertises the workaround; or drop in-browser captions and judge videos by
+   title and thumbnail only. Not changed here.
+2. **Reading and sending feed content.** Risk: medium. The whole product is sending what the user
+   scrolls past to a server, which is the data Google's User Data policy watches most. It passes if
+   the listing, the Privacy tab and the Privacy Policy agree, which they now do. There is no consent
+   screen inside the extension itself; consent is the sign-up page's "By creating an account you
+   agree to the Terms of Service and the Privacy Policy" line and the user pressing Connect
+   extension. Google asks for in-product disclosure only when collection is not closely tied to the
+   described purpose, which is not the case here, but a reviewer may still ask. If one does, a
+   one-screen notice on the dashboard before Connect extension answers it.
+3. **The extension needs an account to do anything.** Risk: medium if the Test instructions are
+   empty, low with the reviewer account from step 4. Reviewers reject items they cannot try.
+4. **Host access to three big sites.** Risk: low. The install prompt reads roughly "Read and change
+   your data on brainrotindex.com, www.reddit.com, www.youtube.com and x.com". Named sites, not all
+   sites, but any content-script access means a longer, partly manual review.
+5. **Options page with a "Server address" box.** Risk: low. It lets anyone point the extension at
+   another server. In the packed copy the host permission and the connect script cover only
+   brainrotindex.com, so it is useful only for development, but a reviewer looking for ways data
+   could go elsewhere may ask. Hiding the options page in the packed manifest would remove the
+   question; not changed here.
+6. **Site look-alikes in screenshots.** Risk: low. The screenshots use stand-in pages that look like
+   the sites' feeds, with made-up posts and no site logos, and say so. Store policy forbids using
+   other companies' logos or implying endorsement, which these do not.
+7. **Child mode.** Risk: low. The listing mentions it, but neither the listing nor the site says the
+   product is made for children, and the Privacy Policy says children under 13 may not have their own
+   account. Do not tick anything that marks the item as designed for children.
+8. **`activeTab` and `scripting`.** Risk: low. Each has one narrow use (above); reviewers mainly
+   reject permissions that are never used, and both are used.
+
+Already fine: no remote code, no `eval` or markup injection (everything is built element by
+element), no obfuscation or minification, Manifest V3, no `<all_urls>`, no `tabs` or `webRequest`
+permission.
+
+## Elsewhere, not part of the submission
+
+- The landing page and its questions still say "Wrong?", which the extension replaced with thumbs up
+  and down.
+- The site's social preview image (`frontend/brainrot-index-frontend/public/og-image.png`, drawn by
+  `make-icons.mjs`) still spells "Brainrot Index" and names X and Reddit.
+- The Privacy Policy source still carries a "draft, not yet reviewed" note for the owner (and ideally
+  a lawyer) to check before relying on it.

@@ -3,8 +3,8 @@
 // Usage: node run-live-tests.mjs [reddit] [x] [youtube] [--probe-only]
 //
 // 1. Makes a single-use invite code over `ssh spark`, signs up e2e+<random>@brainrotindex.com with it
-//    and a random password, reads the verification link from
-//    the backend log over `ssh spark`, verifies, logs in, and creates an extension token.
+//    and a random password, marks its address verified over `ssh spark`, logs in, and creates an
+//    extension token.
 // 2. Sends one obvious engagement-bait post and waits up to 60 seconds for it to be flagged, to show
 //    whether real inference is working.
 // 3. Stamps build-info.json and runs run-tests.mjs with the token and the website session, so the real
@@ -16,7 +16,8 @@ import { execFileSync, spawn } from "node:child_process";
 import { TESTS_DIR } from "./browser.mjs";
 
 const SERVER = "https://brainrot.jacob-waters.com";
-const SERVER_LOG_COMMAND = "cd /home/jacob/git-repos/brainrot-index && docker compose logs backend | grep verify-email | tail -1";
+// The verification email now really goes out, so the address is marked verified on the server instead.
+const MARK_VERIFIED_COMMAND = "cd /home/jacob/git-repos/brainrot-index && docker compose exec -T backend python manage.py mark_email_verified";
 // New accounts need an invite code; each run makes a single-use one.
 const INVITE_COMMAND = "cd /home/jacob/git-repos/brainrot-index && docker compose exec -T backend python manage.py create_invite --note 'extension live tests' --max-uses 1";
 const PROBE_TIMEOUT_MS = 60000;
@@ -61,11 +62,8 @@ async function createTestAccount() {
   const inviteCode = execFileSync("ssh", ["spark", INVITE_COMMAND], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   await callWebsite("GET", "/api/auth/csrf/");
   await callWebsite("POST", "/api/auth/signup/", { email, password, invite_code: inviteCode });
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-  const logLine = execFileSync("ssh", ["spark", SERVER_LOG_COMMAND], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-  const verificationToken = decodeURIComponent(logLine.match(/token=([^&\s"']+)/)[1]);
-  await callWebsite("POST", "/api/auth/verify-email/", { token: verificationToken });
-  await callWebsite("POST", "/api/auth/login/", { email, password });
+  // Sign-up signs this session in; the password itself only works once the emailed link is opened.
+  execFileSync("ssh", ["spark", `${MARK_VERIFIED_COMMAND} '${email}'`], { stdio: ["ignore", "ignore", "ignore"] });
   const { token } = await callWebsite("POST", "/api/extension/token/");
   console.log("test account: " + email);
   return token;

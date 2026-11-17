@@ -12,15 +12,25 @@ function jsonResponse(body, status = 200) {
 }
 
 let requests
+let role
 
 beforeEach(() => {
   requests = []
+  role = 'superadmin'
   document.cookie = 'csrftoken=test-csrf'
   vi.stubGlobal('fetch', vi.fn(async (url, options) => {
     const path = String(url)
     requests.push({ path, method: options.method, body: options.body ? JSON.parse(options.body) : null })
+    if (path.endsWith('/family/')) return jsonResponse({ role, family: null })
     if (path.endsWith('/settings/') && options.method === 'GET') return jsonResponse({ enabled: true, mode: 'adult', allow_reveal: true })
-    if (path.endsWith('/plugins/')) return jsonResponse({ plugins: PLUGINS })
+    if (path.endsWith('/plugins/ragebait/') && options.body?.includes('"enabled":true')) {
+      return jsonResponse({ error: 'At most 8 plugins can be on at once, because each one checks every post. Turn one off first.' }, 400)
+    }
+    if (path.endsWith('/plugins/ragebait/') && options.method === 'DELETE') return new Response(null, { status: 204 })
+    if (path.endsWith('/plugins/')) {
+      const plugins = requests.some((request) => request.method === 'DELETE') ? [] : PLUGINS
+      return jsonResponse({ plugins: structuredClone(plugins), enabled_limit: 8, can_change: role !== 'child' })
+    }
     if (path.endsWith('/extension/token/')) return jsonResponse({ token: 'raw-token' }, 201)
     return jsonResponse({})
   }))
@@ -59,6 +69,39 @@ describe('DashboardPage', () => {
       expect(requests).toContainEqual({ path: '/api/settings/', method: 'PATCH', body: { enabled: false } })
       expect(requests).toContainEqual({ path: '/api/settings/', method: 'PATCH', body: { mode: 'child' } })
     })
+  })
+
+  it('shows how many plugins are on out of the limit', async () => {
+    renderElement(mountDashboardPage().el)
+    expect(await screen.findByText(/^1 of 8 turned on/)).toBeInTheDocument()
+  })
+
+  it('keeps a plugin off and shows the reason when the limit is reached', async () => {
+    PLUGINS[0].enabled = false
+    try {
+      renderElement(mountDashboardPage().el)
+      const checkbox = await screen.findByLabelText('Ragebait on')
+      fireEvent.click(checkbox)
+      expect(await screen.findByText('At most 8 plugins can be on at once, because each one checks every post. Turn one off first.')).toBeInTheDocument()
+      expect(checkbox.checked).toBe(false)
+    } finally {
+      PLUGINS[0].enabled = true
+    }
+  })
+
+  it('uninstalls a plugin and then says nothing is filtered', async () => {
+    renderElement(mountDashboardPage().el)
+    fireEvent.click(await screen.findByText('Uninstall'))
+    expect(await screen.findByText('No plugins installed, so nothing is filtered.')).toBeInTheDocument()
+  })
+
+  it('shows a child their settings with every control disabled', async () => {
+    role = 'child'
+    renderElement(mountDashboardPage().el)
+    expect(await screen.findByLabelText('Ragebait threshold')).toBeDisabled()
+    expect(screen.getByLabelText('Mode')).toBeDisabled()
+    expect(screen.getAllByText("Your family's superadmin manages these settings.").length).toBe(2)
+    expect(screen.queryByText('Uninstall')).not.toBeInTheDocument()
   })
 
   it('hands the token to the extension and shows Connected when it answers', async () => {

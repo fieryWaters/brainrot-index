@@ -10,6 +10,11 @@ import { mountResetPasswordPage } from './pages/ResetPasswordPage.js'
 import { mountVerifyEmailPage } from './pages/VerifyEmailPage.js'
 import { mountAccountPage } from './pages/AccountPage.js'
 import { mountDashboardPage } from './pages/DashboardPage.js'
+import { mountStorePage } from './pages/StorePage.js'
+import { mountPublishPluginPage } from './pages/PublishPluginPage.js'
+import { mountPluginPage } from './pages/PluginPage.js'
+import { mountFamilyPage } from './pages/FamilyPage.js'
+import { mountJoinFamilyPage } from './pages/JoinFamilyPage.js'
 
 // Build the persistent shell and mount it into #root
 const layout = createLayout()
@@ -28,6 +33,12 @@ register('/reset-password', mountResetPasswordPage)
 register('/verify-email', mountVerifyEmailPage)
 register('/account', mountAccountPage, { requiresAuth: true })
 register('/dashboard', mountDashboardPage, { requiresAuth: true })
+register('/store', mountStorePage, { requiresAuth: true })
+register('/store/publish', mountPublishPluginPage, { requiresAuth: true })
+register('/store/:slug', mountPluginPage, { requiresAuth: true })
+register('/family', mountFamilyPage, { requiresAuth: true })
+// Open to people who are signed out, so an invite link can ask them to sign in.
+register('/family/join', mountJoinFamilyPage)
 
 // Centralized auth gate: protected routes redirect to '/' when there's no
 // session. Reads live state so a fresh refreshSession() on boot is honored.

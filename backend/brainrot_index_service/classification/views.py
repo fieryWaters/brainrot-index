@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from api.auth_tokens import generate_raw_token, hash_token
+from families.permissions import can_change_filters_of, filters_owner
 
 from .authentication import ExtensionTokenAuthentication
 from .images import image_url_is_allowed
@@ -36,6 +37,14 @@ from .serializers import ClassifyRequestSerializer, UserPluginSerializer, UserSe
 # come back done on the first call.
 PENDING_WAIT_SECONDS = 1.5
 PENDING_RECHECK_SECONDS = 0.1
+
+# Every enabled plugin is one more model call for each new post a user sees,
+# so the number an account can have turned on at once is capped.
+MAX_ENABLED_PLUGINS = 8
+ENABLED_PLUGIN_LIMIT_MESSAGE = (
+    f"At most {MAX_ENABLED_PLUGINS} plugins can be on at once, because each one checks every post. "
+    "Turn one off first."
+)
 
 ACTION_SEVERITY = {
     ACTION_ALLOW: 0,
@@ -201,8 +210,9 @@ def create_extension_token(request):
 @api_view(['GET', 'PATCH'])
 @permission_classes([IsAuthenticated])
 @throttle_classes([])
-def user_settings_detail(request):
-    user_settings = settings_for_user(request.user)
+def user_settings_detail(request, user_id=None):
+    owner = filters_owner(request, user_id, change=request.method == 'PATCH')
+    user_settings = settings_for_user(owner)
     if request.method == 'GET':
         return Response(UserSettingsSerializer(user_settings).data)
 
@@ -212,26 +222,63 @@ def user_settings_detail(request):
     return Response(serializer.data)
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-@throttle_classes([])
-def installed_plugin_list(request):
-    settings_for_user(request.user)
-    installed_plugins = UserPlugin.objects.filter(user=request.user).select_related('plugin').order_by('plugin__id')
-    return Response({'plugins': UserPluginSerializer(installed_plugins, many=True).data})
+def enabled_plugin_count(user):
+    return UserPlugin.objects.filter(user=user, enabled=True).count()
 
 
-@api_view(['PATCH'])
+def enabled_limit_reached_response():
+    return Response(
+        {'error': ENABLED_PLUGIN_LIMIT_MESSAGE},
+        status=status.HTTP_400_BAD_REQUEST,
+    )
+
+
+@api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 @throttle_classes([])
-def installed_plugin_detail(request, slug):
-    settings_for_user(request.user)
+def installed_plugin_list(request, user_id=None):
+    """GET lists the installed plugins; POST {slug} installs one, turned on."""
+    owner = filters_owner(request, user_id, change=request.method == 'POST')
+    settings_for_user(owner)
+
+    if request.method == 'POST':
+        plugin = get_object_or_404(Plugin, slug=request.data.get('slug', ''), is_listed=True)
+        if UserPlugin.objects.filter(user=owner, plugin=plugin).exists():
+            return Response({'error': 'This plugin is already installed.'}, status=status.HTTP_400_BAD_REQUEST)
+        if enabled_plugin_count(owner) >= MAX_ENABLED_PLUGINS:
+            return enabled_limit_reached_response()
+        installed_plugin = UserPlugin.objects.create(
+            user=owner, plugin=plugin, threshold=plugin.default_threshold)
+        return Response(UserPluginSerializer(installed_plugin).data, status=status.HTTP_201_CREATED)
+
+    installed_plugins = UserPlugin.objects.filter(user=owner).select_related('plugin').order_by('plugin__id')
+    return Response({
+        'plugins': UserPluginSerializer(installed_plugins, many=True).data,
+        'enabled_limit': MAX_ENABLED_PLUGINS,
+        'can_change': can_change_filters_of(request.user, owner),
+    })
+
+
+@api_view(['PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+@throttle_classes([])
+def installed_plugin_detail(request, slug, user_id=None):
+    """PATCH changes enabled, threshold or flagged_action; DELETE uninstalls."""
+    owner = filters_owner(request, user_id, change=True)
+    settings_for_user(owner)
     installed_plugin = get_object_or_404(
         UserPlugin.objects.select_related('plugin'),
-        user=request.user,
+        user=owner,
         plugin__slug=slug,
     )
+    if request.method == 'DELETE':
+        installed_plugin.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     serializer = UserPluginSerializer(installed_plugin, data=request.data, partial=True)
     serializer.is_valid(raise_exception=True)
+    turning_on = serializer.validated_data.get('enabled') is True and not installed_plugin.enabled
+    if turning_on and enabled_plugin_count(owner) >= MAX_ENABLED_PLUGINS:
+        return enabled_limit_reached_response()
     serializer.save()
     return Response(serializer.data)

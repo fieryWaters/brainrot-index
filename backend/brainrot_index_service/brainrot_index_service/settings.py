@@ -110,6 +110,8 @@ INSTALLED_APPS = [
     'api',
     'classification',
     'feedback',
+    'store',
+    'families',
 ]
 
 # -- Email -------------------------------------------------------------------

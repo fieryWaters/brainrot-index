@@ -12,4 +12,9 @@ urlpatterns = [
     path('settings/', views.user_settings_detail, name='user_settings'),
     path('plugins/', views.installed_plugin_list, name='installed_plugins'),
     path('plugins/<slug:slug>/', views.installed_plugin_detail, name='installed_plugin'),
+
+    # The same, for a member of the signed-in user's family
+    path('family/members/<int:user_id>/settings/', views.user_settings_detail, name='member_settings'),
+    path('family/members/<int:user_id>/plugins/', views.installed_plugin_list, name='member_plugins'),
+    path('family/members/<int:user_id>/plugins/<slug:slug>/', views.installed_plugin_detail, name='member_plugin'),
 ]

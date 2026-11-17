@@ -22,4 +22,4 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["api", "brainrot_index_service", "classification", "feedback"]
+packages = ["api", "brainrot_index_service", "classification", "families", "feedback", "store"]

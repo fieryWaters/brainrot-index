@@ -23,6 +23,8 @@ RUN uv export --locked --format requirements-txt --no-emit-project --no-dev \
 COPY --chown=app:app api ./api
 COPY --chown=app:app classification ./classification
 COPY --chown=app:app feedback ./feedback
+COPY --chown=app:app families ./families
+COPY --chown=app:app store ./store
 COPY --chown=app:app brainrot_index_service ./brainrot_index_service
 RUN uv pip install --system --no-deps .
 

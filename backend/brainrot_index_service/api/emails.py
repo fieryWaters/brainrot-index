@@ -45,14 +45,14 @@ def send_email_verification(user, raw_token):
         'verify_url': verify_url,
     })
     text_body = (
-        f"Welcome to Brainrot Index!\n\n"
+        f"Welcome to BrainRot Index!\n\n"
         f"Tap the link below to verify your email:\n\n"
         f"{verify_url}\n\n"
         f"This link is good for 24 hours. If you didn't create an account, "
         f"you can safely ignore this email.\n"
     )
     _send_async(
-        subject="Verify your email - Brainrot Index",
+        subject="Verify your email - BrainRot Index",
         recipient=recipient_email,
         text_body=text_body,
         html_body=html_body,
@@ -71,14 +71,14 @@ def send_password_reset(user, raw_token):
         'reset_url': reset_url,
     })
     text_body = (
-        f"Reset your Brainrot Index password\n\n"
+        f"Reset your BrainRot Index password\n\n"
         f"Tap the link below to choose a new password. This link is good for "
         f"15 minutes and can only be used once.\n\n"
         f"{reset_url}\n\n"
         f"If you didn't request this, you can safely ignore this email.\n"
     )
     _send_async(
-        subject="Reset your password - Brainrot Index",
+        subject="Reset your password - BrainRot Index",
         recipient=recipient_email,
         text_body=text_body,
         html_body=html_body,

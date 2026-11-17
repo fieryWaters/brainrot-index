@@ -1,4 +1,4 @@
-// Landing page: what Brainrot Index does, a before and after of a filtered
+// Landing page: what BrainRot Index does, a before and after of a filtered
 // feed, how it works, the built-in filters, the price, questions people ask
 // (including what data is collected), and the ways in.
 
@@ -104,9 +104,9 @@ function heroSection() {
   return el('section', 'max-w-5xl mx-auto px-4 pt-12 pb-10 sm:pt-16 text-center',
     createLogoMark('mx-auto mb-6 w-28 h-28 sm:w-36 sm:h-36'),
     el('h1', 'mx-auto max-w-3xl text-4xl sm:text-6xl font-extrabold leading-tight tracking-tight bg-gradient-to-r from-glow-200 via-glow-300 to-glow-400 bg-clip-text text-transparent',
-      'A calmer feed on X and Reddit'),
+      'The algorithm that works for you'),
     el('p', 'mx-auto mt-6 max-w-2xl text-lg sm:text-xl text-white/70',
-      'Brainrot Index is a browser extension that reads your feed with AI and hides the brainrot, ragebait and engagement bait before you scroll past it. You choose what goes.'),
+      'Your feeds are tuned to keep you scrolling. BrainRot Index is tuned by you: a browser extension that reads your feed with AI and clears out the brainrot, ragebait and engagement bait before you scroll past it. You choose what goes.'),
     el('div', 'mt-8 flex flex-wrap gap-3 justify-center', startLink(), howLink),
     el('p', 'mt-4 text-sm text-white/50',
       `${TRIAL_DAYS} days free, no card needed. Then ${PRICE_PER_MONTH} a month. For Brave and Chrome on a computer.`))
@@ -116,14 +116,14 @@ function beforeAfterSection() {
   return el('section', 'max-w-5xl mx-auto px-4 pb-16',
     el('div', 'grid gap-8 md:grid-cols-2',
       mockFeed('Your feed today', false),
-      mockFeed('Your feed with Brainrot Index', true)),
+      mockFeed('Your feed with BrainRot Index', true)),
     el('p', 'mt-4 text-center text-xs text-white/40', 'An illustration. The posts and accounts are made up.'))
 }
 
 function howItWorksSection() {
   const steps = [
     ['Create an account', `Sign up with your email or Google. The first ${TRIAL_DAYS} days are free and need no card.`],
-    ['Add the extension', 'Install Brainrot Index in Brave or Chrome and press Connect on your dashboard. It takes about two minutes.'],
+    ['Add the extension', 'Install BrainRot Index in Brave or Chrome and press Connect on your dashboard. It takes about two minutes.'],
     ['Scroll like always', 'Each post is checked as it appears. Flagged ones are blurred or folded into one line that says why. One click shows any of them.'],
   ]
   const section = el('section', SECTION_CLASS,
@@ -172,7 +172,7 @@ function pricingSection() {
         el('span', 'text-lg font-medium text-white/50', ' / month')),
       el('ul', 'mt-6 space-y-2 text-sm text-white/70 text-left',
         el('li', '', `Free for the first ${TRIAL_DAYS} days, no card needed`),
-        el('li', '', 'Every built-in filter, on X and Reddit'),
+        el('li', '', 'Every built-in filter, on every supported site'),
         el('li', '', 'Your own strictness and blur or hide per filter'),
         el('li', '', 'Cancel any time from your dashboard')),
       el('div', 'mt-8', startLink())))
@@ -183,12 +183,12 @@ function pricingSection() {
 const FAQ = [
   ['Which browsers does it work in?',
     'Brave and Google Chrome on Windows, Mac and Linux. Other browsers built on Chrome, such as Microsoft Edge, work too. It does not run on phones yet.'],
-  ['Which sites does it filter?',
-    'X and Reddit: the home feed, and the replies when you open a post. YouTube is next.'],
+  ['Which sites does it work on?',
+    'X, Reddit and YouTube today: your feeds, the replies under a post, and the videos YouTube suggests and finds for you.'],
   ['What data does it collect?',
-    'While it is switched on, the extension sends us each post it sees on X and Reddit: the text, the author\'s username, the post\'s address and its image addresses. We store those posts together with your account, download their images, and keep what the filters decided. We use them to run the service, to improve the filters (mostly through automated analysis and the posts you report with Wrong?) and to stop abuse. A person on our side reads one of your posts only if you report it, to investigate abuse or a security problem, or when the law requires it. To check a post, its text and images go to an AI model provider (today Google, through OpenRouter). The extension does not read your messages, what you type, or any other site. The Privacy Policy has every detail.'],
+    'While it is switched on, the extension sends us the content of the posts and videos it checks on supported sites, and we keep it with your account to run the filters, improve them and keep the service safe. To check posts we share them with service providers that help us run the service, including AI model providers. The extension does not read your messages, what you type, or other sites.'],
   ['Do you sell my data or show ads?',
-    'No. We do not sell or rent data, use it for advertising, or share it with anyone except the AI model providers that check posts and the services that run the site. You pay for Brainrot Index, so it does not need to make money from you any other way.'],
+    'No. We do not sell your data or use it for advertising. You pay for BrainRot Index, so it does not need to make money from you any other way.'],
   ['What if it hides something I wanted to see?',
     'Press Show on the post\'s label to see it right where it was. Press Wrong? to tell us, and turn the filter\'s threshold up if it is too strict for you.'],
   ['Does it slow my feed down?',
@@ -209,7 +209,7 @@ function faqSection() {
           question,
           el('span', 'text-white/40 transition-transform group-open:rotate-45 text-xl leading-none', '+')),
         el('p', 'mt-3 text-sm text-white/70', answer)))),
-    el('p', 'mt-6 text-sm text-white/60', privacyLink, ' for exactly what is collected and how long it is kept.'))
+    el('p', 'mt-6 text-sm text-white/60', privacyLink, ' for what is collected and why.'))
   section.id = 'faq'
   return section
 }

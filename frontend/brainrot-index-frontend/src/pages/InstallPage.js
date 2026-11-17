@@ -81,11 +81,11 @@ function manualSteps(browser) {
     step(5, 'Load the folder',
       paragraph('Click ', strong('Load unpacked'), ', choose the ', strong('brainrot-index-extension'),
         ' folder from step 2 (the folder, not the zip file), and click ', strong('Select'), '.'),
-      paragraph('Brainrot Index now shows up in the list of extensions.')),
+      paragraph('BrainRot Index now shows up in the list of extensions.')),
     step(6, 'Pin it to the toolbar (optional)',
-      paragraph('Click the puzzle piece icon next to the address bar, then the pin next to Brainrot Index. Its button shows whether it is connected and how many posts it has checked.')),
+      paragraph('Click the puzzle piece icon next to the address bar, then the pin next to BrainRot Index. Its button shows whether it is connected and how many posts it has checked.')),
     step(7, 'Connect it to your account',
-      paragraph('Open ', dashboardLink, ' and press ', strong('Connect extension'), '. That is it: open X or Reddit and your feed is filtered.')))
+      paragraph('Open ', dashboardLink, ' and press ', strong('Connect extension'), '. That is it: open X, Reddit or YouTube and your feed is filtered.')))
 }
 
 export function mountInstallPage() {
@@ -94,7 +94,7 @@ export function mountInstallPage() {
 
   container.append(
     el('h1', 'text-3xl font-bold text-white', 'Install the extension'),
-    el('p', 'mt-2 text-white/60', 'Brainrot Index works in Brave and Google Chrome on a computer. Other browsers built on Chrome, such as Microsoft Edge, work the same way. Phones are not supported yet.'),
+    el('p', 'mt-2 text-white/60', 'BrainRot Index works in Brave and Google Chrome on a computer. Other browsers built on Chrome, such as Microsoft Edge, work the same way. Phones are not supported yet.'),
     installedNotice,
   )
 
@@ -135,12 +135,12 @@ export function mountInstallPage() {
     container.append(
       el('div', 'mt-6 rounded-xl border border-glow-400/20 bg-shield-400/10 p-4 text-sm text-white/70',
         el('p', 'font-semibold text-glow-300', 'A one-click install is coming'),
-        el('p', 'mt-1', 'Brainrot Index is waiting for its listing in the Chrome Web Store. Until then you install it by hand, which takes about two minutes and is done once.')),
+        el('p', 'mt-1', 'BrainRot Index is waiting for its listing in the Chrome Web Store. Until then you install it by hand, which takes about two minutes and is done once.')),
       tabs,
       stepsSlot,
       el('div', 'mt-12 border-t border-white/10 pt-6 text-sm text-white/50 space-y-2',
         el('h2', 'font-semibold text-white/70', 'Updating to a new version'),
-        el('p', '', 'Download the zip again, unzip it, and put the new files in place of the ones in your brainrot-index-extension folder. Then press the round reload arrow on the Brainrot Index card on the extensions page.')),
+        el('p', '', 'Download the zip again, unzip it, and put the new files in place of the ones in your brainrot-index-extension folder. Then press the round reload arrow on the BrainRot Index card on the extensions page.')),
     )
   }
 

@@ -69,15 +69,14 @@ export function createOnboardingChecklist() {
         el('p', 'mb-2', `We sent a link to ${getState().email}. Open it to confirm the address.`),
         resendButton()),
       stepRow(installed, 'Install the extension',
-        el('p', '', 'Add Brainrot Index to Brave or Chrome. ', link('Show me how', '/install'))),
+        el('p', '', 'Add BrainRot Index to Brave or Chrome. ', link('Show me how', '/install'))),
       stepRow(status.extension_connected, 'Connect the extension',
         el('p', '', installed
           ? 'Press Connect extension in the Browser extension card below.'
           : 'Once it is installed, press Connect extension in the Browser extension card below.')),
-      stepRow(status.feed_opened, 'Open X or Reddit',
-        el('p', '', 'Open ', link('x.com', 'https://x.com/home', true), ' or ',
-          link('reddit.com', 'https://www.reddit.com/', true),
-          ' in this browser. Posts your filters flag are blurred or hidden as you scroll.')),
+      stepRow(status.feed_opened, 'Open your feed',
+        el('p', '', 'Open a supported site in this browser and scroll. Posts your filters flag are blurred or hidden as you go. ',
+          link('Which sites?', '/#faq'))),
     ]
     const doneCount = steps.filter((row) => row.dataset.done === 'true').length
     const allDone = doneCount === steps.length
@@ -90,7 +89,7 @@ export function createOnboardingChecklist() {
         render()
       })
       card.replaceChildren(el('div', 'flex items-center justify-between gap-4',
-        el('p', 'text-emerald-400 font-medium', 'You are set up. Your X and Reddit feeds are being filtered.'),
+        el('p', 'text-emerald-400 font-medium', 'You are set up. Your feeds are being filtered.'),
         showButton))
       return
     }

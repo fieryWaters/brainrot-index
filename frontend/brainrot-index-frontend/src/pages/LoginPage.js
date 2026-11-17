@@ -34,7 +34,7 @@ export function mountLoginPage() {
 
   const form = createAuthForm({
     title: 'Sign in',
-    subtitle: 'Welcome back to Brainrot Index.',
+    subtitle: 'Welcome back to BrainRot Index.',
     fields: [
       { name: 'email', type: 'email', placeholder: 'you@example.com', autocomplete: 'username' },
       { name: 'password', type: 'password', placeholder: 'Password', autocomplete: 'current-password' },

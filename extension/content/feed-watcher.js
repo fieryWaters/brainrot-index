@@ -188,7 +188,7 @@ async function requestAnswers(posts) {
     return;
   }
   if (reply.showDailyLimitNotice) {
-    showPageNotice("Brainrot Index: daily limit reached. New posts are shown unchecked until tomorrow (UTC).");
+    showPageNotice("BrainRot Index: daily limit reached. New posts are shown unchecked until tomorrow (UTC).");
   }
 
   const postById = new Map(posts.map((post) => [post.post_id, post]));

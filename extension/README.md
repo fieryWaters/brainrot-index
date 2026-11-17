@@ -1,6 +1,6 @@
-# Brainrot Index browser extension
+# BrainRot Index browser extension
 
-Watches your Reddit, X and YouTube feeds, asks the Brainrot Index server about each post, reply and
+Watches your Reddit, X and YouTube feeds, asks the BrainRot Index server about each post, reply and
 video, and blurs or hides the ones your plugins flag. All decisions are made on the server; the extension only shows
 them.
 
@@ -64,7 +64,7 @@ dashboard tab and press Connect extension again.
 - **Wrong?** on a blurred or hidden post's label opens a small form: pick what the post should have
   been (Shown is chosen), optionally say why, and press Send. The form says Recorded or the reason
   it could not send.
-- **Right-click a post, "Brainrot Index: report this post"**: the same form over a post the extension
+- **Right-click a post, "BrainRot Index: report this post"**: the same form over a post the extension
   left alone, with Hidden chosen. Use the text box to name a new kind of post to filter. Outside a
   post it reports the page as one that should have been filtered.
 - **Popup text box**: free-text feedback, sent with the address of the tab you are on. If it cannot

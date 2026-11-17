@@ -16,7 +16,7 @@ export function createLayout() {
 
   const logo = el('a', 'flex items-center gap-2',
     createLogoMark('w-9 h-9'),
-    el('span', 'text-xl font-bold bg-gradient-to-r from-glow-200 to-glow-400 bg-clip-text text-transparent', 'Brainrot Index'))
+    el('span', 'text-xl font-bold bg-gradient-to-r from-glow-200 to-glow-400 bg-clip-text text-transparent', 'BrainRot Index'))
   logo.href = '/'
 
   // Right slot: replaced on auth state changes
@@ -114,7 +114,7 @@ export function createLayout() {
     reloadButton.addEventListener('click', () => window.location.reload())
     serverBanner.className = 'bg-amber-500/10 border-b border-amber-500/20 px-4 py-3 text-center text-sm text-amber-200'
     serverBanner.replaceChildren(
-      'Brainrot Index cannot reach its server right now, so signing in and settings are unavailable. Please try again in a few minutes. ',
+      'BrainRot Index cannot reach its server right now, so signing in and settings are unavailable. Please try again in a few minutes. ',
       reloadButton)
   }
 
@@ -152,7 +152,7 @@ export function createLayout() {
 
   const footer = el('footer', 'border-t border-white/10 py-8 px-4 text-center text-sm text-white/40',
     el('nav', 'flex flex-wrap justify-center gap-x-6 gap-y-2', ...footerLinks),
-    el('p', 'mt-4', 'Brainrot Index'),
+    el('p', 'mt-4', 'BrainRot Index'),
     el('p', 'mt-1 text-xs text-white/25', `Version ${GIT_COMMIT}`))
 
   const shell = el('div', 'min-h-screen bg-navy-950 text-white flex flex-col',

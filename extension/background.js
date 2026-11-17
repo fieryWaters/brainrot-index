@@ -1,4 +1,4 @@
-// Background service worker: the only part of the extension that talks to the Brainrot Index server.
+// Background service worker: the only part of the extension that talks to the BrainRot Index server.
 // The browser may stop this worker at any time, so everything it remembers lives in storage:
 //   storage.local:   serverAddress, token, extensionEnabled
 //   storage.session: one "answer:<platform>:<post_id>" entry per post the server has finished with,
@@ -13,7 +13,7 @@ const MISSED_POST_MENU_ITEM_ID = "should-have-been-filtered";
 extensionApi.runtime.onInstalled.addListener(async () => {
   extensionApi.contextMenus.create({
     id: MISSED_POST_MENU_ITEM_ID,
-    title: "Brainrot Index: report this post",
+    title: "BrainRot Index: report this post",
     contexts: ["all"],
     documentUrlPatterns: ["https://www.reddit.com/*", "https://x.com/*", "https://www.youtube.com/*"],
   });
@@ -210,7 +210,7 @@ async function extensionCommit() {
 async function sendFeedback(feedback) {
   const { token } = await extensionApi.storage.local.get("token");
   if (token === undefined) {
-    return { sent: false, reason: "Not connected. Open Brainrot Index and press Connect extension." };
+    return { sent: false, reason: "Not connected. Open BrainRot Index and press Connect extension." };
   }
   const body = { ...feedback, source: "extension", extension_commit: await extensionCommit() };
   let response;
@@ -223,7 +223,7 @@ async function sendFeedback(feedback) {
     return { sent: true };
   }
   if (response.status === 401) {
-    return { sent: false, reason: "The connection was refused. Open Brainrot Index and press Connect extension again." };
+    return { sent: false, reason: "The connection was refused. Open BrainRot Index and press Connect extension again." };
   }
   return { sent: false, reason: "The server answered with error " + response.status + "." };
 }

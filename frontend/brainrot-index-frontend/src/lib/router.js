@@ -115,7 +115,7 @@ export function resolve() {
 
 function setPageTitle(title) {
   if (title) {
-    document.title = `${title} - Brainrot Index`
+    document.title = `${title} - BrainRot Index`
   } else {
     document.title = SITE_TITLE
   }

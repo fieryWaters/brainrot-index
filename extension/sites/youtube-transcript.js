@@ -115,7 +115,7 @@ async function runTranscriptFetch(videoId) {
     if (error instanceof YouTubeRefusedError) {
       youtubeRefusedTranscripts = true;
       extensionApi.runtime.sendMessage({ type: "youtube-refused-transcripts" });
-      console.log("Brainrot Index: YouTube refused a caption request; no more are made this session.", error.message);
+      console.log("BrainRot Index: YouTube refused a caption request; no more are made this session.", error.message);
     }
     return FAILED_TRANSCRIPT;
   }

@@ -153,7 +153,7 @@ EMAIL_BACKEND = {
 ANYMAIL = {
     'RESEND_API_KEY': config('RESEND_API_KEY', default=''),
 }
-DEFAULT_FROM_EMAIL = 'Brainrot Index <noreply@brainrotindex.com>'
+DEFAULT_FROM_EMAIL = 'BrainRot Index <noreply@brainrotindex.com>'
 # Where people write to us; named in error messages and on the legal pages.
 SUPPORT_EMAIL = 'support@brainrotindex.com'
 

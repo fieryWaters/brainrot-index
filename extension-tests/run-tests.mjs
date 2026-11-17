@@ -1092,7 +1092,7 @@ async function testConnectFromTabOpenedFirst() {
     await popupPage.fill("#feedback-text", "Automated test feedback before connecting");
     await popupPage.click("#feedback-form button");
     await waitUntil(async () => (await popupPage.textContent("#feedback-status")) !== "", 3000);
-    check(await popupPage.textContent("#feedback-status") === "Not sent. Not connected. Open Brainrot Index and press Connect extension.",
+    check(await popupPage.textContent("#feedback-status") === "Not sent. Not connected. Open BrainRot Index and press Connect extension.",
       "popup feedback before connecting says why it was not sent");
     await popupPage.close();
     check(await sendTokenFromPage(sitePage), "a website tab opened before installing gets an answer from the extension");

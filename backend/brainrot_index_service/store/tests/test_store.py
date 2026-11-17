@@ -205,7 +205,7 @@ class StoreBrowsingTests(TestCase):
         self.assertEqual(plugins[self.slug]['average_rating'], 4.0)
         self.assertEqual(plugins[self.slug]['author_name'], 'Sam')
         self.assertTrue(plugins[self.slug]['installed'])
-        self.assertEqual(plugins['ragebait']['author_name'], 'Brainrot Index')
+        self.assertEqual(plugins['ragebait']['author_name'], 'BrainRot Index')
 
         found = self.client.get(reverse('store_plugins'), {'q': 'shilling'}).json()['plugins']
         self.assertEqual([plugin['slug'] for plugin in found], [self.slug])

@@ -11,17 +11,16 @@ import { mountLegalPage } from './LegalPage.js'
 export const TERMS_EFFECTIVE_DATE = 'November 16, 2026'
 
 const TERMS_HTML = `
-<p>These terms are the agreement between you and Brainrot Index ("we", "us") for using the Brainrot Index website at
-brainrotindex.com and the Brainrot Index browser extension (together, "the service"). By creating an account or using the
+<p>These terms are the agreement between you and BrainRot Index ("we", "us") for using the BrainRot Index website at
+brainrotindex.com and the BrainRot Index browser extension (together, "the service"). By creating an account or using the
 extension you agree to them. Our <a href="/privacy">Privacy Policy</a> explains what data the service collects and how it is used.</p>
 
 <h2>1. What the service does</h2>
-<p>The extension reads the posts in your feeds on supported social media sites (currently X and Reddit), sends them to our servers,
-and blurs or hides the ones that the filters you turned on flag, such as brainrot, ragebait and engagement bait. Filters are written
-as instructions to AI models, which read each post and score it.</p>
+<p>The extension reads the posts in your feeds on supported sites, sends them to our servers, and blurs or hides the ones that the
+filters you turned on flag. AI models read each post and score it.</p>
 <p>AI models make mistakes. The service will sometimes hide a post you wanted to see and show a post you did not. We do not promise
-that any particular post will be caught or left alone. Brainrot Index is not affiliated with X, Reddit, Google or any other site it works on,
-and changes those sites make can stop the extension from working until we update it.</p>
+that any particular post will be caught or left alone. BrainRot Index is not affiliated with any site it works on, and changes those
+sites make can stop the extension from working until we update it.</p>
 
 <h2>2. Your account</h2>
 <ul>

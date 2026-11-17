@@ -216,7 +216,7 @@ export function mountAccountPage() {
     homeLink.href = '/'
     container.replaceChildren(
       el('h1', 'text-3xl font-bold mb-3 text-white', 'Your account is deleted'),
-      el('p', 'text-white/60', 'Everything listed on the previous screen has been removed. You can remove the extension from your browser too: open its extensions page and click Remove on the Brainrot Index card.'),
+      el('p', 'text-white/60', 'Everything listed on the previous screen has been removed. You can remove the extension from your browser too: open its extensions page and click Remove on the BrainRot Index card.'),
       homeLink)
     logout()
   }

@@ -192,7 +192,7 @@ export function mountPluginPage({ slug }) {
         return
       }
       showError('')
-      area.replaceChildren(el('p', 'text-white/60', 'Thanks. The report was sent to the Brainrot Index admin.'))
+      area.replaceChildren(el('p', 'text-white/60', 'Thanks. The report was sent to the BrainRot Index admin.'))
     })
 
     area.append(toggleButton, form)

@@ -1,4 +1,4 @@
-// Draws the Brainrot Index treatment on a post element: nothing, a blur with a label over its top
+// Draws the BrainRot Index treatment on a post element: nothing, a blur with a label over its top
 // edge, or a single line in place of the post. Site adapters call decoratePost with the element.
 //
 // treatment = { action, reason, allowReveal, revealed, onToggleReveal, onReport }
@@ -27,7 +27,7 @@ function treatmentKey(treatment) {
 // One line: what was done, which plugin, its label and score.
 function summaryText(treatment) {
   if (treatment.action === "pending") {
-    return "Brainrot Index is checking this post";
+    return "BrainRot Index is checking this post";
   }
   let doneWord = SHOWN_ACTION_WORDS[treatment.action];
   if (treatment.revealed) {
@@ -162,7 +162,7 @@ function addDecoration(postElement, treatment) {
   const notice = document.createElement("div");
   notice.className = NOTICE_CLASS;
   notice.setAttribute("role", "group");
-  notice.setAttribute("aria-label", "Brainrot Index");
+  notice.setAttribute("aria-label", "BrainRot Index");
   // A blurred post keeps its height: its label floats over the post's top edge instead of taking a
   // line of its own, so labelling a post never moves the content around it.
   if (treatment.action === "pending" || (treatment.action === "blur" && !treatment.revealed)) {
@@ -224,7 +224,7 @@ function showReportFormAbovePost(postElement, shownAction, onReport) {
   const notice = document.createElement("div");
   notice.className = NOTICE_CLASS;
   notice.setAttribute("role", "group");
-  notice.setAttribute("aria-label", "Brainrot Index");
+  notice.setAttribute("aria-label", "BrainRot Index");
   keepEventsInside(notice);
   let defaultExpectedAction = "allow";
   if (shownAction === "allow") {

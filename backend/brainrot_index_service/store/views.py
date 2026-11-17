@@ -90,7 +90,7 @@ def with_store_counts(plugins):
 
 def author_name_of(plugin):
     if plugin.is_baseline:
-        return 'Brainrot Index'
+        return 'BrainRot Index'
     return plugin.author_name
 
 

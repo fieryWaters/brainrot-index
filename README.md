@@ -1,4 +1,4 @@
-# Brainrot Index
+# BrainRot Index
 
 A browser extension classifies social media posts with an LLM and hides the
 unwanted ones: brainrot, ragebait, and engagement bait. This repository holds

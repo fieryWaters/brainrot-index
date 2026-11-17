@@ -36,18 +36,21 @@ The dashboard's own wording wins where it differs from this file.
 
 **Title** (from the manifest name)
 
-    Brainrot Index
+    BrainRot Index
 
 **Summary** (132 characters at most; this is the manifest description)
 
-    Hides brainrot, ragebait and engagement bait in your X and Reddit feeds, using the filters you choose on brainrotindex.com.
+    BrainRot Index - The algorithm that works for you
 
 **Description**
 
-    Brainrot Index gives you a calmer feed on X and Reddit.
+    BrainRot Index - The algorithm that works for you.
 
-    As you scroll, the extension checks each post and reply with AI and blurs or hides the ones your
-    filters flag. Each hidden post leaves a one-line label saying why, for example
+    Your feeds are tuned to keep you scrolling. BrainRot Index is tuned by you. It works on X,
+    Reddit and YouTube.
+
+    As you scroll, the extension checks each post, reply and video with AI and blurs or hides the
+    ones your filters flag. Each hidden post leaves a one-line label saying why, for example
     "Hidden - Ragebait: Blames a group (91/100)", and one click shows it.
 
     Four filters are built in:
@@ -67,16 +70,14 @@ The dashboard's own wording wins where it differs from this file.
     2. Install this extension.
     3. Open your dashboard and press Connect extension.
 
-    Brainrot Index costs $5 a month after the free trial.
+    BrainRot Index costs $5 a month after the free trial.
 
-    Privacy: while it is switched on, the extension sends each post it sees on X and Reddit (its
-    text, author username, address and image addresses) to the Brainrot Index server, where AI models
-    classify it. Posts are stored together with the account that sent them, and are used to run the
-    service, to improve the filters and to stop abuse. A person reads an individual post only if you
-    report it, to investigate abuse or a security problem, or when the law requires it. The extension
-    does not read your messages, what you type, or any other site. We do not sell data, use it for
-    advertising, or share it beyond the AI model providers that classify posts and the services that
-    run the site. Full details: https://brainrotindex.com/privacy
+    Privacy: while it is switched on, the extension sends the posts and videos it checks on X, Reddit
+    and YouTube to the BrainRot Index server, where AI models classify them. For a YouTube video it
+    reads the video's captions in your browser and sends them with the video. Posts and videos are
+    stored together with the account that sent them and used to run the service, improve the filters
+    and prevent abuse. The extension does not read your messages, what you type, or any other site.
+    We do not sell your data or use it for advertising. Full details: https://brainrotindex.com/privacy
 
 **Category**: Social Media & Networking (in the 2023 category list; pick the closest current name).
 
@@ -109,27 +110,30 @@ show other people's identifiable posts prominently, or crop them):
 1. A Reddit feed with one post blurred and its label showing, and one hidden post's one-line label.
 2. An X feed with a hidden post's label and the Show and Wrong? buttons.
 3. The dashboard: filters with their strictness sliders and Blur or Hide.
-4. The extension's popup over a feed, showing "Connected to your account" and the counts.
-5. The landing page's before and after picture (https://brainrotindex.com, top of the page).
+4. A YouTube home page with blurred video tiles and their labels.
+5. The extension's popup over a feed, showing "Connected to your account" and the counts.
+The landing page's before and after picture (https://brainrotindex.com, top of the page) can replace
+any of these; five is the most the listing takes.
 
 ## Privacy practices
 
 **Single purpose**
 
-    Brainrot Index hides unwanted posts in social media feeds: it sends the posts shown on X and
-    Reddit to the Brainrot Index server, which classifies them with the user's chosen filters, and
-    blurs or hides the posts the server flags.
+    BrainRot Index hides unwanted posts in social media feeds: it sends the posts and videos shown
+    on X, Reddit and YouTube to the BrainRot Index server, which classifies them with the user's
+    chosen filters, and blurs or hides the ones the server flags.
 
 **Permission justifications** (one per entry in `manifest.json`)
 
 | Permission | Justification |
 | --- | --- |
 | `storage` | Keeps the account connection key, the on/off switch and the server address, and remembers the server's answers for posts during the browser session so a post is not sent twice. |
-| `contextMenus` | Adds "Brainrot Index: report this post" to the right-click menu on X and Reddit, so the user can report a post the filters got wrong. |
+| `contextMenus` | Adds "BrainRot Index: report this post" to the right-click menu on X, Reddit and YouTube, so the user can report a post or video the filters got wrong. |
 | `activeTab` | When the user sends feedback from the toolbar popup, reads the address of the tab they are on to attach it to the report. |
 | `scripting` | Right after install, adds the connect script to brainrotindex.com tabs that were already open, so the site's Connect extension button works without reloading the page. |
 | Host permission `https://brainrotindex.com/*` | The extension's server: it sends posts there for classification, reads the user's settings, sends feedback, and receives the account connection key from the site's Connect extension button. |
-| Content scripts on `https://www.reddit.com/*` and `https://x.com/*` | Read the posts and replies shown in the feed and in threads, and blur or hide the ones the server flags. These are the two sites the extension filters. |
+| Content scripts on `https://www.reddit.com/*` and `https://x.com/*` | Read the posts and replies shown in the feed and in threads, and blur or hide the ones the server flags. |
+| Content script on `https://www.youtube.com/*` | Reads the video tiles on the home page, in search results, beside a playing video and in Shorts shelves, and blurs or hides the ones the server flags. For a video the server has not seen before, it fetches that video's captions from www.youtube.com (without the user's YouTube cookies) and sends them with the video, so the filters can judge what is said in it. |
 
 **Remote code**: No, I am not using remote code. (All JavaScript is in the package; the server
 only returns JSON data.)
@@ -137,14 +141,18 @@ only returns JSON data.)
 **Data usage**: tick these categories.
 
 - **Website content**: yes. The text of every post and reply the extension sees on X and Reddit,
-  its address, its community, and the addresses of its images, stored with the account that sent
-  it. The server downloads and stores the images too.
+  its address, its community, and the addresses of its images; for every YouTube video tile, the
+  video's id, title, channel name, description snippet (search results only) and thumbnail
+  address, and for a video the server has not seen before, the first 2500 words of its captions,
+  with their language and whether they are automatic. All of it is stored with the account that
+  sent it. The server downloads and stores the images and thumbnails too.
 - **Personally identifiable information**: yes. The account's email address, which the posts are
   stored with, and the usernames of post authors, which are sent with each post.
 - **Authentication information**: yes. The extension stores and sends an account connection key.
 - **User activity**: no. It does not record clicks, keystrokes or scrolling.
 - **Web history**: yes. The server keeps, with the account, the addresses of the X and Reddit posts
-  the extension saw, which is a record of what the user scrolled past on those sites. The feedback
+  and YouTube videos the extension saw, and when each was first and last sent, which is a record of
+  what the user scrolled past on those sites. The feedback
   form also attaches the address of the current tab when the user sends a report. It never sends
   the list of other pages visited.
 - **Location, health, financial and payment, personal communications**: no. (Payments happen on the
@@ -173,10 +181,9 @@ work on the filters uses automated and aggregate analysis.
 - **People reading stored posts.** Decided: only reported posts, abuse or security investigations,
   and legal requirements, as the Privacy Policy now says. Keep the admin used that way; browsing
   stored posts for any other reason would break both the policy and Limited Use.
-- **Posts stored with the account.** The Privacy Policy and the answers above say posts are kept
-  with the account that sent them. As of 2026-11-16 the server's Post table has no account column,
-  so that record does not exist yet; the texts describe the decided practice. Build it (and remove
-  the link when an account is deleted, as the policy promises) before relying on it.
+- **Posts stored with the account.** Built on 2026-11-17: every post and video a classify request
+  carries is recorded with the account and extension connection that sent it (PostSubmission),
+  included in the data export and deleted with the account.
 - **"Data mining" the cache.** Using stored posts to improve the filters fits the single purpose.
   Any other use (research unrelated to filtering, selling datasets, training general models) would
   not, and would also contradict the Privacy Policy as written.

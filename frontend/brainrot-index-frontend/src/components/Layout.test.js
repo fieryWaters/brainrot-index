@@ -17,7 +17,7 @@ describe('Layout', () => {
   it('renders navigation with brand name', () => {
     const layout = createLayout()
     renderElement(layout.el)
-    expect(screen.getAllByText('Brainrot Index').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('BrainRot Index').length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders a lean signed-out nav: one Sign in button, no Home or Sign up', () => {
@@ -33,7 +33,7 @@ describe('Layout', () => {
   it('renders footer', () => {
     const layout = createLayout()
     renderElement(layout.el)
-    const elements = screen.getAllByText('Brainrot Index')
+    const elements = screen.getAllByText('BrainRot Index')
     expect(elements.length).toBeGreaterThanOrEqual(2)
   })
 

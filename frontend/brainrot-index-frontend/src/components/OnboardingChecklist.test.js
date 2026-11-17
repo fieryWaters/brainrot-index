@@ -36,7 +36,7 @@ describe('OnboardingChecklist', () => {
     expect(stepDone('Verify your email')).toBe(true)
     expect(stepDone('Install the extension')).toBe(false)
     expect(stepDone('Connect the extension')).toBe(false)
-    expect(stepDone('Open X or Reddit')).toBe(false)
+    expect(stepDone('Open your feed')).toBe(false)
     expect(screen.getByText('Show me how').getAttribute('href')).toBe('/install')
   })
 
@@ -65,7 +65,7 @@ describe('OnboardingChecklist', () => {
     serveOnboarding({ email_verified: true, extension_connected: true, feed_opened: true })
     renderElement(createOnboardingChecklist().el)
 
-    expect(await screen.findByText('You are set up. Your X and Reddit feeds are being filtered.')).toBeInTheDocument()
+    expect(await screen.findByText('You are set up. Your feeds are being filtered.')).toBeInTheDocument()
     expect(screen.queryByText('Verify your email')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByText('Show setup steps'))

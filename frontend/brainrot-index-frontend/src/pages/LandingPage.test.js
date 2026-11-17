@@ -13,7 +13,7 @@ describe('LandingPage', () => {
   it('shows the feed before and after filtering', () => {
     renderElement(mountLandingPage().el)
     expect(screen.getByText('Your feed today')).toBeInTheDocument()
-    expect(screen.getByText('Your feed with Brainrot Index')).toBeInTheDocument()
+    expect(screen.getByText('Your feed with BrainRot Index')).toBeInTheDocument()
     expect(screen.getByText('Hidden - Engagement bait: Asks for engagement (94/100)')).toBeInTheDocument()
     expect(screen.getByText('Blurred - Ragebait: Blames a group (91/100)')).toBeInTheDocument()
   })

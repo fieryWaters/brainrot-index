@@ -2,9 +2,9 @@
 
 const ACCOUNT_STATUS_TEXT = {
   "connected": "Connected to your account",
-  "not-connected": "Not connected. Open Brainrot Index and press Connect extension.",
+  "not-connected": "Not connected. Open BrainRot Index and press Connect extension.",
   "no-subscription": "Your free trial has ended. Subscribe to continue.",
-  "email-not-verified": "Verify your email first: open the link Brainrot Index emailed you, then reload the page.",
+  "email-not-verified": "Verify your email first: open the link BrainRot Index emailed you, then reload the page.",
   "server-error": "The server answered with an error.",
   "server-unreachable": "Cannot reach the server.",
 };

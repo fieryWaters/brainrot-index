@@ -114,7 +114,7 @@ describe('router titles and unknown addresses', () => {
 
   it('puts the route title in front of the site name', () => {
     navigate('/privacy')
-    expect(document.title).toBe('Privacy Policy - Brainrot Index')
+    expect(document.title).toBe('Privacy Policy - BrainRot Index')
   })
 
   it('renders the not-found page for an address no route matches', () => {
@@ -126,7 +126,7 @@ describe('router titles and unknown addresses', () => {
     })
     navigate('/no-such-page')
     expect(outlet.textContent).toBe('This page does not exist')
-    expect(document.title).toBe('Page not found - Brainrot Index')
+    expect(document.title).toBe('Page not found - BrainRot Index')
 
     navigate('/')
     expect(cleanup).toHaveBeenCalled()

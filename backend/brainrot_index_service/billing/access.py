@@ -1,10 +1,13 @@
 """Whether an account may use filtering. account_has_access is the one place
-that decides it; a family plan, where one payer covers the members, extends here."""
+that decides it. A family member is covered by any superadmin of their family
+whose own subscription grants access, so the person who pays covers everyone."""
 
 import logging
 
 import stripe
 from django.utils import timezone
+
+from families.models import ROLE_SUPERADMIN, FamilyMember
 
 from .models import STATUS_ACTIVE, STATUS_PAST_DUE, STATUS_TRIALING, Subscription
 from .stripe_sync import refresh_subscription
@@ -32,6 +35,21 @@ def subscription_grants_access(subscription):
 
 
 def account_has_access(user):
+    if own_subscription_has_access(user):
+        return True
+    membership = FamilyMember.objects.filter(user=user).first()
+    if membership is None:
+        return False
+    paying_superadmins = (
+        FamilyMember.objects
+        .filter(family_id=membership.family_id, role=ROLE_SUPERADMIN)
+        .exclude(user=user)
+        .select_related('user')
+    )
+    return any(own_subscription_has_access(superadmin.user) for superadmin in paying_superadmins)
+
+
+def own_subscription_has_access(user):
     subscription = subscription_for_user(user)
     if subscription_grants_access(subscription):
         return True

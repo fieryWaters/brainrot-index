@@ -9,12 +9,14 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import serializers, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from api.auth_tokens import hash_token
+from api.permissions import HasVerifiedEmail
+from api.throttling import ChangeRateThrottle, UserRateThrottle
 from classification.models import MODE_CHILD
 from classification.views import settings_for_user
 
@@ -29,6 +31,14 @@ INVITE_CODE_LENGTH = 10
 NOT_SUPERADMIN_MESSAGE = 'Only a superadmin of your family can do that.'
 LAST_SUPERADMIN_MESSAGE = 'A family needs at least one superadmin. Make someone else a superadmin first.'
 INVALID_INVITE_MESSAGE = 'This invite is not valid any more. Ask for a new one.'
+
+
+class FamilyChangeThrottle(ChangeRateThrottle):
+    scope = 'family_change'
+
+
+class FamilyJoinThrottle(UserRateThrottle):
+    scope = 'family_join'
 
 
 class FamilyNameSerializer(serializers.Serializer):
@@ -132,6 +142,7 @@ def superadmin_count_after(family, changed_member, new_role):
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([FamilyChangeThrottle])
 def family_detail(request):
     """GET is the user's role and family (null when they have none); POST {name} creates one."""
     if request.method == 'GET':
@@ -149,6 +160,7 @@ def family_detail(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([FamilyChangeThrottle])
 def create_invite(request):
     """POST {role} makes a single-use invite. The code is returned only here."""
     membership = superadmin_membership(request.user)
@@ -170,6 +182,7 @@ def create_invite(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([FamilyChangeThrottle])
 def revoke_invite(request, invite_id):
     membership = superadmin_membership(request.user)
     invite = get_object_or_404(FamilyInvite, id=invite_id, family=membership.family, accepted_at__isnull=True)
@@ -179,7 +192,8 @@ def revoke_invite(request, invite_id):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasVerifiedEmail])
+@throttle_classes([FamilyJoinThrottle])
 def preview_invite(request):
     """POST {code}: which family the invite is for and with what role, before accepting."""
     serializer = InviteCodeSerializer(data=request.data)
@@ -200,7 +214,8 @@ def preview_invite(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasVerifiedEmail])
+@throttle_classes([FamilyJoinThrottle])
 def join_family(request):
     """POST {code} accepts an invite."""
     serializer = InviteCodeSerializer(data=request.data)
@@ -229,6 +244,7 @@ def join_family(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([FamilyChangeThrottle])
 def leave_family(request):
     membership = membership_of(request.user)
     if membership is None:
@@ -246,6 +262,7 @@ def leave_family(request):
 
 @api_view(['PATCH', 'DELETE'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([FamilyChangeThrottle])
 def family_member_detail(request, user_id):
     """PATCH {role} changes a member's role; DELETE removes them from the family."""
     membership = superadmin_membership(request.user)

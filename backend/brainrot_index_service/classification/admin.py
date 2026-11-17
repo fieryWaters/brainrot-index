@@ -50,10 +50,15 @@ class PluginVersionInline(admin.TabularInline):
 
 @admin.register(Plugin)
 class PluginAdmin(admin.ModelAdmin):
-    list_display = ['name', 'slug', 'is_baseline', 'author', 'created_at']
-    list_filter = ['is_baseline']
-    search_fields = ['name', 'slug']
+    list_display = ['name', 'slug', 'is_baseline', 'is_listed', 'author_name', 'author', 'created_at']
+    list_filter = ['is_baseline', 'is_listed']
+    search_fields = ['name', 'slug', 'author_name']
     inlines = [PluginVersionInline]
+    actions = ['unlist']
+
+    @admin.action(description='Unlist from the store')
+    def unlist(self, request, plugins):
+        plugins.update(is_listed=False)
 
 
 @admin.register(PluginVersion)
@@ -61,11 +66,9 @@ class PluginVersionAdmin(admin.ModelAdmin):
     list_display = ['plugin', 'version', 'created_at']
     list_filter = ['plugin']
 
-    def get_readonly_fields(self, request, plugin_version=None):
-        # Saved versions are immutable: cached classifications depend on their exact text.
-        if plugin_version is not None:
-            return ['plugin', 'version', 'rubric_prompt', 'allowed_labels']
-        return []
+    # Saved versions are immutable: cached classifications depend on their exact text.
+    def has_change_permission(self, request, plugin_version=None):
+        return plugin_version is None
 
 
 @admin.register(Classification)

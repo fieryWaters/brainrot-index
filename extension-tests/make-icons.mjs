@@ -297,11 +297,11 @@ function socialImageHtml(markDataUrl) {
 function promoTileHtml(markDataUrl) {
   return `<body style="margin:0; width:440px; height:280px; ${PAGE_BACKGROUND} ${FONT}
       display:flex; align-items:center; gap:20px; padding:0 28px; box-sizing:border-box; color:white">
-    <img src="${markDataUrl}" style="width:120px; height:120px; flex:none">
+    <img src="${markDataUrl}" style="width:112px; height:112px; flex:none">
     <div>
-      <div style="font-size:36px; font-weight:800; line-height:1.1; ${HEADLINE_GRADIENT}">Brainrot Index</div>
+      <div style="font-size:33px; font-weight:800; line-height:1.1; white-space:nowrap; ${HEADLINE_GRADIENT}">BrainRot Index</div>
       <div style="margin-top:10px; font-size:18px; line-height:1.35; color:rgba(255,255,255,0.75)">
-        A calmer feed<br>on X and Reddit.</div>
+        The algorithm that<br>works for you.</div>
     </div>
   </body>`;
 }

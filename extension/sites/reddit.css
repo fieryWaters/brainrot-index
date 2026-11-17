@@ -1,0 +1,30 @@
+/* Reddit-specific additions to content/post-decoration.css. */
+
+/* In a post's row of actions the thumbs are one pill, like Reddit's vote and comment pills; in a
+   comment's row they are plain icon buttons, like Reddit's Reply and Share there. Both sit above the
+   link Reddit lays over the whole post. */
+.brainrot-index-judge[slot] {
+  position: relative;
+  z-index: 1;
+  color: var(--color-neutral-content-weak, inherit);
+}
+
+.brainrot-index-judge[slot="action-row-whitespace"] {
+  margin-left: 8px;
+  border-radius: 999px;
+  background: var(--color-button-secondary-background, rgba(128, 128, 128, 0.15));
+}
+
+.brainrot-index-judge[slot] .brainrot-index-judge-button {
+  width: 32px;
+  height: 32px;
+}
+
+.brainrot-index-judge[slot] .brainrot-index-judge-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.brainrot-index-notice:not(.brainrot-index-notice-over-post) {
+  color: var(--color-neutral-content-weak, inherit);
+}

@@ -1,4 +1,4 @@
-/* Treatments drawn by post-decoration.js. !important because site styles are often very specific. */
+/* Treatments drawn by post-decoration.js. !important where site styles are often very specific. */
 
 [data-brainrot-index-action="pending"],
 [data-brainrot-index-action="blur"]:not([data-brainrot-index-revealed]) {
@@ -10,40 +10,320 @@
   display: none !important;
 }
 
-/* A line of its own above a hidden or revealed post. Translucent grey and inherited text colour read
-   on both light and dark site themes. The bar of the logo's shield blue (#3796d1) down the left edge
-   marks the line as Brainrot Index's rather than the site's own; it is drawn as an inset shadow so it
-   takes no space. */
+/* The line in place of a hidden post, or above a revealed one: the logo's shield, what was done and
+   by which filter, in the site's own text colour, faded. Hovering it brings up the filter's label and
+   score and the buttons, on the same line, so nothing moves. */
 .brainrot-index-notice {
   display: flex !important;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
+  gap: 8px;
   box-sizing: border-box;
-  margin: 4px 0;
-  padding: 3px 4px 3px 10px;
-  border: 1px solid rgba(128, 128, 128, 0.3);
+  min-height: 34px;
+  margin: 0;
+  padding: 4px 16px;
   border-radius: 8px;
-  background: rgba(128, 128, 128, 0.12);
   color: inherit;
-  box-shadow: inset 3px 0 0 #3796d1;
-  font: 12px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font: 13px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   text-align: left;
   cursor: default;
+  transition: background-color 0.15s;
 }
 
-/* No top or left: an absolute box with automatic offsets sits where it would have been in the flow,
-   which is the top left corner of the post that follows it, and it takes no space. Dark and solid,
-   because what is under it is a blur of anything. */
+.brainrot-index-notice:hover,
+.brainrot-index-notice:focus-within {
+  background: rgba(128, 128, 128, 0.08);
+}
+
+.brainrot-index-mark {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  fill: #3796d1;
+}
+
+.brainrot-index-summary,
+.brainrot-index-detail {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.brainrot-index-summary {
+  opacity: 0.6;
+}
+
+.brainrot-index-detail {
+  flex-shrink: 100; /* gives up its room before the summary does */
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.brainrot-index-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.brainrot-index-notice:hover .brainrot-index-detail,
+.brainrot-index-notice:focus-within .brainrot-index-detail {
+  opacity: 0.45;
+}
+
+.brainrot-index-notice:hover .brainrot-index-actions,
+.brainrot-index-notice:focus-within .brainrot-index-actions,
+.brainrot-index-notice:has([data-open]) .brainrot-index-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* The label over a blurred post: a small dark pill at its top left corner. No top or left: an
+   absolute box with automatic offsets sits where it would have been in the flow, which is the top
+   left corner of the post that follows it, and it takes no space. Dark and solid, because what is
+   under it is a blur of anything. Hovering the post opens the pill up as hovering the line does. */
 .brainrot-index-notice-over-post {
   position: absolute;
   z-index: 2;
-  max-width: min(560px, calc(100% - 16px));
-  margin: 8px;
-  border-color: rgba(255, 255, 255, 0.15);
-  background: rgba(24, 24, 27, 0.9);
+  max-width: min(560px, calc(100% - 20px));
+  min-height: 28px;
+  margin: 10px;
+  padding: 3px 6px 3px 10px;
+  border-radius: 999px;
+  background: rgba(24, 24, 27, 0.78);
   color: #f4f4f5;
-  box-shadow: inset 3px 0 0 #3796d1, 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+
+.brainrot-index-notice-over-post:hover {
+  background: rgba(24, 24, 27, 0.9);
+}
+
+.brainrot-index-notice-over-post .brainrot-index-summary {
+  opacity: 0.9;
+}
+
+/* The pill keeps to its summary until hovered, then grows rightwards over the blur. */
+.brainrot-index-notice-over-post .brainrot-index-detail,
+.brainrot-index-notice-over-post .brainrot-index-actions {
+  display: none;
+}
+
+.brainrot-index-notice-over-post:is(:hover, :focus-within, :has(+ :hover), :has([data-open])) .brainrot-index-detail {
+  display: block;
+  opacity: 0.6;
+}
+
+.brainrot-index-notice-over-post:is(:hover, :focus-within, :has(+ :hover), :has([data-open])) .brainrot-index-actions {
+  display: flex;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.brainrot-index-notice button {
+  flex: none;
+  box-sizing: border-box;
+  height: 24px;
+  min-height: 0;
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  line-height: 24px;
+  cursor: pointer;
+}
+
+.brainrot-index-notice button:hover {
+  background: rgba(128, 128, 128, 0.2);
+}
+
+.brainrot-index-notice button:focus-visible,
+.brainrot-index-details button:focus-visible,
+.brainrot-index-judge-button:focus-visible,
+.brainrot-index-reason:focus-visible,
+.brainrot-index-details-input:focus-visible {
+  outline: 2px solid #2776bb;
+  outline-offset: 1px;
+}
+
+/* -- Thumbs up and down -- */
+
+/* In a site's row of actions the thumbs are hidden until the pointer is over the post; the site's
+   stylesheet in sites/ sizes them like the site's own buttons. In a notice they show with its other
+   buttons. */
+.brainrot-index-judge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.brainrot-index-judge[data-hovered],
+.brainrot-index-judge[data-open],
+.brainrot-index-judge:focus-within,
+.brainrot-index-actions .brainrot-index-judge {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.brainrot-index-judge .brainrot-index-judge-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.brainrot-index-judge .brainrot-index-judge-button:hover {
+  background: rgba(55, 150, 209, 0.14);
+  color: #3796d1;
+}
+
+.brainrot-index-judge .brainrot-index-judge-button[aria-pressed="true"] {
+  color: #3796d1;
+}
+
+.brainrot-index-judge-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.brainrot-index-judge-button[aria-pressed="true"] .brainrot-index-judge-icon {
+  fill: rgba(55, 150, 209, 0.25);
+}
+
+/* The box under the thumbs after a click: dark, like the label over a blurred post, on every site. */
+.brainrot-index-details {
+  position: absolute;
+  z-index: 2147483646;
+  box-sizing: border-box;
+  width: 300px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(24, 24, 27, 0.96);
+  color: #f4f4f5;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  font: 13px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  text-align: left;
+}
+
+.brainrot-index-details-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brainrot-index-details-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.brainrot-index-details-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.brainrot-index-details-label {
+  width: 100%;
+  opacity: 0.6;
+  font-size: 12px;
+}
+
+.brainrot-index-details button {
+  box-sizing: border-box;
+  height: 26px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.brainrot-index-details button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.brainrot-index-details .brainrot-index-chip[aria-pressed="true"] {
+  border-color: #4cbbe1;
+  background: #0b1830;
+  color: #d2ffff;
+}
+
+.brainrot-index-details-input {
+  flex: 1 1 0;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+}
+
+.brainrot-index-details .brainrot-index-details-save {
+  border-color: #3796d1;
+  background: #3796d1;
+  color: #fff;
+}
+
+.brainrot-index-details .brainrot-index-details-save:hover {
+  background: #2776bb;
+}
+
+/* -- The report form from the right-click menu, and the page notice -- */
+
+.brainrot-index-report-notice {
+  flex-wrap: wrap;
+  margin: 4px 0;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  background: rgba(128, 128, 128, 0.12);
+}
+
+.brainrot-index-report-notice button {
+  height: 22px;
+  border: 1px solid rgba(128, 128, 128, 0.5);
+  line-height: 20px;
 }
 
 .brainrot-index-page-notice {
@@ -53,45 +333,9 @@
   left: 50%;
   transform: translateX(-50%);
   max-width: min(560px, calc(100% - 32px));
-  border-color: rgba(255, 255, 255, 0.15);
   background: rgba(24, 24, 27, 0.95);
   color: #f4f4f5;
-  box-shadow: inset 3px 0 0 #3796d1, 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-.brainrot-index-summary {
-  flex: 1 1 0;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.brainrot-index-notice button {
-  flex: none;
-  box-sizing: border-box;
-  height: 20px;
-  min-height: 0;
-  margin: 0;
-  padding: 0 9px;
-  border: 1px solid rgba(128, 128, 128, 0.5);
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-weight: 600;
-  line-height: 18px;
-  cursor: pointer;
-}
-
-.brainrot-index-notice button:hover {
-  background: rgba(128, 128, 128, 0.25);
-}
-
-.brainrot-index-notice button:focus-visible,
-.brainrot-index-reason:focus-visible {
-  outline: 2px solid #2776bb;
-  outline-offset: 1px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .brainrot-index-report-form {
@@ -126,6 +370,7 @@
   display: none;
 }
 
-.brainrot-index-notice [hidden] {
+.brainrot-index-notice [hidden],
+.brainrot-index-details [hidden] {
   display: none !important;
 }

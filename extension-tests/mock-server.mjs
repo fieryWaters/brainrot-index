@@ -16,6 +16,8 @@
 //   answered done on the first request.
 //
 // POST /api/feedback/ checks the required fields and answers 201 with a new id.
+// POST /api/judgments/ (a thumbs up or down) checks its fields and answers 201 with a new id;
+// PATCH /api/judgments/<id>/ (its details) answers 200 with what it was sent.
 //
 // Run on its own with `node mock-server.mjs` (port 8787), or import startMockServer from tests.
 import http from "node:http";
@@ -29,6 +31,11 @@ export const MOCK_CONFIG = {
   pending_action: "blur",
   allow_reveal: true,
   platforms: ["reddit", "x", "youtube"],
+  plugins: [
+    { slug: "engagement-bait", name: "Engagement bait" },
+    { slug: "ragebait", name: "Ragebait" },
+    { slug: "brainrot", name: "Brainrot" },
+  ],
 };
 
 const CONNECT_PAGE = `<!doctype html>
@@ -87,6 +94,7 @@ export function startMockServer(port) {
   const requestCountByPost = new Map(); // "platform:post_id" -> classify requests seen
   const reportedPostKeys = new Set();   // videos whose transcript report arrived
   let feedbackCount = 0;
+  let judgmentCount = 0;
 
   const server = http.createServer(async (request, response) => {
     const path = new URL(request.url, "http://mock").pathname;
@@ -149,6 +157,21 @@ export function startMockServer(port) {
       }
       feedbackCount = feedbackCount + 1;
       sendJson(response, 201, { id: feedbackCount });
+      return;
+    }
+    if (path === "/api/judgments/" && request.method === "POST") {
+      const judgment = await readJsonBody(request);
+      if (!["right", "wrong"].includes(judgment.verdict) || !["allow", "blur", "hide"].includes(judgment.shown_action)
+          || judgment.platform === undefined || judgment.post_id === undefined) {
+        sendJson(response, 400, { error: "platform, post_id, verdict and shown_action are required" });
+        return;
+      }
+      judgmentCount = judgmentCount + 1;
+      sendJson(response, 201, { id: judgmentCount });
+      return;
+    }
+    if (/^\/api\/judgments\/\d+\/$/.test(path) && request.method === "PATCH") {
+      sendJson(response, 200, await readJsonBody(request));
       return;
     }
     sendJson(response, 404, { error: "not found" });

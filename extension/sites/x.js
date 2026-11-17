@@ -48,6 +48,26 @@ function comesAfterReplies(tweetElement) {
   return pagePathWhereRepliesEnd === location.pathname;
 }
 
+// The thumbs go at the top right of a tweet, just before X's "More" menu (after Grok's button when
+// there is one), where X keeps actions about the tweet itself. Placed there in the flow, they take
+// their room from the name line, which X cuts short a little sooner. They take the colour of
+// X's icons, which follows its theme. Answers the tweet as the element whose hover shows them; a
+// tweet still loading has no menu yet.
+function placeJudgeControl(tweetElement, control) {
+  const moreButton = tweetElement.querySelector('[data-testid="caret"]');
+  if (moreButton === null) {
+    return null;
+  }
+  // X wraps the menu button in several elements of one child each; the thumbs go just before them.
+  let moreButtonCell = moreButton;
+  while (moreButtonCell.parentElement.childElementCount === 1) {
+    moreButtonCell = moreButtonCell.parentElement;
+  }
+  control.style.color = getComputedStyle(moreButton.querySelector("svg") ?? moreButton).color;
+  moreButtonCell.before(control);
+  return tweetElement;
+}
+
 const siteAdapter = {
   platform: "x",
 
@@ -97,6 +117,6 @@ const siteAdapter = {
 
   // treatment is described in content/post-decoration.js. The whole tweet is treated.
   applyAction(tweetElement, treatment) {
-    decoratePost(tweetElement, treatment);
+    decoratePost(tweetElement, treatment, (control) => placeJudgeControl(tweetElement, control));
   },
 };

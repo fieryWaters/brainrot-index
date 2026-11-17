@@ -35,12 +35,13 @@ dashboard tab and press Connect extension again.
 
 ## Using it
 
-- Flagged posts are blurred, with a label over the post, or collapsed to one line. Either reads
-  "Blurred" or "Hidden", then the plugin, its label and its score, for example
-  "Hidden - Engagement bait: Asks for engagement (90/100)".
-- **Show** on the label (or a click anywhere on a blurred post) reveals the post where it is; the
-  line above it then offers **Blur again** or **Hide again**. A revealed post stays revealed while
-  the page is open, also after scrolling away and back. In child mode there is no Show.
+- Flagged posts are blurred, with a small label over the post's corner, or collapsed to one quiet
+  line. Either reads what was done and which plugin, for example "Hidden · Engagement bait".
+  Hovering the line, or the blurred post, adds the plugin's label and score ("Asks for engagement ·
+  90/100") and the buttons: **Show** and the thumbs.
+- **Show** (or a click anywhere on a blurred post) reveals the post where it is; the line above it
+  then offers **Blur again** or **Hide again**. A revealed post stays revealed while the page is
+  open, also after scrolling away and back. In child mode there is no Show.
 - While the server is still deciding about a post it is shown normally, or blurred in child mode.
   The extension keeps asking for up to 2 minutes while the post is on the page, then leaves it shown.
 - A post whose "hide" answer arrives while it is on screen (or already scrolled past) is blurred
@@ -61,9 +62,15 @@ dashboard tab and press Connect extension again.
 
 ## Reporting mistakes
 
-- **Wrong?** on a blurred or hidden post's label opens a small form: pick what the post should have
-  been (Shown is chosen), optionally say why, and press Send. The form says Recorded or the reason
-  it could not send.
+- **Thumbs up or down** on any post the server answered for saves the reader's verdict at once. On a
+  blurred or hidden post they are on its label; on a post that was shown they appear on hover where
+  the site keeps its own post actions: on X just before a tweet's "More" menu, on Reddit at the end
+  of a post's row of actions and between Share and "..." on a comment, on YouTube under a tile's
+  "More actions" button. Thumbs down on a shown post means a filter should have caught it.
+- After the click a small box offers, optionally, a severity (Low, Medium, High), details, and for a
+  shown post that should have been caught, which filter. Save sends them; the box leaves by itself
+  after a few seconds when it is not touched. Each verdict is stored on the server as a labeled
+  example (`PostJudgment`) with what every filter decided about the post, for evaluating filters.
 - **Right-click a post, "BrainRot Index: report this post"**: the same form over a post the extension
   left alone, with Hidden chosen. Use the text box to name a new kind of post to filter. Outside a
   post it reports the page as one that should have been filtered.

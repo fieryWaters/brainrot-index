@@ -20,3 +20,32 @@ ytd-app:has([data-brainrot-index-action="pending"]:hover,
             [data-brainrot-index-action="blur"]:not([data-brainrot-index-revealed]):hover) ytd-video-preview {
   display: none !important;
 }
+
+/* A tile's thumbs hang under its "More actions" button, one above the other, laid over the space
+   beside the channel and view count, so the tile keeps its height. Sized like YouTube's icon buttons. */
+.ytLockupMetadataViewModelMenuButton:has(> .brainrot-index-judge) {
+  position: relative;
+}
+
+.ytLockupMetadataViewModelMenuButton > .brainrot-index-judge {
+  position: absolute;
+  top: 40px;
+  right: 0;
+  flex-direction: column;
+  color: var(--yt-sys-color-baseline--text-primary);
+}
+
+.ytLockupMetadataViewModelMenuButton > .brainrot-index-judge .brainrot-index-judge-button {
+  width: 40px;
+  height: 36px;
+}
+
+.ytLockupMetadataViewModelMenuButton > .brainrot-index-judge .brainrot-index-judge-button:hover {
+  background: var(--yt-sys-color-baseline--additive-background, rgba(128, 128, 128, 0.15));
+}
+
+.ytLockupMetadataViewModelMenuButton > .brainrot-index-judge .brainrot-index-judge-icon {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.75;
+}

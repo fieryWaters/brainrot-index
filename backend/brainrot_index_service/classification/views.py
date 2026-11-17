@@ -39,11 +39,18 @@ from .models import (
     Plugin,
     Post,
     PostImage,
+    PostJudgment,
     UserPlugin,
     UserSettings,
     VideoTranscript,
 )
-from .serializers import ClassifyRequestSerializer, UserPluginSerializer, UserSettingsSerializer
+from .serializers import (
+    ClassifyRequestSerializer,
+    JudgmentDetailsSerializer,
+    JudgmentSerializer,
+    UserPluginSerializer,
+    UserSettingsSerializer,
+)
 from .transcripts import TRANSCRIPT_WAIT_SECONDS, store_browser_report
 
 # How long /classify/ waits for pending posts before answering, so most posts
@@ -80,6 +87,10 @@ class ExtensionConfigThrottle(UserRateThrottle):
 
 class ExtensionTokenThrottle(UserRateThrottle):
     scope = 'extension_token'
+
+
+class JudgmentThrottle(UserRateThrottle):
+    scope = 'judgment'
 
 
 def settings_for_user(user):
@@ -286,6 +297,12 @@ def extension_config(request):
         'pending_action': pending_action,
         'allow_reveal': user_settings.allow_reveal and not child_mode,
         'platforms': [PLATFORM_REDDIT, PLATFORM_X, PLATFORM_YOUTUBE],
+        # The filters a reader can name when a shown post should have been caught.
+        'plugins': [
+            {'slug': user_plugin.plugin.slug, 'name': user_plugin.plugin.name}
+            for user_plugin in UserPlugin.objects.filter(user=request.user, enabled=True)
+            .select_related('plugin').order_by('plugin__id')
+        ],
     })
 
 
@@ -336,6 +353,90 @@ def classify(request):
 
     results.extend(daily_limit_result(seen_post) for seen_post in refused_seen_posts)
     return Response({'results': results})
+
+
+def filter_results_for(user, post):
+    """What each filter the user has on decided about the post, as stored with
+    a judgment. A filter that never classified the post has status missing."""
+    filter_results = []
+    enabled_plugins = UserPlugin.objects.filter(user=user, enabled=True).select_related('plugin').order_by('plugin__id')
+    for user_plugin in enabled_plugins:
+        version = user_plugin.plugin.latest_version()
+        classification = Classification.objects.filter(post=post, plugin_version=version).first()
+        filter_result = {
+            'plugin': user_plugin.plugin.slug,
+            'version': version.version,
+            'threshold': user_plugin.threshold,
+            'flagged_action': user_plugin.flagged_action,
+            'classification_id': None,
+            'status': 'missing',
+            'score': None,
+            'label': '',
+            'flagged': False,
+        }
+        if classification is not None:
+            filter_result['classification_id'] = classification.id
+            filter_result['status'] = classification.status
+            filter_result['score'] = classification.score
+            filter_result['label'] = classification.label
+            filter_result['flagged'] = (
+                classification.status == CLASSIFICATION_DONE and classification.score >= user_plugin.threshold
+            )
+        filter_results.append(filter_result)
+    return filter_results
+
+
+def strongest_flagging_plugin(filter_results):
+    """The plugin of the highest-scoring filter that flagged the post, or None."""
+    flagging_results = [filter_result for filter_result in filter_results if filter_result['flagged']]
+    if not flagging_results:
+        return None
+    strongest = max(flagging_results, key=lambda filter_result: filter_result['score'])
+    return Plugin.objects.get(slug=strongest['plugin'])
+
+
+# A new thumbs up or down replaces the account's earlier judgment of the post,
+# including its severity and details, which the reader adds again afterwards.
+@api_view(['POST'])
+@authentication_classes([ExtensionTokenAuthentication])
+@permission_classes([IsAuthenticated, HasVerifiedEmail, HasAccess])
+@throttle_classes([JudgmentThrottle])
+def create_judgment(request):
+    serializer = JudgmentSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    judged = serializer.validated_data
+    post = get_object_or_404(Post, platform=judged['platform'], post_id=judged['post_id'])
+    filter_results = filter_results_for(request.user, post)
+    judgment, created = PostJudgment.objects.update_or_create(
+        user=request.user,
+        post=post,
+        defaults={
+            'verdict': judged['verdict'],
+            'shown_action': judged['shown_action'],
+            'plugin': strongest_flagging_plugin(filter_results),
+            'severity': '',
+            'details': '',
+            'filter_results': filter_results,
+            'extension_commit': judged['extension_commit'],
+        },
+    )
+    if created:
+        response_status = status.HTTP_201_CREATED
+    else:
+        response_status = status.HTTP_200_OK
+    return Response({'id': judgment.id}, status=response_status)
+
+
+@api_view(['PATCH'])
+@authentication_classes([ExtensionTokenAuthentication])
+@permission_classes([IsAuthenticated, HasVerifiedEmail, HasAccess])
+@throttle_classes([JudgmentThrottle])
+def judgment_details(request, judgment_id):
+    judgment = get_object_or_404(PostJudgment, id=judgment_id, user=request.user)
+    serializer = JudgmentDetailsSerializer(judgment, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data)
 
 
 # -- Website endpoints (session) --

@@ -17,6 +17,7 @@ Chrome ignores `--load-extension`.
     npm test -- x         # X only: home feed, recycled tweets, feedback, reveal, replies, performance
     npm test -- youtube   # YouTube only: watch page, home, search, reveal, feedback, navigation, dark theme
     npm test -- transcripts  # captions fetched in the browser, on a stand-in for youtube.com (no real YouTube)
+    npm test -- judgments    # thumbs and details box, on stand-ins for X, Reddit and YouTube (no real site)
 
 The connect group opens https://brainrot.jacob-waters.com without signing in, even with the mock
 server, because the extension's default address is the only one it adds its listener to on install.
@@ -81,6 +82,9 @@ and any still open after an hour is closed by a timer.
 
 ## Other scripts
 
+- `node screenshot-feedback-ui.mjs [folder]` photographs the hidden-post look and the thumbs on the
+  stand-in pages (`stand-in-pages.mjs`), variant A (shipped) beside alternatives B and C, and writes
+  comparison sheets to `docs/screenshots/feedback-hover-ui/`.
 - `node inspect-markup.mjs <url> [signed-in profile dir]` prints what a feed or thread page's markup
   looks like, for writing or fixing a site adapter.
 - `node make-icons.mjs` redraws every PNG of the brand mark from the site's `favicon.svg`: the

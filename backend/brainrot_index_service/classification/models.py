@@ -331,3 +331,62 @@ class PostSubmission(models.Model):
 
     def __str__(self):
         return f"{self.post} sent by {self.user}"
+
+
+VERDICT_RIGHT = 'right'
+VERDICT_WRONG = 'wrong'
+VERDICT_CHOICES = [
+    (VERDICT_RIGHT, 'Right (thumbs up)'),
+    (VERDICT_WRONG, 'Wrong (thumbs down)'),
+]
+
+SEVERITY_LOW = 'low'
+SEVERITY_MEDIUM = 'medium'
+SEVERITY_HIGH = 'high'
+SEVERITY_CHOICES = [
+    (SEVERITY_LOW, 'Low'),
+    (SEVERITY_MEDIUM, 'Medium'),
+    (SEVERITY_HIGH, 'High'),
+]
+
+SHOWN_ACTION_CHOICES = [
+    (ACTION_ALLOW, 'Shown'),
+    (ACTION_BLUR, 'Blurred'),
+    (ACTION_HIDE, 'Hidden'),
+]
+
+
+class PostJudgment(models.Model):
+    """A reader's verdict on how the extension treated one post: a labeled
+    example of the reader's real judgment, for evaluating and tuning filters.
+    A thumbs down on a post that was shown means a filter should have caught
+    it. One per account and post; judging the post again replaces it."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='post_judgments')
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='judgments')
+    verdict = models.CharField(max_length=16, choices=VERDICT_CHOICES)
+    # What the reader saw. A hidden post on screen is blurred instead, so this
+    # can be blur where the filters decided hide; filter_results has the decision.
+    shown_action = models.CharField(max_length=16, choices=SHOWN_ACTION_CHOICES)
+    # The filter the verdict is about: the strongest one that flagged the post,
+    # or, for a shown post that should have been caught, the one the reader
+    # names. Empty when the reader names none.
+    plugin = models.ForeignKey(Plugin, on_delete=models.PROTECT, null=True, blank=True, related_name='judgments')
+    # How much the verdict matters to the reader. Blank until the reader says.
+    severity = models.CharField(max_length=16, choices=SEVERITY_CHOICES, blank=True, default='')
+    details = models.TextField(blank=True, default='')
+    # What every filter the reader had on decided about the post when it was
+    # judged: [{plugin, version, classification_id, status, score, label,
+    # threshold, flagged_action, flagged}].
+    filter_results = models.JSONField(default=list, blank=True)
+    extension_commit = models.CharField(max_length=64, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'post'], name='unique_judgment_per_user_and_post'),
+        ]
+
+    def __str__(self):
+        return f"{self.verdict} on {self.post} by {self.user}"

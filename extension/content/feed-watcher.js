@@ -19,6 +19,7 @@ let config = null;  // server config while watching; null while stopped
 const answerByPostId = new Map();          // answers received in this page
 const requestedPostIds = new Set();        // posts sent to the server, answered or not
 const revealedPostIds = new Set();         // blurred or hidden posts the reader chose to see
+const judgmentByPostId = new Map();        // the reader's thumbs in this page: post_id -> { verdict, id }
 const waitingElementsByPostId = new Map(); // elements showing a post whose answer has not arrived
 const postIdByElement = new WeakMap();     // the post each element showed when last seen
 const transcriptSentPostIds = new Set();   // videos whose transcript was fetched and sent, or is on its way
@@ -49,15 +50,43 @@ function sendPostFeedback(postId, shownAction, expectedAction, text) {
   });
 }
 
+// The thumbs up and down for a post the server answered for. A post past the daily limit, or one
+// shown because the server never answered, was never classified, so there is nothing to judge.
+function judgmentFor(postId, answer, shownAction) {
+  if (answer.notice !== undefined || answer === ALLOW_ANSWER) {
+    return undefined;
+  }
+  return {
+    verdict: judgmentByPostId.get(postId)?.verdict ?? null,
+    plugins: config.plugins ?? [],
+    onJudge: async (verdict) => {
+      const reply = await extensionApi.runtime.sendMessage({
+        type: "send-judgment",
+        judgment: { platform: siteAdapter.platform, post_id: postId, verdict: verdict, shown_action: shownAction },
+      });
+      if (reply.sent) {
+        judgmentByPostId.set(postId, { verdict: verdict, id: reply.body.id });
+      }
+      return reply;
+    },
+    onAddDetails: (details) => extensionApi.runtime.sendMessage({
+      type: "add-judgment-details",
+      judgmentId: judgmentByPostId.get(postId).id,
+      details: details,
+    }),
+  };
+}
+
 // shownAction is normally answer.action; receiveAnswer passes "blur" for a hidden post on or above
 // the screen. A revealed post stays revealed in this page, also when the site draws it again.
 function showAnswer(postElement, postId, answer, shownAction = answer.action) {
   if (shownAction === "allow") {
-    siteAdapter.applyAction(postElement, { action: "allow" });
+    siteAdapter.applyAction(postElement, { action: "allow", postId: postId, judgment: judgmentFor(postId, answer, "allow") });
     return;
   }
   siteAdapter.applyAction(postElement, {
     action: shownAction,
+    postId: postId,
     reason: answer.reasons[0], // the server orders reasons by score, highest first
     allowReveal: config.allow_reveal,
     revealed: config.allow_reveal && revealedPostIds.has(postId),
@@ -69,7 +98,7 @@ function showAnswer(postElement, postId, answer, shownAction = answer.action) {
       }
       showAnswer(postElement, postId, answer, shownAction);
     },
-    onReport: (expectedAction, text) => sendPostFeedback(postId, shownAction, expectedAction, text),
+    judgment: judgmentFor(postId, answer, shownAction),
   });
 }
 
@@ -119,7 +148,8 @@ function onPageChanges(mutations) {
       continue;
     }
     for (const addedNode of mutation.addedNodes) {
-      if (addedNode.nodeType !== Node.ELEMENT_NODE || addedNode.classList.contains(NOTICE_CLASS)) {
+      if (addedNode.nodeType !== Node.ELEMENT_NODE || addedNode.classList.contains(NOTICE_CLASS)
+          || addedNode.classList.contains(JUDGE_CLASS)) {
         continue;
       }
       for (const postElement of siteAdapter.findPostElements(addedNode)) {

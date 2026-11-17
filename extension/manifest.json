@@ -37,12 +37,12 @@
     {
       "matches": ["https://www.reddit.com/*"],
       "js": ["extension-api.js", "content/post-decoration.js", "sites/reddit.js", "content/feed-watcher.js"],
-      "css": ["content/post-decoration.css"]
+      "css": ["content/post-decoration.css", "sites/reddit.css"]
     },
     {
       "matches": ["https://x.com/*"],
       "js": ["extension-api.js", "content/post-decoration.js", "sites/x.js", "content/feed-watcher.js"],
-      "css": ["content/post-decoration.css"]
+      "css": ["content/post-decoration.css", "sites/x.css"]
     },
     {
       "matches": ["https://www.youtube.com/*"],

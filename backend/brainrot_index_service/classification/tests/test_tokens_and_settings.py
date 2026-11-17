@@ -29,6 +29,12 @@ class ExtensionTokenTests(TestCase):
             'pending_action': 'allow',
             'allow_reveal': True,
             'platforms': ['reddit', 'x', 'youtube'],
+            'plugins': [
+                {'slug': 'engagement-bait', 'name': 'Engagement bait'},
+                {'slug': 'ragebait', 'name': 'Ragebait'},
+                {'slug': 'brainrot', 'name': 'Brainrot'},
+                {'slug': 'ai-slop', 'name': 'AI slop'},
+            ],
         })
         stored_token.refresh_from_db()
         self.assertIsNotNone(stored_token.last_used_at)

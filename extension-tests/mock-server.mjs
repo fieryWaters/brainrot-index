@@ -9,6 +9,11 @@
 //   blur  "Ragebait"        when the text is longer than 400 characters or that sum leaves 1 mod 3.
 //   allow                   otherwise.
 // The post id rule exists so that any live feed yields about a third of each action.
+//   YouTube: a video stays "pending" with transcript_wanted until a request carries its transcript
+//   report, as the real server does for a video it never classified. That request answers "pending";
+//   later ones follow the rules above, counting every request. Ids starting "legacy" are never asked for a
+//   transcript (a server from before transcripts came from the browser). An id starting "known" is
+//   answered done on the first request.
 //
 // POST /api/feedback/ checks the required fields and answers 201 with a new id.
 //
@@ -80,6 +85,7 @@ async function readJsonBody(request) {
 
 export function startMockServer(port) {
   const requestCountByPost = new Map(); // "platform:post_id" -> classify requests seen
+  const reportedPostKeys = new Set();   // videos whose transcript report arrived
   let feedbackCount = 0;
 
   const server = http.createServer(async (request, response) => {
@@ -116,6 +122,17 @@ export function startMockServer(port) {
         const requestCount = (requestCountByPost.get(postKey) ?? 0) + 1;
         requestCountByPost.set(postKey, requestCount);
         const pendingRequestCount = postIdCharacterSum(post.post_id) % 4 === 3 ? 6 : 1;
+        if (post.platform === "youtube" && post.post_id.startsWith("known")) {
+          return { platform: post.platform, post_id: post.post_id, status: "done", ...chooseAnswer(post) };
+        }
+        const wantsTranscript = post.platform === "youtube" && !post.post_id.startsWith("legacy");
+        if (wantsTranscript && post.transcript_status !== undefined) {
+          reportedPostKeys.add(postKey);
+          return { platform: post.platform, post_id: post.post_id, status: "pending" };
+        }
+        if (wantsTranscript && !reportedPostKeys.has(postKey)) {
+          return { platform: post.platform, post_id: post.post_id, status: "pending", transcript_wanted: true };
+        }
         if (requestCount <= pendingRequestCount) {
           return { platform: post.platform, post_id: post.post_id, status: "pending" };
         }

@@ -21,6 +21,7 @@ const requestedPostIds = new Set();        // posts sent to the server, answered
 const revealedPostIds = new Set();         // blurred or hidden posts the reader chose to see
 const waitingElementsByPostId = new Map(); // elements showing a post whose answer has not arrived
 const postIdByElement = new WeakMap();     // the post each element showed when last seen
+const transcriptSentPostIds = new Set();   // videos whose transcript was fetched and sent, or is on its way
 
 let postsForNextBatch = [];
 let batchTimer = null;
@@ -202,10 +203,25 @@ async function requestAnswers(posts) {
       pending = { post: postById.get(result.post_id), firstSentAt: sentAt, reaskCount: 0 };
       pendingByPostId.set(result.post_id, pending);
     }
+    if (result.transcript_wanted && siteAdapter.fetchTranscript !== undefined
+        && !transcriptSentPostIds.has(result.post_id)) {
+      transcriptSentPostIds.add(result.post_id);
+      sendTranscript(pending.post);
+    }
     pending.nextAskAt = Date.now() + (FAST_REASK_DELAYS_MS[pending.reaskCount] ?? SLOW_REASK_DELAY_MS);
     pending.reaskCount = pending.reaskCount + 1;
   }
   scheduleReask();
+}
+
+// The server never classified this video and asked for its transcript: the site adapter fetches it,
+// and the post is sent again with it straight away.
+async function sendTranscript(post) {
+  const transcriptFields = await siteAdapter.fetchTranscript(post.post_id);
+  if (config === null) {
+    return;
+  }
+  await requestAnswers([{ ...post, ...transcriptFields }]);
 }
 
 function scheduleReask() {
@@ -301,6 +317,7 @@ function stopWatching() {
   pendingByPostId.clear();
   answerByPostId.clear();
   requestedPostIds.clear();
+  transcriptSentPostIds.clear();
   waitingElementsByPostId.clear();
   for (const postElement of siteAdapter.findPostElements(document.body)) {
     siteAdapter.applyAction(postElement, { action: "allow" });

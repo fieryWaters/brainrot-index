@@ -1,7 +1,8 @@
 // Background service worker: the only part of the extension that talks to the Brainrot Index server.
 // The browser may stop this worker at any time, so everything it remembers lives in storage:
 //   storage.local:   serverAddress, token, extensionEnabled
-//   storage.session: one "answer:<platform>:<post_id>" entry per post the server has finished with
+//   storage.session: one "answer:<platform>:<post_id>" entry per post the server has finished with,
+//                    and youtubeRefusedTranscripts once YouTube refused a caption request
 importScripts("extension-api.js");
 
 // The server a new install talks to. Installs that already have a serverAddress keep it (the options
@@ -58,6 +59,17 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message.type === "send-feedback") {
     sendFeedback(message.feedback).then(sendResponse);
+    return true;
+  }
+  // Once YouTube refuses a caption request, no tab asks it for captions again this browser session.
+  if (message.type === "youtube-refused-transcripts") {
+    extensionApi.storage.session.set({ youtubeRefusedTranscripts: true });
+    return;
+  }
+  if (message.type === "get-youtube-refused-transcripts") {
+    extensionApi.storage.session.get("youtubeRefusedTranscripts").then((stored) => {
+      sendResponse(stored.youtubeRefusedTranscripts === true);
+    });
     return true;
   }
 });

@@ -173,6 +173,8 @@ function addDecoration(postElement, treatment) {
   const summary = document.createElement("span");
   summary.className = "brainrot-index-summary";
   summary.textContent = summaryText(treatment);
+  // The line is cut short on narrow posts; hovering it shows all of it.
+  summary.title = summary.textContent;
   notice.append(summary);
 
   if (treatment.action === "blur" || treatment.action === "hide") {

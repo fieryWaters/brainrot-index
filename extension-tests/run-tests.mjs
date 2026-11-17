@@ -1,7 +1,7 @@
 // End-to-end tests of the extension in headed Brave against live Reddit, X and YouTube.
 //
 // Usage:
-//   node run-tests.mjs [connect] [reddit] [x] [youtube]
+//   node run-tests.mjs [connect] [reddit] [x] [youtube] [transcripts]
 //     Runs the named groups (all when none are named) against the mock server, which it starts.
 //   BRAINROT_SERVER=https://brainrot.jacob-waters.com BRAINROT_TOKEN=<token> node run-tests.mjs
 //     Runs against a real server. The connect test is skipped (the real site needs a login), and the
@@ -1675,6 +1675,157 @@ async function runYouTubeGroup() {
   });
 }
 
+// The transcripts group runs on a stand-in for www.youtube.com served by Playwright, so YouTube itself
+// is never asked: a page of video tiles, YouTube's player API answering caption tracks, and the
+// caption addresses answering YouTube's JSON caption format. It records every request made to them.
+function fakeYouTubeTilesPage(videoIds) {
+  const tiles = videoIds.map((videoId) =>
+    `<yt-lockup-view-model style="display:block;height:120px"><h3><a href="/watch?v=${videoId}" title="Video ${videoId}">Video ${videoId}</a></h3></yt-lockup-view-model>`);
+  return `<!doctype html><html><head><meta charset="utf-8"><title>YouTube (fake)</title></head><body><ytd-app>${tiles.join("")}</ytd-app></body></html>`;
+}
+
+const FAKE_CAPTION_TRACKS = [
+  { languageCode: "es", baseUrl: "https://www.youtube.com/api/timedtext?lang=es" },
+  { languageCode: "en", kind: "asr", baseUrl: "https://www.youtube.com/api/timedtext?lang=en&kind=asr" },
+  { languageCode: "en", baseUrl: "https://www.youtube.com/api/timedtext?lang=en" },
+];
+
+async function serveFakeYouTube(context) {
+  const fake = {
+    pageVideoIds: [],
+    refuse: false,         // the player API answers 429, as YouTube does when it blocks an address
+    playerRequests: [],    // { videoId, client, sentWithCookies }
+    captionRequests: [],   // caption addresses asked for
+    mostAtOnce: 0,
+  };
+  let running = 0;
+  await context.route("https://www.youtube.com/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/youtubei/v1/player") {
+      const body = request.postDataJSON();
+      fake.playerRequests.push({
+        videoId: body.videoId,
+        client: body.context.client.clientName,
+        sentWithCookies: (await request.allHeaders()).cookie !== undefined,
+      });
+      running = running + 1;
+      fake.mostAtOnce = Math.max(fake.mostAtOnce, running);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      running = running - 1;
+      if (fake.refuse) {
+        await route.fulfill({ status: 429, contentType: "text/html", body: "<html><title>Sorry...</title></html>" });
+        return;
+      }
+      await route.fulfill({ json: {
+        playabilityStatus: { status: "OK" },
+        captions: { playerCaptionsTracklistRenderer: { captionTracks: FAKE_CAPTION_TRACKS } },
+      } });
+      return;
+    }
+    if (url.pathname === "/api/timedtext") {
+      fake.captionRequests.push(url.search);
+      await route.fulfill({ json: { events: [
+        { segs: [{ utf8: "Today we boil " }, { utf8: "water\n" }] },
+        { tStartMs: 2000 },
+        { segs: [{ utf8: "and add the pasta." }] },
+      ] } });
+      return;
+    }
+    if (url.pathname === "/watch" || url.pathname === "/") {
+      await route.fulfill({ contentType: "text/html", body: fakeYouTubeTilesPage(fake.pageVideoIds) });
+      return;
+    }
+    await route.fulfill({ status: 404, body: "" });
+  });
+  return fake;
+}
+
+function transcriptReports(classifyCalls) {
+  return allSentPosts(classifyCalls).filter((post) => post.transcript_status !== undefined);
+}
+
+async function openFakeYouTubePage(page, fake, videoIds) {
+  fake.pageVideoIds = videoIds;
+  await page.goto("https://www.youtube.com/", { waitUntil: "domcontentloaded" });
+}
+
+async function testKnownVideosCostNoYouTubeRequests(page, fake, classifyCalls) {
+  await openFakeYouTubePage(page, fake, ["knownvideo1", "knownvideo2", "knownvideo3"]);
+  check(await waitUntil(() => allSentPosts(classifyCalls).length >= 3, 10000), "the three tiles are sent");
+  await page.waitForTimeout(2000);
+  check(fake.playerRequests.length === 0 && fake.captionRequests.length === 0, "no request reached YouTube");
+  check(transcriptReports(classifyCalls).length === 0, "no transcript was sent");
+}
+
+async function testUnknownVideosSendTranscripts(page, fake, classifyCalls) {
+  const videoIds = ["newvideo001", "newvideo002", "newvideo003", "newvideo004", "newvideo005", "newvideo006"];
+  await openFakeYouTubePage(page, fake, videoIds);
+  check(await waitUntil(() => transcriptReports(classifyCalls).length >= videoIds.length, 15000),
+    "every video is sent again with a transcript report");
+  const reports = transcriptReports(classifyCalls);
+  check(reports.every((report) => report.transcript_status === "ok"), "every report is ok");
+  check(reports[0].transcript === "Today we boil water and add the pasta.", "the transcript is the captions as one line");
+  check(reports.every((report) => report.transcript_language === "en" && report.transcript_kind === "manual"),
+    "English captions written by a person are chosen over automatic and Spanish ones");
+  check(fake.captionRequests.every((search) => search.includes("lang=en") && !search.includes("asr") && search.includes("fmt=json3")),
+    "only the chosen track is fetched, in the JSON format");
+  check(fake.playerRequests.length === videoIds.length, "one player request per video, never retried");
+  check(fake.playerRequests.every((request) => request.client === "ANDROID" && !request.sentWithCookies),
+    "the player API is asked as the Android app, without the reader's cookies");
+  check(fake.mostAtOnce <= 2, `at most two fetches at once (saw ${fake.mostAtOnce})`);
+  check(await waitUntil(() => page.evaluate(() =>
+    [...document.querySelectorAll("yt-lockup-view-model")].every((tile) => tile.dataset.brainrotIndexAction !== "pending")), 30000),
+  "every tile shows its answer (the mock's slow posts take 15 seconds)");
+}
+
+async function testRefusalStopsFetching(page, fake, classifyCalls) {
+  fake.refuse = true;
+  const playerRequestsBefore = fake.playerRequests.length;
+  const videoIds = ["refusedvid1", "refusedvid2", "refusedvid3", "refusedvid4", "refusedvid5"];
+  await openFakeYouTubePage(page, fake, videoIds);
+  check(await waitUntil(() => transcriptReports(classifyCalls).filter((report) => videoIds.includes(report.post_id)).length >= videoIds.length, 15000),
+    "every video is still reported to the server");
+  const reports = transcriptReports(classifyCalls).filter((report) => videoIds.includes(report.post_id));
+  check(reports.every((report) => report.transcript_status === "failed"), "every report says failed");
+  const refusedRequests = fake.playerRequests.length - playerRequestsBefore;
+  check(refusedRequests <= 2, `only the requests already running when YouTube refused were made (${refusedRequests})`);
+
+  const playerRequestsAfterRefusal = fake.playerRequests.length;
+  await openFakeYouTubePage(page, fake, ["afterrefus1", "afterrefus2"]);
+  check(await waitUntil(() => transcriptReports(classifyCalls).filter((report) => report.post_id.startsWith("afterrefus")).length >= 2, 10000),
+    "videos on a newly loaded page are reported too");
+  check(fake.playerRequests.length === playerRequestsAfterRefusal, "nothing more is asked of YouTube in this browser session");
+  fake.refuse = false;
+}
+
+async function testServerWithoutTranscripts(page, fake, classifyCalls) {
+  const playerRequestsBefore = fake.playerRequests.length;
+  await openFakeYouTubePage(page, fake, ["legacyvide1", "legacyvide2"]);
+  const answeredLegacyIds = () => new Set(classifyCalls.flatMap((call) => call.results)
+    .filter((result) => result.status === "done" && result.post_id.startsWith("legacy")).map((result) => result.post_id));
+  check(await waitUntil(() => answeredLegacyIds().size === 2, 30000), "both tiles are answered by a server that never asks for transcripts");
+  check(fake.playerRequests.length === playerRequestsBefore, "no request reached YouTube");
+  check(transcriptReports(classifyCalls).every((report) => !report.post_id.startsWith("legacy")), "no transcript was sent");
+}
+
+async function runTranscriptsGroup() {
+  await withBrave(makeFreshProfileDir("transcripts"), {}, async ({ context, serviceWorker, extensionId }) => {
+    const fake = await serveFakeYouTube(context);
+    const classifyCalls = recordClassifyCalls(context);
+    const page = context.pages()[0] ?? (await context.newPage());
+    await connectExtension(context, serviceWorker, extensionId, "transcripts profile");
+    await runTest("10a. transcripts: a video the server knows costs no YouTube request", () =>
+      testKnownVideosCostNoYouTubeRequests(page, fake, classifyCalls));
+    await runTest("10b. transcripts: a new video is sent again with its captions", () =>
+      testUnknownVideosSendTranscripts(page, fake, classifyCalls));
+    await runTest("10c. transcripts: a server that never asks gets no transcripts", () =>
+      testServerWithoutTranscripts(page, fake, classifyCalls));
+    await runTest("10d. transcripts: once YouTube refuses, no more requests this session", () =>
+      testRefusalStopsFetching(page, fake, classifyCalls));
+  });
+}
+
 function pgrepFinds(pattern) {
   try {
     return execFileSync("pgrep", ["-f", pattern], { encoding: "utf8" }).trim() !== "";
@@ -1684,7 +1835,7 @@ function pgrepFinds(pattern) {
 }
 
 const requestedGroups = process.argv.slice(2);
-const groupsToRun = requestedGroups.length > 0 ? requestedGroups : ["connect", "reddit", "x", "youtube"];
+const groupsToRun = requestedGroups.length > 0 ? requestedGroups : ["connect", "reddit", "x", "youtube", "transcripts"];
 const mockServer = usingMockServer ? await startMockServer(MOCK_PORT) : null;
 console.log("server: " + serverAddress + (usingMockServer ? " (mock)" : ""));
 try {
@@ -1703,6 +1854,9 @@ try {
   }
   if (groupsToRun.includes("youtube")) {
     await runYouTubeGroup();
+  }
+  if (groupsToRun.includes("transcripts")) {
+    await runTranscriptsGroup();
   }
 } finally {
   if (mockServer !== null) {

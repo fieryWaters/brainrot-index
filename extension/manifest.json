@@ -46,7 +46,7 @@
     },
     {
       "matches": ["https://www.youtube.com/*"],
-      "js": ["extension-api.js", "content/post-decoration.js", "sites/youtube.js", "content/feed-watcher.js"],
+      "js": ["extension-api.js", "content/post-decoration.js", "sites/youtube-transcript.js", "sites/youtube.js", "content/feed-watcher.js"],
       "css": ["content/post-decoration.css", "sites/youtube.css"]
     },
     {

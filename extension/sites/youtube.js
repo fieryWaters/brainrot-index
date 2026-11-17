@@ -113,6 +113,11 @@ const siteAdapter = {
   applyAction(tileElement, treatment) {
     decoratePost(tileElement, treatment);
   },
+
+  // Called by the feed watcher when the server asks for a video's transcript (sites/youtube-transcript.js).
+  fetchTranscript(videoId) {
+    return fetchYouTubeTranscript(videoId);
+  },
 };
 
 // Hovering a tile plays a preview of the video in a separate element laid over the tile, which the

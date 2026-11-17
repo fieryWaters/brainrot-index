@@ -16,6 +16,7 @@ Chrome ignores `--load-extension`.
     npm test -- reddit    # Reddit only: load, connect, feed, comments, feedback, reveal, performance
     npm test -- x         # X only: home feed, recycled tweets, feedback, reveal, replies, performance
     npm test -- youtube   # YouTube only: watch page, home, search, reveal, feedback, navigation, dark theme
+    npm test -- transcripts  # captions fetched in the browser, on a stand-in for youtube.com (no real YouTube)
 
 The connect group opens https://brainrot.jacob-waters.com without signing in, even with the mock
 server, because the extension's default address is the only one it adds its listener to on install.

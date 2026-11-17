@@ -6,6 +6,14 @@
   color: var(--yt-sys-color-baseline--text-primary);
 }
 
+/* A Shorts tile is too narrow for the label on one line, which would read only "Blurred...". There the
+   label's text wraps on rows of its own, with its buttons below. The label floats over the tile, so a
+   taller label moves nothing in the grid. */
+.brainrot-index-notice-over-post:has(+ ytm-shorts-lockup-view-model) .brainrot-index-summary {
+  flex-basis: 100%;
+  white-space: normal;
+}
+
 /* Hovering a tile plays a preview of the video in a separate element over the tile, which the blur
    does not cover. It is not shown while the hovered tile is blurred. */
 ytd-app:has([data-brainrot-index-action="pending"]:hover,

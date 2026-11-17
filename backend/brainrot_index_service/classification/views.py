@@ -1,14 +1,21 @@
 """The extension API (bearer token) and the website's settings endpoints (session)."""
 
 import time
+from collections import Counter
 
+from django.conf import settings
+from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, authentication_classes, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from api.auth_tokens import generate_raw_token, hash_token
+from api.models import DailyNewPostCount
+from api.permissions import HasVerifiedEmail
+from api.throttling import UserRateThrottle
 
 from .authentication import ExtensionTokenAuthentication
 from .images import image_url_is_allowed
@@ -42,6 +49,22 @@ ACTION_SEVERITY = {
     ACTION_BLUR: 1,
     ACTION_HIDE: 2,
 }
+
+# Marks the answer for a post that was not classified because the account
+# used up its daily quota of new posts.
+NOTICE_DAILY_LIMIT_REACHED = 'daily_limit_reached'
+
+
+class ClassifyThrottle(UserRateThrottle):
+    scope = 'classify'
+
+
+class ExtensionConfigThrottle(UserRateThrottle):
+    scope = 'extension_config'
+
+
+class ExtensionTokenThrottle(UserRateThrottle):
+    scope = 'extension_token'
 
 
 def settings_for_user(user):
@@ -134,13 +157,56 @@ def any_pending(results):
     return any(result['status'] == 'pending' for result in results)
 
 
+def seen_posts_needing_classification(seen_posts, versions):
+    """The seen posts that lack a classification for at least one of the versions:
+    the ones that cost new model calls."""
+    classification_counts = Counter(
+        Classification.objects.filter(
+            post__post_id__in=[seen_post['post_id'] for seen_post in seen_posts],
+            plugin_version__in=versions,
+        ).values_list('post__platform', 'post__post_id')
+    )
+    return [
+        seen_post for seen_post in seen_posts
+        if classification_counts[(seen_post['platform'], seen_post['post_id'])] < len(versions)
+    ]
+
+
+def take_from_daily_quota(user, wanted_count):
+    """Counts up to wanted_count new posts against the user's quota for today (UTC).
+    Answers how many were granted."""
+    if wanted_count == 0:
+        return 0
+    with transaction.atomic():
+        daily_count, _ = DailyNewPostCount.objects.select_for_update().get_or_create(
+            user=user,
+            day=timezone.now().date(),
+        )
+        remaining_count = max(0, settings.DAILY_NEW_POST_QUOTA - daily_count.count)
+        granted_count = min(wanted_count, remaining_count)
+        daily_count.count = daily_count.count + granted_count
+        daily_count.save(update_fields=['count'])
+    return granted_count
+
+
+def daily_limit_result(seen_post):
+    return {
+        'platform': seen_post['platform'],
+        'post_id': seen_post['post_id'],
+        'status': 'done',
+        'action': ACTION_ALLOW,
+        'reasons': [],
+        'notice': NOTICE_DAILY_LIMIT_REACHED,
+    }
+
+
 # -- Extension endpoints (bearer token) --
 
 
 @api_view(['GET'])
 @authentication_classes([ExtensionTokenAuthentication])
-@permission_classes([IsAuthenticated])
-@throttle_classes([])
+@permission_classes([IsAuthenticated, HasVerifiedEmail])
+@throttle_classes([ExtensionConfigThrottle])
 def extension_config(request):
     user_settings = settings_for_user(request.user)
     child_mode = user_settings.mode == MODE_CHILD
@@ -159,17 +225,28 @@ def extension_config(request):
 
 @api_view(['POST'])
 @authentication_classes([ExtensionTokenAuthentication])
-@permission_classes([IsAuthenticated])
-@throttle_classes([])
+@permission_classes([IsAuthenticated, HasVerifiedEmail])
+@throttle_classes([ClassifyThrottle])
 def classify(request):
     serializer = ClassifyRequestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
+    seen_posts = serializer.validated_data['posts']
 
     settings_for_user(request.user)
     enabled_plugins = UserPlugin.objects.filter(user=request.user, enabled=True).select_related('plugin')
     plugins_to_apply = [(user_plugin, user_plugin.plugin.latest_version()) for user_plugin in enabled_plugins]
+    versions = [version for _, version in plugins_to_apply]
 
-    posts = [store_post(seen_post) for seen_post in serializer.validated_data['posts']]
+    # Posts past the daily quota of new posts are neither stored nor classified.
+    new_seen_posts = seen_posts_needing_classification(seen_posts, versions)
+    granted_count = take_from_daily_quota(request.user, len(new_seen_posts))
+    refused_seen_posts = new_seen_posts[granted_count:]
+    refused_keys = {(seen_post['platform'], seen_post['post_id']) for seen_post in refused_seen_posts}
+
+    posts = [
+        store_post(seen_post) for seen_post in seen_posts
+        if (seen_post['platform'], seen_post['post_id']) not in refused_keys
+    ]
 
     # Queue every missing (post, plugin version) pair; existing rows are the cache.
     Classification.objects.bulk_create(
@@ -183,6 +260,7 @@ def classify(request):
         time.sleep(PENDING_RECHECK_SECONDS)
         results = build_results(posts, plugins_to_apply)
 
+    results.extend(daily_limit_result(seen_post) for seen_post in refused_seen_posts)
     return Response({'results': results})
 
 
@@ -190,8 +268,8 @@ def classify(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
-@throttle_classes([])
+@permission_classes([IsAuthenticated, HasVerifiedEmail])
+@throttle_classes([ExtensionTokenThrottle])
 def create_extension_token(request):
     raw_token = generate_raw_token()
     ExtensionToken.objects.create(user=request.user, token_hash=hash_token(raw_token))

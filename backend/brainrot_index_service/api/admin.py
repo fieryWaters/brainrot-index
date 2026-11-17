@@ -1,9 +1,26 @@
 from django.contrib import admin
 from .models import (
+    DailyNewPostCount,
+    InviteCode,
     UserProfile,
     EmailVerificationToken,
     PasswordResetToken,
 )
+
+
+@admin.register(InviteCode)
+class InviteCodeAdmin(admin.ModelAdmin):
+    list_display = ['code', 'note', 'uses', 'max_uses', 'active', 'created']
+    list_filter = ['active']
+    search_fields = ['code', 'note']
+    readonly_fields = ['uses', 'created']
+
+
+@admin.register(DailyNewPostCount)
+class DailyNewPostCountAdmin(admin.ModelAdmin):
+    list_display = ['user', 'day', 'count']
+    list_filter = ['day']
+    search_fields = ['user__email']
 
 
 @admin.register(UserProfile)

@@ -53,8 +53,16 @@ RUNNING_TESTS = 'test' in sys.argv
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = resolved_secret_key(SECURE_MODE)
 
-# The public address of the site, for example https://brainrotindex.com.
+# The primary address of the site, for example https://brainrotindex.com.
+# Emailed links point here.
 SITE_URL = config('SITE_URL', default='').strip().rstrip('/')
+# Other addresses that serve the same site, comma separated.
+EXTRA_SITE_URLS = [
+    url.strip().rstrip('/')
+    for url in config('EXTRA_SITE_URLS', default='').split(',')
+    if url.strip()
+]
+SITE_URLS = [SITE_URL] + EXTRA_SITE_URLS
 # The git commit this build came from, passed in by deploy.sh.
 GIT_COMMIT = os.environ.get('GIT_COMMIT', 'unknown')
 SITE_DOMAIN = urlparse(SITE_URL).hostname or ''
@@ -69,14 +77,21 @@ if APP_ENV == 'local':
 else:
     if not SITE_DOMAIN:
         raise RuntimeError('SITE_URL must be set when APP_ENV=deployment')
-    ALLOWED_HOSTS = [f'.{SITE_DOMAIN}', 'localhost', '127.0.0.1']
-    CORS_ALLOWED_ORIGINS = [SITE_URL]
-    CSRF_TRUSTED_ORIGINS = [SITE_URL]
+    # A leading dot also allows subdomains, such as www.
+    ALLOWED_HOSTS = [f'.{urlparse(url).hostname}' for url in SITE_URLS] + ['localhost', '127.0.0.1']
+    CORS_ALLOWED_ORIGINS = SITE_URLS
+    CSRF_TRUSTED_ORIGINS = SITE_URLS
     FRONTEND_BASE_URL = SITE_URL
 
 # CORS_ALLOW_CREDENTIALS=True so the session cookie flows on the dev cross-origin
 # Vite (:5173) -> Django (:8000) path. Production is same-origin via nginx.
 CORS_ALLOW_CREDENTIALS = True
+
+# New accounts need an invite code (see InviteCode); existing accounts never do.
+SIGNUP_REQUIRES_INVITE = config('SIGNUP_REQUIRES_INVITE', default=True, cast=bool)
+# Posts one account may send for classification per day (UTC) that no
+# classification exists for yet. Posts already classified are always answered.
+DAILY_NEW_POST_QUOTA = config('DAILY_NEW_POST_QUOTA', default=3000, cast=int)
 
 LOCAL_AUTH_BYPASS = APP_ENV == 'local'
 LOCAL_AUTH_USERNAME = 'local_dev'
@@ -171,6 +186,18 @@ DATABASES = {
 }
 
 
+# Throttle counters live in Postgres, so every gunicorn worker shares them and
+# they survive restarts. The table is made by `manage.py createcachetable`.
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache',
+        # Past this many rows Django deletes a third of them, throttle counters included.
+        'OPTIONS': {'MAX_ENTRIES': 100000},
+    }
+}
+
+
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
@@ -242,9 +269,9 @@ if SECURE_MODE:
     SECURE_SSL_REDIRECT = not RUNNING_TESTS
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    # No includeSubDomains or preload: the domain is new, and both are hard
+    # to take back once browsers have seen them.
     SECURE_HSTS_SECONDS = 31536000
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -252,8 +279,8 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle',
+        'api.throttling.AnonRateThrottle',
+        'api.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '30/hour',
@@ -265,6 +292,12 @@ REST_FRAMEWORK = {
         'auth_reset_confirm': '10/hour',
         'auth_verify': '20/hour',
         'feedback_anon': '20/hour',
+        # The extension sends a batch of up to 25 posts about every 150 ms while
+        # the reader scrolls, plus re-asks for pending posts, from every open tab.
+        'classify': '600/minute',
+        # Asked on every Reddit or X page load and every popup opening.
+        'extension_config': '60/minute',
+        'extension_token': '20/hour',
     },
 }
 

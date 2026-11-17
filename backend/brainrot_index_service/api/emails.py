@@ -26,8 +26,10 @@ def _send_async(*, subject, recipient, text_body, html_body, log_tag):
                 html_message=html_body,
             )
             logger.info("%s sent to %s", log_tag, recipient)
-        except Exception:
-            logger.exception("%s failed for %s", log_tag, recipient)
+        except Exception as error:
+            # Sending runs after the response, so this log line is the only
+            # place a failure shows up.
+            logger.error("%s to %s failed: %s: %s", log_tag, recipient, type(error).__name__, error, exc_info=True)
 
     threading.Thread(target=_run, daemon=True).start()
 

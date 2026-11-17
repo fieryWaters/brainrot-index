@@ -4,13 +4,20 @@ from unittest.mock import MagicMock
 from django.contrib.auth import get_user_model
 
 from api.auth_tokens import generate_raw_token, hash_token
+from api.models import UserProfile
 from classification.models import ExtensionToken
 
 User = get_user_model()
 
 
-def create_user_with_token(email):
+def create_verified_user(email):
     user = User.objects.create_user(username=email, email=email, password='unused-password-123')
+    UserProfile.objects.create(user=user, email_verified=True)
+    return user
+
+
+def create_user_with_token(email):
+    user = create_verified_user(email)
     raw_token = generate_raw_token()
     ExtensionToken.objects.create(user=user, token_hash=hash_token(raw_token))
     return user, raw_token

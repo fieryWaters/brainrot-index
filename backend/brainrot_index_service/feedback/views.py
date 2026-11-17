@@ -4,8 +4,7 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.decorators import api_view, authentication_classes, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle
-
+from api.throttling import AnonRateThrottle
 from classification.authentication import ExtensionTokenAuthentication
 
 from .serializers import FeedbackSerializer

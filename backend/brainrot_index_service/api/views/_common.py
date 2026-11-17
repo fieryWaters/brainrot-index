@@ -1,8 +1,7 @@
 """Shared helpers for the API views: throttles and the session payload."""
 
-from rest_framework.throttling import AnonRateThrottle
-
 from ..models import UserProfile
+from ..throttling import AnonRateThrottle
 
 
 class GoogleAuthAnonRateThrottle(AnonRateThrottle):

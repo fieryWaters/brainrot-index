@@ -15,6 +15,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from ._common import GoogleAuthAnonRateThrottle, build_session_payload
+from ..invites import invite_refusal, redeem_invite_code
 from ..models import AUTH_PROVIDER_GOOGLE, AUTH_PROVIDER_HYBRID, UserProfile
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,9 @@ def authenticate_with_google(request):
         _delete_sessions_for_user(application_user.id, exclude_key=request.session.session_key)
 
     if application_user is None:
+        invite_code = request.data.get('invite_code', '')
+        if settings.SIGNUP_REQUIRES_INVITE and not redeem_invite_code(invite_code):
+            return Response(invite_refusal(invite_code), status=status.HTTP_403_FORBIDDEN)
         application_user = User.objects.create(
             username=f"google_{google_subject}",
             email=google_email,

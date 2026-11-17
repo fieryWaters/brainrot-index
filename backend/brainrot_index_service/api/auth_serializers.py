@@ -8,6 +8,10 @@ class EmailPasswordSerializer(serializers.Serializer):
     password = serializers.CharField()
 
 
+class SignupSerializer(EmailPasswordSerializer):
+    invite_code = serializers.CharField(required=False, allow_blank=True, default='')
+
+
 class EmailOnlySerializer(serializers.Serializer):
     email = serializers.EmailField()
 

@@ -2,6 +2,8 @@
 set -eu
 
 python manage.py migrate --noinput
+# The database cache table that holds throttle counters; does nothing when it exists.
+python manage.py createcachetable
 python manage.py collectstatic --noinput
 
 exec gunicorn brainrot_index_service.wsgi:application \

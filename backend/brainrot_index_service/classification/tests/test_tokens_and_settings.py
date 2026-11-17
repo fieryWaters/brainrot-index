@@ -1,17 +1,14 @@
-from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
 from classification.models import ExtensionToken
 
-from .helpers import bearer, create_user_with_token
-
-User = get_user_model()
+from .helpers import bearer, create_user_with_token, create_verified_user
 
 
 class ExtensionTokenTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='reader@example.com', email='reader@example.com')
+        self.user = create_verified_user('reader@example.com')
 
     def test_created_token_authenticates_the_extension_and_only_its_hash_is_stored(self):
         self.client.force_login(self.user)

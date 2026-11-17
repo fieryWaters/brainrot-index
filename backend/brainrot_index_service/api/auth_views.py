@@ -2,6 +2,7 @@ import hashlib
 import logging
 import uuid
 
+from django.conf import settings
 from django.contrib.auth import (
     authenticate,
     get_user_model,
@@ -24,13 +25,13 @@ from rest_framework.decorators import (
 )
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
 
 from .authentication import CSRFEnforcedSessionAuthentication
 from .auth_serializers import (
     EmailOnlySerializer,
     EmailPasswordSerializer,
     ResetConfirmSerializer,
+    SignupSerializer,
     TokenOnlySerializer,
 )
 from .auth_tokens import (
@@ -41,7 +42,10 @@ from .auth_tokens import (
     hash_token,
     token_is_valid,
 )
+from .client_address import client_ip
 from .emails import send_email_verification, send_password_reset
+from .invites import invite_code_is_usable, invite_refusal, redeem_invite_code
+from .throttling import AnonRateThrottle, ScopedRateThrottle
 from .views._common import build_session_payload
 from .models import (
     AUTH_PROVIDER_HYBRID,
@@ -91,13 +95,6 @@ class VerifyThrottle(AnonRateThrottle):
 
 
 # -- Helpers --
-
-def _client_ip(request):
-    forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
-    if forwarded:
-        return forwarded.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR') or None
-
 
 def _mask_email(email):
     if not email or '@' not in email:
@@ -174,18 +171,24 @@ def signup(request):
     # Every branch returns an identical 202 body. The session cookie set by
     # django_login() is what signals success to the frontend - the frontend
     # calls /auth/me/ after signup to see whether it was auto-logged-in.
-    serializer = EmailPasswordSerializer(data=request.data)
+    serializer = SignupSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(_SIGNUP_GENERIC_RESPONSE, status=202)
 
     email = serializer.validated_data['email'].strip().lower()
     password = serializer.validated_data['password']
-    ip = _client_ip(request)
+    invite_code = serializer.validated_data['invite_code']
+    ip = client_ip(request)
 
     try:
         validate_password(password, user=User(email=email, username=email))
     except ValidationError as exc:
         return Response({"error": " ".join(exc.messages)}, status=400)
+
+    # Checked before looking the email up, so the answer does not reveal
+    # whether an account exists. Only a new account uses the code up.
+    if settings.SIGNUP_REQUIRES_INVITE and not invite_code_is_usable(invite_code):
+        return Response(invite_refusal(invite_code), status=400)
 
     existing_user = User.objects.filter(email__iexact=email).first()
 
@@ -215,6 +218,9 @@ def signup(request):
     # New account: create with unusable password, stash the real hash on the
     # verification token. The password only activates when the verify link is
     # clicked, proving inbox control.
+    if settings.SIGNUP_REQUIRES_INVITE and not redeem_invite_code(invite_code):
+        return Response(invite_refusal(invite_code), status=400)
+
     new_user = User.objects.create(
         username=_generate_username_for_email(email),
         email=email,
@@ -247,7 +253,7 @@ def login_view(request):
 
     email = serializer.validated_data['email'].strip().lower()
     password = serializer.validated_data['password']
-    ip = _client_ip(request)
+    ip = client_ip(request)
 
     user = User.objects.filter(email__iexact=email).first()
     if user is None:
@@ -314,7 +320,7 @@ def resend_verification(request):
     profile = _get_or_create_profile(request.user)
     if profile.email_verified:
         return Response({"status": "ok"}, status=200)
-    _send_verification(request.user, _client_ip(request))
+    _send_verification(request.user, client_ip(request))
     return Response({"status": "ok"}, status=200)
 
 
@@ -329,7 +335,7 @@ def password_reset_request(request):
         return Response({"status": "ok"}, status=202)
 
     email = serializer.validated_data['email'].strip().lower()
-    ip = _client_ip(request)
+    ip = client_ip(request)
     user = User.objects.filter(email__iexact=email).first()
 
     if user is not None:

@@ -2,6 +2,8 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework.authentication import BaseAuthentication, SessionAuthentication
 
+from .models import UserProfile
+
 
 class CSRFEnforcedSessionAuthentication(SessionAuthentication):
     """SessionAuthentication that enforces CSRF even on anonymous requests.
@@ -36,5 +38,6 @@ class LocalBypassAuthentication(BaseAuthentication):
         if local_email and local_user.email != local_email:
             local_user.email = local_email
             local_user.save(update_fields=['email'])
+        UserProfile.objects.get_or_create(user=local_user, defaults={'email_verified': True})
 
         return (local_user, None)

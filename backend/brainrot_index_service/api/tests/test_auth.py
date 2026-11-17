@@ -5,7 +5,7 @@ from django.core.cache import cache
 from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 
-from api.models import UserProfile
+from api.models import InviteCode, UserProfile
 
 User = get_user_model()
 
@@ -57,11 +57,13 @@ class EmailPasswordAuthSecurityTests(TestCase):
         # Throttle counters live in the shared cache and would otherwise
         # accumulate across tests (auth_login is 10/hour per IP).
         cache.clear()
+        self.invite_code = InviteCode.objects.create(note='tests', max_uses=100).code
 
     def _signup_and_capture_token(self, client, email, password=PASSWORD):
         with patch('api.auth_views.send_email_verification') as send_verification:
             response = client.post(
-                reverse('auth_signup'), {'email': email, 'password': password})
+                reverse('auth_signup'),
+                {'email': email, 'password': password, 'invite_code': self.invite_code})
         self.assertEqual(response.status_code, 202)
         raw_token = send_verification.call_args[0][1]
         return response, raw_token
@@ -78,10 +80,12 @@ class EmailPasswordAuthSecurityTests(TestCase):
         with patch('api.auth_views.send_email_verification'):
             existing_wrong_password = Client().post(
                 reverse('auth_signup'),
-                {'email': 'taken@example.com', 'password': 'wrong-guess-4-horse'})
+                {'email': 'taken@example.com', 'password': 'wrong-guess-4-horse',
+                 'invite_code': self.invite_code})
             brand_new_email = Client().post(
                 reverse('auth_signup'),
-                {'email': 'fresh@example.com', 'password': 'wrong-guess-4-horse'})
+                {'email': 'fresh@example.com', 'password': 'wrong-guess-4-horse',
+                 'invite_code': self.invite_code})
 
         self.assertEqual(existing_wrong_password.status_code, 202)
         self.assertEqual(brand_new_email.status_code, 202)

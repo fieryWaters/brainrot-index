@@ -85,6 +85,10 @@ and any still open after an hour is closed by a timer.
 - `node screenshot-feedback-ui.mjs [folder]` photographs the hidden-post look and the thumbs on the
   stand-in pages (`stand-in-pages.mjs`), variant A (shipped) beside alternatives B and C, and writes
   comparison sheets to `docs/screenshots/feedback-hover-ui/`.
+- `node screenshot-webstore.mjs [folder]` makes the five 1280 x 800 Chrome Web Store screenshots in
+  `docs/webstore/`: the extension on the stand-in pages with the mock server, and the site's dashboard
+  from its build (run `npx vite build` in `frontend/brainrot-index-frontend` first). Run
+  `node stamp-build-info.mjs` on a clean, committed tree first, since the popup shows the commit.
 - `node inspect-markup.mjs <url> [signed-in profile dir]` prints what a feed or thread page's markup
   looks like, for writing or fixing a site adapter.
 - `node make-icons.mjs` redraws every PNG of the brand mark from the site's `favicon.svg`: the

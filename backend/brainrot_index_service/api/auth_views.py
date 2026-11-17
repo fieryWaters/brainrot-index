@@ -6,7 +6,6 @@ from django.conf import settings
 from django.contrib.auth import (
     authenticate,
     get_user_model,
-    login as django_login,
     logout as django_logout,
 )
 from django.contrib.auth.hashers import check_password, make_password
@@ -45,6 +44,7 @@ from .auth_tokens import (
 from .client_address import client_ip
 from .emails import send_email_verification, send_password_reset
 from .invites import invite_code_is_usable, invite_refusal, redeem_invite_code
+from .sign_in import SIGN_IN_PASSWORD, sign_in
 from .throttling import AnonRateThrottle, ScopedRateThrottle
 from .views._common import build_session_payload
 from .models import (
@@ -154,7 +154,8 @@ def _send_verification(user, ip, pending_password_hash=''):
 @require_GET
 @ensure_csrf_cookie
 def csrf_bootstrap(request):
-    return JsonResponse({"status": "ok"})
+    # The sign-up page shows its invite code field only when one is needed.
+    return JsonResponse({"status": "ok", "signup_requires_invite": settings.SIGNUP_REQUIRES_INVITE})
 
 
 _SIGNUP_GENERIC_RESPONSE = {
@@ -169,7 +170,7 @@ _SIGNUP_GENERIC_RESPONSE = {
 @throttle_classes([LoginIPThrottle, LoginAccountThrottle])
 def signup(request):
     # Every branch returns an identical 202 body. The session cookie set by
-    # django_login() is what signals success to the frontend - the frontend
+    # sign_in() is what signals success to the frontend - the frontend
     # calls /auth/me/ after signup to see whether it was auto-logged-in.
     serializer = SignupSerializer(data=request.data)
     if not serializer.is_valid():
@@ -197,7 +198,7 @@ def signup(request):
         # Try signup-as-login; on mismatch, return the same 202.
         authed = authenticate(request, username=existing_user.username, password=password)
         if authed is not None:
-            django_login(request, authed)
+            sign_in(request, authed, SIGN_IN_PASSWORD)
             logger.info("signup->login: user=%s ip=%s", authed.id, ip)
         else:
             logger.info("signup collision (verified, bad pw): email=%s ip=%s",
@@ -211,7 +212,7 @@ def signup(request):
         # latest link wins - which goes to the real inbox owner.
         _consume_pending_verification_tokens(existing_user)
         _send_verification(existing_user, ip, pending_password_hash=make_password(password))
-        django_login(request, existing_user)
+        sign_in(request, existing_user, SIGN_IN_PASSWORD)
         logger.info("signup (replaced pending): user=%s ip=%s", existing_user.id, ip)
         return Response(_SIGNUP_GENERIC_RESPONSE, status=202)
 
@@ -234,7 +235,7 @@ def signup(request):
     profile.save()
 
     _send_verification(new_user, ip, pending_password_hash=make_password(password))
-    django_login(request, new_user)
+    sign_in(request, new_user, SIGN_IN_PASSWORD)
     logger.info("signup: user=%s email=%s ip=%s", new_user.id, _mask_email(email), ip)
     return Response(_SIGNUP_GENERIC_RESPONSE, status=202)
 
@@ -265,7 +266,7 @@ def login_view(request):
         logger.info("login failed: email=%s ip=%s", _mask_email(email), ip)
         return Response({"error": "Invalid email or password."}, status=401)
 
-    django_login(request, authed)
+    sign_in(request, authed, SIGN_IN_PASSWORD)
     logger.info("login: user=%s ip=%s", authed.id, ip)
     return Response(build_session_payload(authed), status=200)
 
@@ -394,6 +395,6 @@ def password_reset_confirm(request):
 
     _delete_sessions_for_user(user.id, exclude_key=request.session.session_key)
 
-    django_login(request, user)
+    sign_in(request, user, SIGN_IN_PASSWORD)
     logger.info("password_reset_confirm: user=%s", user.id)
     return Response(build_session_payload(user), status=200)

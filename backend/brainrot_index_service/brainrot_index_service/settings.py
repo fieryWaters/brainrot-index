@@ -87,11 +87,13 @@ else:
 # Vite (:5173) -> Django (:8000) path. Production is same-origin via nginx.
 CORS_ALLOW_CREDENTIALS = True
 
-# New accounts need an invite code (see InviteCode); existing accounts never do.
-SIGNUP_REQUIRES_INVITE = config('SIGNUP_REQUIRES_INVITE', default=True, cast=bool)
+# true: new accounts need an invite code (see InviteCode); existing accounts never do.
+SIGNUP_REQUIRES_INVITE = config('SIGNUP_REQUIRES_INVITE', default=False, cast=bool)
+# The one account allowed into /admin/, and only after signing in with Google.
+ADMIN_EMAIL = config('ADMIN_EMAIL', default='').strip().lower()
 # Posts one account may send for classification per day (UTC) that no
 # classification exists for yet. Posts already classified are always answered.
-DAILY_NEW_POST_QUOTA = config('DAILY_NEW_POST_QUOTA', default=3000, cast=int)
+DAILY_NEW_POST_QUOTA = config('DAILY_NEW_POST_QUOTA', default=10000, cast=int)
 
 LOCAL_AUTH_BYPASS = APP_ENV == 'local'
 LOCAL_AUTH_USERNAME = 'local_dev'
@@ -113,7 +115,7 @@ LOCAL_INFERENCE_MODEL = config('LOCAL_INFERENCE_MODEL', default='').strip()
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
+    'brainrot_index_service.apps.OwnerAdminConfig',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',

@@ -4,9 +4,9 @@
 //   storage.session: one "answer:<platform>:<post_id>" entry per post the server has finished with
 importScripts("extension-api.js");
 
-// The server a new install talks to. The public address is https://brainrotindex.com; installs that
-// already have a serverAddress keep it (the options page changes it).
-const DEFAULT_SERVER_ADDRESS = "https://brainrot.jacob-waters.com";
+// The server a new install talks to. Installs that already have a serverAddress keep it (the options
+// page changes it); the private address is https://brainrot.jacob-waters.com.
+const DEFAULT_SERVER_ADDRESS = "https://brainrotindex.com";
 const MISSED_POST_MENU_ITEM_ID = "should-have-been-filtered";
 
 extensionApi.runtime.onInstalled.addListener(async () => {

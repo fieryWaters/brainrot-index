@@ -9,6 +9,8 @@ extension calls, the worker that runs the model, a dashboard for settings, and
 a feedback button, on a Django + Postgres backend and a plain JavaScript
 frontend.
 
+The site is public at https://brainrotindex.com (Cloudflare Tunnel to spark).
+
 ## How classification works
 
 The extension sends each post it sees to `POST /api/classify/`. Every post is
@@ -77,8 +79,9 @@ bash deploy.sh
 docker compose ps       # wait for backend to be healthy
 ```
 
-The site is then on `127.0.0.1:3400` and, on the tailnet, at
-`https://brainrot.jacob-waters.com`. See `DEPLOY.md` for details.
+The site is then on `127.0.0.1:3400`, at `https://brainrotindex.com` through
+the tunnel, and on the tailnet at `https://brainrot.jacob-waters.com`. See
+`DEPLOY.md` for details.
 
 ## Origin
 

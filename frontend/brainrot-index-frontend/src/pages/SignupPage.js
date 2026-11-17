@@ -7,6 +7,7 @@ import {
   signupWithEmail,
   subscribe,
 } from '../lib/auth.js'
+import { apiFetch } from '../lib/api.js'
 import { navigate } from '../lib/router.js'
 
 export function mountSignupPage() {
@@ -15,11 +16,12 @@ export function mountSignupPage() {
   const footer = document.createElement('div')
   footer.className = 'flex flex-col gap-3 items-center'
 
+  const divider = document.createElement('div')
+  divider.className = 'text-xs text-white/30 uppercase tracking-wider'
+  divider.textContent = 'or'
+
   let gsi = null
   if (GOOGLE_CLIENT_ID) {
-    const divider = document.createElement('div')
-    divider.className = 'text-xs text-white/30 uppercase tracking-wider'
-    divider.textContent = 'or, with the invite code above'
     footer.appendChild(divider)
 
     gsi = createGoogleSignIn()
@@ -34,9 +36,9 @@ export function mountSignupPage() {
 
   const form = createAuthForm({
     title: 'Create account',
-    subtitle: 'Brainrot Index is invite only for now. Use at least 12 characters for your password.',
+    subtitle: 'Use at least 12 characters for your password.',
     fields: [
-      { name: 'invite_code', type: 'text', placeholder: 'Invite code', autocomplete: 'off' },
+      { name: 'invite_code', type: 'text', placeholder: 'Invite code', autocomplete: 'off', hidden: true },
       { name: 'email', type: 'email', placeholder: 'you@example.com', autocomplete: 'username' },
       { name: 'password', type: 'password', placeholder: 'Password', autocomplete: 'new-password' },
     ],
@@ -57,6 +59,14 @@ export function mountSignupPage() {
   })
 
   setInviteCodeReaderForGoogle(() => form.getValue('invite_code'))
+
+  // The server says whether new accounts need an invite code.
+  apiFetch('/auth/csrf/').then(({ data }) => {
+    if (data.signup_requires_invite) {
+      form.setFieldVisible('invite_code', true)
+      divider.textContent = 'or, with the invite code above'
+    }
+  })
 
   wrapper.appendChild(form.el)
 

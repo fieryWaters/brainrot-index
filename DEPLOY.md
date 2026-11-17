@@ -64,6 +64,9 @@ and for anything on port 8080. `www.brainrotindex.com` redirects to
 
 ## Going public
 
+The site has been public at `https://brainrotindex.com` since 2026-11-17.
+These are the steps that made it so; run them again only after going dark.
+
 The tunnel `brainrotindex` (id `662bc646-f90d-4409-8f0b-95e92901a75d`)
 exists; its credentials are in `~/.cloudflared-brainrotindex` on spark,
 mounted read only into the `cloudflared` service, which runs as uid 1000 to
@@ -72,7 +75,7 @@ read them. `cloudflared/config.yml` sends `brainrotindex.com` and
 profile `public`, so it starts only when that profile is on. On spark, in
 this checkout:
 
-1. Point the DNS names at the tunnel (once):
+1. Point the DNS names at the tunnel (once; done):
 
        docker run --rm -e HOME=/h -v ~/.cloudflared-brainrotindex:/h/.cloudflared --user $(id -u):$(id -g) cloudflare/cloudflared:latest tunnel route dns brainrotindex brainrotindex.com
        docker run --rm -e HOME=/h -v ~/.cloudflared-brainrotindex:/h/.cloudflared --user $(id -u):$(id -g) cloudflare/cloudflared:latest tunnel route dns brainrotindex www.brainrotindex.com
@@ -97,15 +100,17 @@ error page.
 
 ## Accounts
 
-- New accounts need an invite code while `SIGNUP_REQUIRES_INVITE=true`
-  (email and Google sign-up alike; existing accounts never do). Make one:
+- Sign-up is open (`SIGNUP_REQUIRES_INVITE=false`, the default). With
+  `SIGNUP_REQUIRES_INVITE=true`, new accounts need an invite code (email and
+  Google sign-up alike; existing accounts never do), and the sign-up page shows
+  the code field (it asks `/api/auth/csrf/`). Make one:
   `docker compose exec backend python manage.py create_invite --note "for Sam" --max-uses 5`.
   The admin lists codes and their uses and can deactivate one.
 - The extension (token, config, classify) works only for accounts with a
   verified email; Google sign-ins count as verified. For an older account that
   never verified:
   `docker compose exec backend python manage.py mark_email_verified you@example.com`
-- Each account gets `DAILY_NEW_POST_QUOTA` (default 3000) posts a day (UTC)
+- Each account gets `DAILY_NEW_POST_QUOTA` (default 10000) posts a day (UTC)
   that nobody has classified yet; posts already classified are always
   answered. Counts are `DailyNewPostCount` rows (in the admin).
 - Throttle counters live in the database cache table `django_cache`, made by
@@ -178,10 +183,10 @@ against the live account.
 
 ## Email
 
-`EMAIL_DELIVERY=console` (the default) writes every email, links included, to
-the backend log instead of sending it: `docker compose logs backend`.
-Set `EMAIL_DELIVERY=resend` once the Resend account can send from
-`brainrotindex.com`. Emails are sent after the response, so a failed send
+The live site sends through Resend (`EMAIL_DELIVERY=resend`) from
+`noreply@brainrotindex.com`. `EMAIL_DELIVERY=console` (the default) writes
+every email, links included, to the backend log instead:
+`docker compose logs backend`. Emails are sent after the response, so a failed send
 does not fail the sign-up; it is logged at error level with the reason:
 `docker compose logs backend | grep failed`.
 
@@ -194,8 +199,13 @@ Authorized JavaScript origin, and the same client ID goes in `.env` as
 ## Admin
 
 The Django admin at `/admin/` (private address only) lists posts, images,
-plugins, classifications, user settings, invite codes, and feedback. Make an account staff once:
-`docker compose exec backend python manage.py shell -c "from django.contrib.auth.models import User; User.objects.filter(email='you@example.com').update(is_staff=True, is_superuser=True)"`
+plugins, classifications, user settings, invite codes, subscriptions, and
+feedback. Exactly one account can open it: the one whose email is
+`ADMIN_EMAIL` in `.env`, in a session that signed in with Google (the session
+records how it signed in). Signing in with Google makes that account staff and
+superuser; no other account gets in, whatever its `is_staff`. The admin's own
+login page sends people to the site's `/login`. To open it: sign in with
+Google at `https://brainrot.jacob-waters.com/login`, then go to `/admin/`.
 
 ## Useful commands
 

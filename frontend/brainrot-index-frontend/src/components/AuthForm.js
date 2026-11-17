@@ -42,9 +42,12 @@ export function createAuthForm({
   form.noValidate = true
 
   const fieldGetters = {}
+  const fieldWrappers = {}
 
   for (const field of fields) {
     const wrapper = el('div', 'flex flex-col gap-1.5')
+    if (field.hidden) wrapper.classList.add('hidden')
+    fieldWrappers[field.name] = wrapper
 
     if (field.label) {
       wrapper.appendChild(el('label', 'text-xs font-medium text-white/60 uppercase tracking-wide', field.label))
@@ -143,5 +146,9 @@ export function createAuthForm({
     return fieldGetters[name]().trim()
   }
 
-  return { el: container, setError, setPhase, getValue }
+  function setFieldVisible(name, visible) {
+    fieldWrappers[name].classList.toggle('hidden', !visible)
+  }
+
+  return { el: container, setError, setPhase, getValue, setFieldVisible }
 }

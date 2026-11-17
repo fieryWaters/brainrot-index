@@ -5,7 +5,7 @@ that verifies the id_token and provisions/links the account."""
 import logging
 
 from django.conf import settings
-from django.contrib.auth import get_user_model, login as django_login
+from django.contrib.auth import get_user_model
 from django.views.decorators.csrf import csrf_exempt
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
@@ -17,6 +17,7 @@ from rest_framework.response import Response
 from ._common import GoogleAuthAnonRateThrottle, build_session_payload
 from ..invites import invite_refusal, redeem_invite_code
 from ..models import AUTH_PROVIDER_GOOGLE, AUTH_PROVIDER_HYBRID, UserProfile
+from ..sign_in import SIGN_IN_GOOGLE, sign_in
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -87,6 +88,12 @@ def authenticate_with_google(request):
     if application_user.email != google_email:
         application_user.email = google_email
         user_dirty_fields.append('email')
+    # The admin account gets the admin's permissions; OwnerAdminSite decides
+    # who may open /admin/ at all.
+    if settings.ADMIN_EMAIL and google_email == settings.ADMIN_EMAIL and not application_user.is_superuser:
+        application_user.is_staff = True
+        application_user.is_superuser = True
+        user_dirty_fields += ['is_staff', 'is_superuser']
     if user_dirty_fields:
         application_user.save(update_fields=user_dirty_fields)
 
@@ -97,7 +104,7 @@ def authenticate_with_google(request):
     )
     profile.save(update_fields=['email_verified', 'auth_provider', 'updated_at'])
 
-    django_login(request, application_user)
+    sign_in(request, application_user, SIGN_IN_GOOGLE)
 
     logger.info(
         "Google login: user=%s new=%s provider=%s",

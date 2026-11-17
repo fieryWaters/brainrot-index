@@ -63,6 +63,10 @@ export function mountDashboardPage() {
     connectStatus.textContent = 'Connecting...'
     const { response, data } = await apiFetch('/extension/token/', { method: 'POST' })
     connectButton.disabled = false
+    if (data.code === 'email_not_verified') {
+      connectStatus.textContent = 'Verify your email first: open the link we emailed you, or send a new one from Account settings. Then press Connect extension again.'
+      return
+    }
     if (!response.ok) {
       connectStatus.textContent = 'Could not create a connection. Please try again.'
       return

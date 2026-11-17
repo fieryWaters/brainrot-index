@@ -1,0 +1,12 @@
+# Tunnel brainrotindex (created with cloudflared tunnel create). The
+# credentials file is mounted from ~/.cloudflared-brainrotindex on spark.
+tunnel: 662bc646-f90d-4409-8f0b-95e92901a75d
+credentials-file: /etc/cloudflared/credentials/662bc646-f90d-4409-8f0b-95e92901a75d.json
+
+# Port 8080 is nginx's public path: it trusts CF-Connecting-IP and has no /admin/.
+ingress:
+  - hostname: brainrotindex.com
+    service: http://web:8080
+  - hostname: www.brainrotindex.com
+    service: http://web:8080
+  - service: http_status:404

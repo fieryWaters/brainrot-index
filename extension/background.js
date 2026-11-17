@@ -4,6 +4,8 @@
 //   storage.session: one "answer:<platform>:<post_id>" entry per post the server has finished with
 importScripts("extension-api.js");
 
+// The server a new install talks to. The public address is https://brainrotindex.com; installs that
+// already have a serverAddress keep it (the options page changes it).
 const DEFAULT_SERVER_ADDRESS = "https://brainrot.jacob-waters.com";
 const MISSED_POST_MENU_ITEM_ID = "should-have-been-filtered";
 
@@ -83,18 +85,24 @@ async function callServer(method, path, body) {
 }
 
 // Turns a server response that is not a success into the account state the popup and content scripts show.
-function stateFromFailedResponse(response) {
+async function stateFromFailedResponse(response) {
   if (response.status === 401) {
     return "not-connected";
   }
   if (response.status === 402) {
     return "no-subscription";
   }
+  if (response.status === 403) {
+    const body = await response.json().catch(() => ({}));
+    if (body.code === "email_not_verified") {
+      return "email-not-verified";
+    }
+  }
   return "server-error";
 }
 
 // Answers { state, config }. state is "connected", "not-connected", "no-subscription",
-// "server-error" or "server-unreachable"; config is present only when connected.
+// "email-not-verified", "server-error" or "server-unreachable"; config is present only when connected.
 async function getStatus() {
   const { token } = await extensionApi.storage.local.get("token");
   if (token === undefined) {
@@ -108,13 +116,16 @@ async function getStatus() {
     return { state: "server-unreachable" };
   }
   if (!response.ok) {
-    return { state: stateFromFailedResponse(response) };
+    return { state: await stateFromFailedResponse(response) };
   }
   return { state: "connected", config: await response.json() };
 }
 
-// Answers { state, results } where results holds one server result per post, taken from the
-// session cache when the server has already finished with that post in this browser session.
+// Answers { state, results, showDailyLimitNotice } where results holds one server result per post,
+// taken from the session cache when the server has already finished with that post in this browser
+// session. A post past the account's daily limit comes back allowed with notice "daily_limit_reached"
+// and is not cached, so it is checked once the limit resets. showDailyLimitNotice is true the first
+// time that happens in a browser session.
 async function classifyPosts(posts) {
   const cachedAnswers = await extensionApi.storage.session.get(
     posts.map((post) => answerKey(post.platform, post.post_id))
@@ -140,18 +151,30 @@ async function classifyPosts(posts) {
     return { state: "server-unreachable" };
   }
   if (!response.ok) {
-    return { state: stateFromFailedResponse(response) };
+    return { state: await stateFromFailedResponse(response) };
   }
 
   const serverResults = (await response.json()).results;
   const finishedAnswers = {};
+  let dailyLimitReached = false;
   for (const result of serverResults) {
-    if (result.status === "done") {
+    if (result.notice === "daily_limit_reached") {
+      dailyLimitReached = true;
+    } else if (result.status === "done") {
       finishedAnswers[answerKey(result.platform, result.post_id)] = result;
     }
   }
   await extensionApi.storage.session.set(finishedAnswers);
-  return { state: "connected", results: results.concat(serverResults) };
+
+  let showDailyLimitNotice = false;
+  if (dailyLimitReached) {
+    const { dailyLimitNoticeShown } = await extensionApi.storage.session.get("dailyLimitNoticeShown");
+    if (!dailyLimitNoticeShown) {
+      showDailyLimitNotice = true;
+      await extensionApi.storage.session.set({ dailyLimitNoticeShown: true });
+    }
+  }
+  return { state: "connected", results: results.concat(serverResults), showDailyLimitNotice: showDailyLimitNotice };
 }
 
 // The git commit this copy of the extension was loaded from, written to build-info.json by

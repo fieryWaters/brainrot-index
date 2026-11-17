@@ -73,6 +73,21 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Connected')).toBeInTheDocument()
   })
 
+  it('asks an unverified reader to verify their email instead of connecting', async () => {
+    const postMessage = vi.spyOn(window, 'postMessage')
+    fetch.mockImplementation(async (url) => {
+      if (String(url).endsWith('/extension/token/')) {
+        return jsonResponse({ detail: 'Verify your email first.', code: 'email_not_verified' }, 403)
+      }
+      return jsonResponse({ plugins: [] })
+    })
+    renderElement(mountDashboardPage().el)
+    fireEvent.click(screen.getByText('Connect extension'))
+
+    expect(await screen.findByText(/Verify your email first/)).toBeInTheDocument()
+    expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: TOKEN_MESSAGE_TYPE }), expect.anything())
+  })
+
   it('tells the reader to reload the page when the extension does not answer', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     renderElement(mountDashboardPage().el)

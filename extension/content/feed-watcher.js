@@ -169,10 +169,13 @@ async function requestAnswers(posts) {
       pendingByPostId.delete(post.post_id);
       receiveAnswer(post.post_id, ALLOW_ANSWER);
     }
-    if (reply.state === "not-connected" || reply.state === "no-subscription") {
+    if (reply.state === "not-connected" || reply.state === "no-subscription" || reply.state === "email-not-verified") {
       stopWatching();
     }
     return;
+  }
+  if (reply.showDailyLimitNotice) {
+    showPageNotice("Brainrot Index: daily limit reached. New posts are shown unchecked until tomorrow (UTC).");
   }
 
   const postById = new Map(posts.map((post) => [post.post_id, post]));

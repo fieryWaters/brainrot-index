@@ -139,5 +139,9 @@ export function createAuthForm({
 
   const container = el('div', 'max-w-md mx-auto px-4 py-12', card)
 
-  return { el: container, setError, setPhase }
+  function getValue(name) {
+    return fieldGetters[name]().trim()
+  }
+
+  return { el: container, setError, setPhase, getValue }
 }

@@ -51,6 +51,7 @@ export function mountLoginPage() {
   // If Google sign-in completes while we're on this page, navigate home.
   const unsubscribe = subscribe((state) => {
     if (state.isAuthenticated) navigate('/dashboard')
+    else if (state.authError) form.setError(state.authError)
   })
 
   return {

@@ -11,6 +11,7 @@
   "permissions": ["storage", "contextMenus", "activeTab", "scripting"],
   "host_permissions": [
     "https://brainrot.jacob-waters.com/*",
+    "https://brainrotindex.com/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
   ],
@@ -40,7 +41,7 @@
       "css": ["content/post-decoration.css"]
     },
     {
-      "matches": ["https://brainrot.jacob-waters.com/*", "http://localhost/*", "http://127.0.0.1/*"],
+      "matches": ["https://brainrot.jacob-waters.com/*", "https://brainrotindex.com/*", "http://localhost/*", "http://127.0.0.1/*"],
       "js": ["extension-api.js", "content/connect-listener.js"]
     }
   ]

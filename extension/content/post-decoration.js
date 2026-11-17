@@ -237,6 +237,17 @@ function showReportFormAbovePost(postElement, shownAction, onReport) {
   form.querySelector(".brainrot-index-reason").focus({ preventScroll: true });
 }
 
+// A message about the whole page, fixed at the bottom of the window until the reader closes it.
+function showPageNotice(text) {
+  const notice = document.createElement("div");
+  notice.className = NOTICE_CLASS + " brainrot-index-page-notice";
+  notice.setAttribute("role", "status");
+  keepEventsInside(notice);
+  const message = document.createElement("span");
+  message.textContent = text;
+  notice.append(message, makeButton("brainrot-index-close", "Close", () => notice.remove()));
+  document.body.append(notice);
+}
 
 function removeDecoration(postElement) {
   const notice = noticeByPost.get(postElement);

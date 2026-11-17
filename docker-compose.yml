@@ -145,12 +145,31 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    # 80 is the private path (Caddy, published on the host); 8080 is the
+    # tunnel's path, reachable only on the compose network. See nginx.conf.
     expose:
       - "80"
+      - "8080"
     ports:
       - "127.0.0.1:3400:80"
     volumes:
       - backend_static:/srv/static:ro
+
+  # Cloudflare Tunnel to brainrotindex.com. Starts only with the public
+  # profile: docker compose --profile public up -d cloudflared (see DEPLOY.md).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["public"]
+    command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run"]
+    # The credentials directory on spark belongs to jacob (1000) and is
+    # readable by its owner only.
+    user: "1000:1000"
+    restart: unless-stopped
+    depends_on:
+      - web
+    volumes:
+      - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
+      - ${HOME}/.cloudflared-brainrotindex:/etc/cloudflared/credentials:ro
 
 volumes:
   postgres_data:

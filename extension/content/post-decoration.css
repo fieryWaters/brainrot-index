@@ -43,6 +43,19 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
+.brainrot-index-page-notice {
+  position: fixed;
+  z-index: 2147483647;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(560px, calc(100% - 32px));
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(24, 24, 27, 0.95);
+  color: #f4f4f5;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
 .brainrot-index-summary {
   flex: 1 1 0;
   min-width: 0;

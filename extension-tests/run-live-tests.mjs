@@ -2,7 +2,8 @@
 //
 // Usage: node run-live-tests.mjs [reddit] [x] [--probe-only]
 //
-// 1. Signs up e2e+<random>@brainrotindex.com with a random password, reads the verification link from
+// 1. Makes a single-use invite code over `ssh spark`, signs up e2e+<random>@brainrotindex.com with it
+//    and a random password, reads the verification link from
 //    the backend log over `ssh spark`, verifies, logs in, and creates an extension token.
 // 2. Sends one obvious engagement-bait post and waits up to 60 seconds for it to be flagged, to show
 //    whether real inference is working.
@@ -16,6 +17,8 @@ import { TESTS_DIR } from "./browser.mjs";
 
 const SERVER = "https://brainrot.jacob-waters.com";
 const SERVER_LOG_COMMAND = "cd /home/jacob/git-repos/brainrot-index && docker compose logs backend | grep verify-email | tail -1";
+// New accounts need an invite code; each run makes a single-use one.
+const INVITE_COMMAND = "cd /home/jacob/git-repos/brainrot-index && docker compose exec -T backend python manage.py create_invite --note 'extension live tests' --max-uses 1";
 const PROBE_TIMEOUT_MS = 60000;
 
 const cookies = new Map();
@@ -55,8 +58,9 @@ async function callWebsite(method, path, body) {
 async function createTestAccount() {
   const email = `e2e+${crypto.randomBytes(5).toString("hex")}@brainrotindex.com`;
   const password = crypto.randomBytes(18).toString("base64url");
+  const inviteCode = execFileSync("ssh", ["spark", INVITE_COMMAND], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   await callWebsite("GET", "/api/auth/csrf/");
-  await callWebsite("POST", "/api/auth/signup/", { email, password });
+  await callWebsite("POST", "/api/auth/signup/", { email, password, invite_code: inviteCode });
   await new Promise((resolve) => setTimeout(resolve, 1500));
   const logLine = execFileSync("ssh", ["spark", SERVER_LOG_COMMAND], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   const verificationToken = decodeURIComponent(logLine.match(/token=([^&\s"']+)/)[1]);

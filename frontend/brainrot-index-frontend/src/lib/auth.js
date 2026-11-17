@@ -74,16 +74,29 @@ export async function refreshSession() {
 
 // -- Google -----------------------------------------------------------------
 
+// A Google sign-in that creates an account needs an invite code. The sign-up
+// page sets this to read its invite code field; elsewhere no code is sent.
+let readInviteCodeForGoogle = () => ''
+
+export function setInviteCodeReaderForGoogle(reader) {
+  readInviteCodeForGoogle = reader
+}
+
 export async function handleGoogleCredential(credentialResponse) {
   try {
     if (!credentialResponse?.credential) {
       setState({ authError: 'Missing Google credential' })
       return
     }
+    setState({ authError: '' })
     const { response, data } = await apiFetch('/auth/google/', {
       method: 'POST',
-      body: { id_token: credentialResponse.credential },
+      body: { id_token: credentialResponse.credential, invite_code: readInviteCodeForGoogle() },
     })
+    if (data.code === 'invite_required') {
+      setState({ authError: 'No account uses this Google address yet. To create one, enter your invite code on the sign-up page, then continue with Google.' })
+      return
+    }
     if (!response.ok) {
       setState({ authError: data.error || 'Google sign-in failed' })
       return
@@ -97,14 +110,15 @@ export async function handleGoogleCredential(credentialResponse) {
 
 // -- Email / password actions -----------------------------------------------
 
-export async function signupWithEmail(email, password) {
-  // Signup always returns 202 with a generic body; the session cookie (if
-  // any) is what signals success. Fetch /auth/me/ to discover the real state:
-  // signed-in (existing verified account, correct password) vs pending-verify
-  // (new account or unverified collision).
+export async function signupWithEmail(email, password, inviteCode) {
+  // Signup returns 202 with a generic body, or 400 for a bad password or
+  // invite code; the session cookie (if any) is what signals success. Fetch
+  // /auth/me/ to discover the real state: signed-in (existing verified
+  // account, correct password) vs pending-verify (new account or unverified
+  // collision).
   const { response, data } = await apiFetch('/auth/signup/', {
     method: 'POST',
-    body: { email, password },
+    body: { email, password, invite_code: inviteCode },
   })
   if (response.ok || response.status === 202) {
     await refreshSession()

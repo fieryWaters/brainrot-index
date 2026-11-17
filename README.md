@@ -19,13 +19,16 @@ the shared cache, so a post costs one model call per plugin version no matter
 how many users see it. The `worker` service takes pending rows from Postgres
 and calls the model; the endpoint waits up to 1.5 s so most posts come back
 done on the first call. Each user's threshold and blur/hide choice per plugin
-decide the action.
+decide the action. An account may send `DAILY_NEW_POST_QUOTA` posts a day that
+are not in the cache yet; past that, such posts come back `allow` with
+`"notice": "daily_limit_reached"` and are not stored, while cached posts are
+still answered.
 
 | Endpoint | Auth | Purpose |
 | --- | --- | --- |
-| `GET /api/extension/config/` | extension token | master switch, mode, pending action |
-| `POST /api/classify/` | extension token | up to 25 posts in, allow/blur/hide out |
-| `POST /api/extension/token/` | session | new extension token, returned once |
+| `GET /api/extension/config/` | extension token, verified email | master switch, mode, pending action |
+| `POST /api/classify/` | extension token, verified email | up to 25 posts in, allow/blur/hide out |
+| `POST /api/extension/token/` | session, verified email | new extension token, returned once |
 | `GET, PATCH /api/settings/` | session | `{enabled, mode, allow_reveal}` |
 | `GET /api/plugins/` | session | `{plugins: [{slug, name, description, enabled, threshold, flagged_action}]}` |
 | `PATCH /api/plugins/<slug>/` | session | change `enabled`, `threshold`, `flagged_action` |
@@ -52,7 +55,8 @@ stamped with the site and extension commits they were written against.
 | `docker-compose.yml`                | `db` (Postgres 17), `backend`, `worker`, `web`.                   |
 | `deploy.sh`                         | Rebuilds and restarts the stack.                                  |
 | `.env.example`                      | Every setting the stack reads, with a one-line description.      |
-| `DEPLOY.md`                         | Ports, addresses, email, and the future public tunnel.           |
+| `DEPLOY.md`                         | Ports, addresses, accounts, email, and going public.             |
+| `cloudflared/config.yml`            | Cloudflare Tunnel routes for `brainrotindex.com`.                |
 | `legacy/`                           | The original proof of concept (Safari userscript, Node server, Ollama scoring). |
 | `eval/`                             | Labeled posts and per-model results for scoring the classifier; see `eval/README.md`. |
 

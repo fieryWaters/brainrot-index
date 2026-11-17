@@ -94,6 +94,14 @@ Asked whether to store the images themselves and not only their URLs:
 
 > Also make sure theres an easy feedback mechanism on the site that saves the feedback long with commit hash user is running (to identiyf which ones are fixed already) so that way I can just use the app and collect self user-testing, or even put feedback somewhere in the extension, whatever you think best
 
+### Testing against real sites
+
+Said after a test run downloaded about 120 YouTube transcripts from the home network and YouTube began refusing caption requests from that address:
+
+> Okay, so going forward, you know, when you're doing tests, try not to flood a ridiculous amount of stuff because now my network is basically being blocked on transcripts. Not a huge deal. Hopefully, it unblocks, but just something to be aware of All of YouTube isn't blocked, but yeah, just be careful. You know, I don't want to trigger bot detection
+
+The server (spark) and the owner's Mac share one public address, so requests from either count against the home network.
+
 ## Questions the owner has not answered
 
 These were asked and left open. Nothing here is a decision.

@@ -47,3 +47,14 @@ export async function apiFetch(endpoint, { method = 'GET', body, headers = {}, s
   const data = await response.json().catch(() => ({}))
   return { response, data }
 }
+
+// The reason the server gave for refusing a request: an `error` or `detail`
+// message, or the first message about a field. Falls back when it gave none.
+export function errorMessageFrom(data, fallback) {
+  if (typeof data?.error === 'string') return data.error
+  if (typeof data?.detail === 'string') return data.detail
+  for (const messages of Object.values(data || {})) {
+    if (Array.isArray(messages) && typeof messages[0] === 'string') return messages[0]
+  }
+  return fallback
+}

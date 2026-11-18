@@ -100,6 +100,82 @@ class WorkerTests(TestCase):
         self.assertEqual(classification.status, CLASSIFICATION_FAILED)
         self.assertIsNone(classification.score)
 
+    def test_criteria_answers_are_scored_in_code(self):
+        classification = self.queue(seen_post('p1'), plugin_slug='rude-or-toxic')
+        answer = {
+            'reasoning': 'A reply calling everyone on the other side idiots.',
+            'demeans_people': True,
+            'us_against_them': True,
+            'hostile_tone': False,
+            'plainly_a_joke': False,
+        }
+
+        with patch('classification.inference.requests.post', return_value=model_response(answer)) as model_call:
+            classify_next_pending()
+
+        classification.refresh_from_db()
+        self.assertEqual(classification.status, CLASSIFICATION_DONE)
+        self.assertEqual(classification.score, 80)
+        self.assertEqual(classification.label, 'demeans_people')
+        self.assertEqual(classification.criteria_met, ['demeans_people', 'us_against_them'])
+
+        request = model_call.call_args.kwargs['json']
+        schema = request['response_format']['json_schema']['schema']
+        self.assertEqual(schema['required'], [
+            'reasoning', 'demeans_people', 'us_against_them', 'hostile_tone', 'plainly_a_joke'])
+        system_prompt = request['messages'][0]['content']
+        for criterion in classification.plugin_version.criteria:
+            self.assertIn(f"- {criterion['name']}: {criterion['question']}", system_prompt)
+        # The model judges the criteria; it is never shown what they are worth.
+        self.assertNotIn('points', system_prompt)
+
+    def test_criteria_answer_missing_a_criterion_is_invalid(self):
+        classification = self.queue(seen_post('p1'), plugin_slug='rude-or-toxic')
+        incomplete = model_response(
+            {'reasoning': 'x', 'demeans_people': True, 'us_against_them': False})
+
+        with patch('classification.inference.requests.post', return_value=incomplete):
+            classify_next_pending()
+
+        classification.refresh_from_db()
+        self.assertEqual(classification.status, CLASSIFICATION_FAILED)
+
+    def test_a_virtue_takes_points_off_and_the_score_stays_at_or_above_0(self):
+        classification = self.queue(seen_post('p1'), plugin_slug='rude-or-toxic')
+        answer = {
+            'reasoning': 'A crude joke at a fictional person.',
+            'demeans_people': True,
+            'us_against_them': False,
+            'hostile_tone': False,
+            'plainly_a_joke': True,
+        }
+
+        with patch('classification.inference.requests.post', return_value=model_response(answer)):
+            classify_next_pending()
+
+        classification.refresh_from_db()
+        self.assertEqual(classification.score, 0)
+        self.assertEqual(classification.label, 'demeans_people')
+        self.assertEqual(classification.criteria_met, ['demeans_people', 'plainly_a_joke'])
+
+    def test_no_criterion_met_scores_0_with_label_none(self):
+        classification = self.queue(seen_post('p1'), plugin_slug='rude-or-toxic')
+        answer = {
+            'reasoning': 'A garden photo.',
+            'demeans_people': False,
+            'us_against_them': False,
+            'hostile_tone': False,
+            'plainly_a_joke': False,
+        }
+
+        with patch('classification.inference.requests.post', return_value=model_response(answer)):
+            classify_next_pending()
+
+        classification.refresh_from_db()
+        self.assertEqual(classification.score, 0)
+        self.assertEqual(classification.label, 'none')
+        self.assertEqual(classification.criteria_met, [])
+
     def test_classification_uses_a_small_rendition_without_waiting_for_the_archive(self):
         x_photo_url = 'https://pbs.twimg.com/media/garden?format=png&name=orig'
         classification = self.queue(seen_post('p1', platform='x', image_urls=[x_photo_url]))

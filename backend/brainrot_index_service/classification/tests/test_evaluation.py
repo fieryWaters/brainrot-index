@@ -7,7 +7,7 @@ from unittest.mock import patch
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 
-from classification.models import Classification, Post
+from classification.models import Classification, Plugin, Post, PostJudgment
 from classification.views import store_post
 from feedback.models import Feedback
 
@@ -108,5 +108,73 @@ class ExportFeedbackExamplesTests(TestCase):
         self.assertEqual(len(examples), 1)
         self.assertEqual(examples[0]['source'], 'feedback')
         self.assertEqual(examples[0]['text'], 'Our club meets on Tuesday.')
-        self.assertEqual(set(examples[0]['expected']), {'engagement-bait', 'ragebait', 'brainrot', 'ai-slop'})
-        self.assertFalse(examples[0]['expected']['ragebait']['flag'])
+        self.assertEqual(set(examples[0]['expected']), {'brainrot', 'rude-or-toxic', 'low-effort'})
+        self.assertFalse(examples[0]['expected']['rude-or-toxic']['flag'])
+
+
+def filter_result(plugin_slug, flagged):
+    return {'plugin': plugin_slug, 'version': 1, 'classification_id': None, 'status': 'done',
+            'score': 70 if flagged else 0, 'label': '', 'threshold': 60, 'flagged_action': 'hide', 'flagged': flagged}
+
+
+class ExportJudgmentExamplesTests(TestCase):
+    def export(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / 'judgments.jsonl'
+            call_command('export_judgment_examples', output=str(output_path), stdout=io.StringIO())
+            return {example['text']: example for example in map(json.loads, output_path.read_text().splitlines())}
+
+    def judge(self, user, post_id, verdict, shown_action, filter_results, plugin=None, severity=''):
+        post = store_post(seen_post(post_id, text=post_id))
+        PostJudgment.objects.create(user=user, post=post, verdict=verdict, shown_action=shown_action,
+                                    filter_results=filter_results, plugin=plugin, severity=severity)
+
+    def test_each_verdict_says_what_the_filters_should_have_decided(self):
+        user, _ = create_user_with_token('reader@example.com')
+        both_on = [filter_result('rude-or-toxic', True), filter_result('low-effort', False)]
+        none_flagged = [filter_result('rude-or-toxic', False), filter_result('low-effort', False)]
+        self.judge(user, 'rightly-hidden', 'right', 'hide', both_on)
+        self.judge(user, 'wrongly-hidden', 'wrong', 'hide', both_on, severity='low')
+        self.judge(user, 'rightly-shown', 'right', 'allow', none_flagged)
+        self.judge(user, 'missed', 'wrong', 'allow', none_flagged, plugin=Plugin.objects.get(slug='low-effort'))
+        self.judge(user, 'missed-no-filter-named', 'wrong', 'allow', none_flagged)
+
+        examples = self.export()
+
+        self.assertEqual(set(examples), {'rightly-hidden', 'wrongly-hidden', 'rightly-shown', 'missed'})
+        self.assertEqual(examples['rightly-hidden']['expected']['rude-or-toxic']['flag'], True)
+        self.assertNotIn('low-effort', examples['rightly-hidden']['expected'])
+        self.assertEqual(examples['wrongly-hidden']['expected']['rude-or-toxic'],
+                         {'flag': False, 'difficulty': 'borderline',
+                          'why': "Reader's thumbs down on a post that was hide."})
+        self.assertEqual({slug: answer['flag'] for slug, answer in examples['rightly-shown']['expected'].items()},
+                         {'rude-or-toxic': False, 'low-effort': False})
+        self.assertEqual({slug: answer['flag'] for slug, answer in examples['missed']['expected'].items()},
+                         {'low-effort': True})
+        self.assertEqual(examples['missed']['source'], 'judgment')
+
+
+@override_settings(OPENROUTER_API_KEY='test-key')
+class CriteriaEvaluationTests(TestCase):
+    def test_summary_counts_each_criterion_on_expected_flagged_and_allowed_examples(self):
+        def contempt_for_example_a(url, **request):
+            schema = request['json']['response_format']['json_schema']['schema']
+            is_a = 'Text:\nexample a' in request['json']['messages'][1]['content'][0]['text']
+            answer = {'reasoning': 'A reply.'}
+            for name in schema['properties']:
+                if name != 'reasoning':
+                    answer[name] = is_a and name in ('demeans_people', 'us_against_them')
+            return model_response(answer)
+
+        examples = []
+        for example_id, flag in [('a', True), ('b', False)]:
+            example = labeled_example(example_id, flag, text=f'example {example_id}')
+            example['expected'] = {'rude-or-toxic': {'flag': flag, 'difficulty': 'clear', 'why': 'test'}}
+            examples.append(example)
+        with tempfile.TemporaryDirectory() as directory:
+            with patch('classification.inference.requests.post', side_effect=contempt_for_example_a):
+                summary = evaluate(write_dataset(directory, examples))
+
+        self.assertIn('demeans_people (50): 1 of 1, 0 of 1', summary)
+        self.assertIn('plainly_a_joke (-50): 0 of 1, 0 of 1', summary)
+        self.assertIn('clear cases precision  1.00  recall  1.00', summary)

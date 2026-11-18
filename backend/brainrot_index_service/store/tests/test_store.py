@@ -131,7 +131,7 @@ class InstallTests(TestCase):
         self.assertNotIn(self.slug, self.installed_slugs())
 
     def test_baseline_plugins_stay_installed_by_default(self):
-        self.assertEqual(self.installed_slugs(), ['engagement-bait', 'ragebait', 'brainrot', 'ai-slop'])
+        self.assertEqual(self.installed_slugs(), ['brainrot', 'rude-or-toxic', 'low-effort'])
 
     @patch('classification.views.PENDING_WAIT_SECONDS', 0)
     def test_an_uninstalled_plugin_does_not_run(self):
@@ -153,21 +153,21 @@ class InstallTests(TestCase):
 
     def test_enabled_plugins_are_capped(self):
         self.client.force_login(self.author)
-        extra_slugs = [publish(self.client, name=f'Extra plugin {number}').json()['slug'] for number in range(5)]
+        extra_slugs = [publish(self.client, name=f'Extra plugin {number}').json()['slug'] for number in range(6)]
         self.client.force_login(self.reader)
 
-        # Four baseline plugins are on; four more reach the cap.
-        for slug in extra_slugs[:MAX_ENABLED_PLUGINS - 4]:
+        # Three baseline plugins are on; five more reach the cap.
+        for slug in extra_slugs[:MAX_ENABLED_PLUGINS - 3]:
             self.assertEqual(self.install(slug).status_code, 201)
-        response = self.install(extra_slugs[4])
+        response = self.install(extra_slugs[5])
         self.assertEqual(response.status_code, 400)
         self.assertIn('At most 8 plugins can be on at once', response.json()['error'])
 
         # Turning one off makes room; turning it back on while full is refused.
-        self.client.patch(reverse('installed_plugin', args=['ragebait']), {'enabled': False}, content_type='application/json')
-        self.assertEqual(self.install(extra_slugs[4]).status_code, 201)
+        self.client.patch(reverse('installed_plugin', args=['rude-or-toxic']), {'enabled': False}, content_type='application/json')
+        self.assertEqual(self.install(extra_slugs[5]).status_code, 201)
         response = self.client.patch(
-            reverse('installed_plugin', args=['ragebait']), {'enabled': True}, content_type='application/json')
+            reverse('installed_plugin', args=['rude-or-toxic']), {'enabled': True}, content_type='application/json')
         self.assertEqual(response.status_code, 400)
 
     def test_unlisted_plugin_cannot_be_installed_but_keeps_running_for_existing_installs(self):
@@ -184,8 +184,8 @@ class InstallTests(TestCase):
     def test_child_cannot_install_or_uninstall(self):
         make_child(self.reader, self.author)
         self.assertEqual(self.install().status_code, 403)
-        self.assertEqual(self.client.delete(reverse('installed_plugin', args=['ragebait'])).status_code, 403)
-        self.assertIn('ragebait', self.installed_slugs())
+        self.assertEqual(self.client.delete(reverse('installed_plugin', args=['rude-or-toxic'])).status_code, 403)
+        self.assertIn('rude-or-toxic', self.installed_slugs())
 
 
 class StoreBrowsingTests(TestCase):

@@ -3,9 +3,8 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand
 
-from classification.evaluation import DIFFICULTY_CLEAR, load_examples
-from classification.inference import stored_parent_text
-from classification.models import ACTION_ALLOW, IMAGE_DOWNLOADED, POST_KIND_REPLY, Plugin, Post
+from classification.evaluation import DIFFICULTY_CLEAR, example_from_post, load_examples
+from classification.models import ACTION_ALLOW, Plugin, Post
 from feedback.models import Feedback
 
 
@@ -46,27 +45,7 @@ class Command(BaseCommand):
                           f"skipped {reports_without_post} reports whose post was never stored.")
 
     def example_from_feedback(self, example_id, feedback, post, baseline_slugs, images_dir):
-        example = {
-            'id': example_id,
-            'source': 'feedback',
-            'platform': post.platform,
-            'kind': post.kind,
-            'community': post.community,
-            'text': post.text,
-        }
-        if post.kind == POST_KIND_REPLY:
-            parent_text = stored_parent_text(post)
-            if parent_text is not None:
-                example['parent_text'] = parent_text
-
-        post_image = post.images.filter(status=IMAGE_DOWNLOADED).order_by('id').first()
-        if post_image is not None:
-            image_name = f"{example_id}{Path(post_image.file.name).suffix}"
-            images_dir.mkdir(parents=True, exist_ok=True)
-            with post_image.file.open('rb') as stored_image, open(images_dir / image_name, 'wb') as copied_image:
-                copied_image.write(stored_image.read())
-            example['image'] = image_name
-
+        example = example_from_post(example_id, 'feedback', post, images_dir)
         example['feedback'] = {
             'shown_action': feedback.shown_action,
             'expected_action': feedback.expected_action,

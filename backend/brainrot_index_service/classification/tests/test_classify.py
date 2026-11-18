@@ -44,7 +44,7 @@ class ClassifyEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {'results': [{'platform': 'reddit', 'post_id': 'p1', 'status': 'pending'}]})
-        self.assertEqual(Classification.objects.filter(post__post_id='p1').count(), 4)
+        self.assertEqual(Classification.objects.filter(post__post_id='p1').count(), 3)
 
         with patch('classification.inference.requests.post', side_effect=fake_model_scoring(10)):
             run_worker_until_idle()
@@ -54,16 +54,17 @@ class ClassifyEndpointTests(TestCase):
             'platform': 'reddit', 'post_id': 'p1', 'status': 'done', 'action': 'allow', 'reasons': [],
         }]})
 
-    def test_new_classifications_use_rubric_version_2(self):
+    def test_new_classifications_use_the_latest_rubric_versions(self):
         self.classify([seen_post('p1')])
-        versions = set(Classification.objects.filter(post__post_id='p1').values_list('plugin_version__version', flat=True))
-        self.assertEqual(versions, {2})
+        versions = set(Classification.objects.filter(post__post_id='p1').values_list(
+            'plugin_version__plugin__slug', 'plugin_version__version'))
+        self.assertEqual(versions, {('brainrot', 3), ('rude-or-toxic', 1), ('low-effort', 1)})
 
     def test_second_user_seeing_the_same_post_triggers_no_new_inference(self):
         self.classify([seen_post('p1')])
         with patch('classification.inference.requests.post', side_effect=fake_model_scoring(10)) as model_call:
             run_worker_until_idle()
-        self.assertEqual(model_call.call_count, 4)
+        self.assertEqual(model_call.call_count, 3)
 
         _, other_token = create_user_with_token('other@example.com')
         with patch('classification.inference.requests.post', side_effect=fake_model_scoring(10)) as model_call:
@@ -72,37 +73,37 @@ class ClassifyEndpointTests(TestCase):
 
         self.assertEqual(model_call.call_count, 0)
         self.assertEqual(response.json()['results'][0]['status'], 'done')
-        self.assertEqual(Classification.objects.count(), 4)
+        self.assertEqual(Classification.objects.count(), 3)
         self.assertEqual(Post.objects.get(post_id='p1').text, 'A photo of my garden this morning.')
 
     def test_action_follows_the_users_threshold_and_flagged_action(self):
         self.classify([seen_post('p1')])
-        for slug in ['engagement-bait', 'ragebait', 'brainrot', 'ai-slop']:
+        for slug in ['brainrot', 'rude-or-toxic', 'low-effort']:
             self.set_score('p1', slug, 10)
-        self.set_score('p1', 'ragebait', 70)
+        self.set_score('p1', 'rude-or-toxic', 70)
 
         result = self.classify([seen_post('p1')]).json()['results'][0]
         self.assertEqual(result['action'], 'hide')
-        self.assertEqual(result['reasons'], [{'plugin': 'Ragebait', 'label': 'flagged_label', 'score': 70}])
+        self.assertEqual(result['reasons'], [{'plugin': 'Rude or Toxic', 'label': 'flagged_label', 'score': 70}])
 
-        UserPlugin.objects.filter(user=self.user, plugin__slug='ragebait').update(threshold=80)
+        UserPlugin.objects.filter(user=self.user, plugin__slug='rude-or-toxic').update(threshold=80)
         result = self.classify([seen_post('p1')]).json()['results'][0]
         self.assertEqual(result['action'], 'allow')
         self.assertEqual(result['reasons'], [])
 
     def test_score_equal_to_threshold_is_flagged(self):
         self.classify([seen_post('p1')])
-        for slug in ['engagement-bait', 'ragebait', 'brainrot', 'ai-slop']:
+        for slug in ['brainrot', 'rude-or-toxic', 'low-effort']:
             self.set_score('p1', slug, 60)
         UserPlugin.objects.filter(user=self.user).update(flagged_action='blur')
 
         result = self.classify([seen_post('p1')]).json()['results'][0]
         self.assertEqual(result['action'], 'blur')
-        self.assertEqual(len(result['reasons']), 4)
+        self.assertEqual(len(result['reasons']), 3)
 
     def test_hide_wins_over_blur(self):
         self.classify([seen_post('p1')])
-        for slug in ['engagement-bait', 'ragebait', 'brainrot', 'ai-slop']:
+        for slug in ['brainrot', 'rude-or-toxic', 'low-effort']:
             self.set_score('p1', slug, 90)
         UserPlugin.objects.filter(user=self.user).update(flagged_action='blur')
         UserPlugin.objects.filter(user=self.user, plugin__slug='brainrot').update(flagged_action='hide')
@@ -112,19 +113,18 @@ class ClassifyEndpointTests(TestCase):
 
     def test_reasons_are_ordered_by_score_highest_first(self):
         self.classify([seen_post('p1')])
-        self.set_score('p1', 'engagement-bait', 65)
-        self.set_score('p1', 'ragebait', 90)
-        self.set_score('p1', 'brainrot', 75)
-        self.set_score('p1', 'ai-slop', 10)
+        self.set_score('p1', 'brainrot', 60)
+        self.set_score('p1', 'rude-or-toxic', 100)
+        self.set_score('p1', 'low-effort', 80)
 
         reasons = self.classify([seen_post('p1')]).json()['results'][0]['reasons']
-        self.assertEqual([reason['score'] for reason in reasons], [90, 75, 65])
+        self.assertEqual([reason['score'] for reason in reasons], [100, 80, 60])
 
     def test_failed_classification_counts_as_finished_without_flag(self):
         self.classify([seen_post('p1')])
-        for slug in ['engagement-bait', 'ragebait', 'brainrot']:
+        for slug in ['brainrot', 'rude-or-toxic']:
             self.set_score('p1', slug, 10)
-        Classification.objects.filter(plugin_version__plugin__slug='ai-slop').update(status=CLASSIFICATION_FAILED)
+        Classification.objects.filter(plugin_version__plugin__slug='low-effort').update(status=CLASSIFICATION_FAILED)
 
         result = self.classify([seen_post('p1')]).json()['results'][0]
         self.assertEqual(result['status'], 'done')
@@ -132,9 +132,9 @@ class ClassifyEndpointTests(TestCase):
 
     def test_disabled_plugin_is_not_waited_for(self):
         self.classify([seen_post('p1')])
-        for slug in ['engagement-bait', 'ragebait', 'brainrot']:
+        for slug in ['brainrot', 'rude-or-toxic']:
             self.set_score('p1', slug, 10)
-        UserPlugin.objects.filter(user=self.user, plugin__slug='ai-slop').update(enabled=False)
+        UserPlugin.objects.filter(user=self.user, plugin__slug='low-effort').update(enabled=False)
 
         result = self.classify([seen_post('p1')]).json()['results'][0]
         self.assertEqual(result['status'], 'done')

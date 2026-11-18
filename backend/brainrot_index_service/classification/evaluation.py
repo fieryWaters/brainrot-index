@@ -10,7 +10,8 @@ import statistics
 from pathlib import Path
 
 from .images import image_file_data_url
-from .inference import ask_model, build_messages, describe_post
+from .inference import ask_model, build_messages, describe_post, stored_parent_text
+from .models import IMAGE_DOWNLOADED, POST_KIND_REPLY
 
 # The threshold a new user starts with (UserPlugin.threshold).
 DEFAULT_THRESHOLD = 60
@@ -50,6 +51,32 @@ def load_results(results_path, dataset_path, inference_source, model, plugin_ver
     }
 
 
+def example_from_post(example_id, source, post, images_dir):
+    """A stored post as a dataset example without expected answers, with its
+    first stored image copied into images_dir."""
+    example = {
+        'id': example_id,
+        'source': source,
+        'platform': post.platform,
+        'kind': post.kind,
+        'community': post.community,
+        'text': post.text,
+    }
+    if post.kind == POST_KIND_REPLY:
+        parent_text = stored_parent_text(post)
+        if parent_text is not None:
+            example['parent_text'] = parent_text
+
+    post_image = post.images.filter(status=IMAGE_DOWNLOADED).order_by('id').first()
+    if post_image is not None:
+        image_name = f"{example_id}{Path(post_image.file.name).suffix}"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        with post_image.file.open('rb') as stored_image, open(images_dir / image_name, 'wb') as copied_image:
+            copied_image.write(stored_image.read())
+        example['image'] = image_name
+    return example
+
+
 def save_results(results_path, results):
     # Written to a temporary file first so an interrupted run never leaves half a file.
     results_path.parent.mkdir(parents=True, exist_ok=True)
@@ -77,7 +104,7 @@ def example_messages(example, plugin_version, images_dir):
 def classify_example(example, plugin_version, images_dir, inference_source, model):
     """One result record: the model's answer for one example and one plugin."""
     messages = example_messages(example, plugin_version, images_dir)
-    outcome = ask_model(messages, plugin_version.allowed_labels, inference_source, model)
+    outcome = ask_model(messages, plugin_version, inference_source, model)
     record = {
         'example_id': example['id'],
         'plugin': plugin_version.plugin.slug,
@@ -85,6 +112,7 @@ def classify_example(example, plugin_version, images_dir, inference_source, mode
         'score': None,
         'label': None,
         'reasoning': None,
+        'criteria_met': None,
         'latency_ms': outcome.latency_ms,
         'prompt_tokens': outcome.prompt_tokens,
         'completion_tokens': outcome.completion_tokens,
@@ -96,6 +124,7 @@ def classify_example(example, plugin_version, images_dir, inference_source, mode
         record['score'] = outcome.answer['score']
         record['label'] = outcome.answer['label']
         record['reasoning'] = outcome.answer['reasoning']
+        record['criteria_met'] = outcome.answer['criteria_met']
     return record
 
 
@@ -184,12 +213,40 @@ def plugin_summary_lines(plugin_version, examples, records_by_key):
         lines.append(f"wrong {difficulty} answers: {missed + wrongly_flagged} "
                      f"({missed} missed, {wrongly_flagged} wrongly flagged)")
 
+    lines.extend(criteria_lines(plugin_version, labeled_examples, records_by_key))
+
     lines.append("threshold sweep (all cases): threshold, precision, recall, missed, wrongly flagged")
     for threshold in SWEEP_THRESHOLDS:
         true_positives, false_positives, false_negatives = counts_at_threshold(all_cases, threshold)
         lines.append(f"  {threshold:3d}  {ratio_text(true_positives, true_positives + false_positives)}"
                      f"  {ratio_text(true_positives, true_positives + false_negatives)}"
                      f"  {false_negatives:4d}  {false_positives:4d}")
+    return lines
+
+
+def criteria_lines(plugin_version, labeled_examples, records_by_key):
+    """How often each criterion was met on the examples that should be flagged
+    and on those that should not: a criterion often met on posts that should
+    stay is the one to rewrite."""
+    if not plugin_version.criteria:
+        return []
+    slug = plugin_version.plugin.slug
+    met_when_expected = {True: {}, False: {}}
+    totals = {True: 0, False: 0}
+    for example in labeled_examples:
+        record = records_by_key.get((example['id'], slug))
+        if record is None or record['failed']:
+            continue
+        expected_flag = example['expected'][slug]['flag']
+        totals[expected_flag] += 1
+        for name in record['criteria_met']:
+            met_when_expected[expected_flag][name] = met_when_expected[expected_flag].get(name, 0) + 1
+
+    lines = ["criteria: name (points), met on expected flagged, met on expected allowed"]
+    for criterion in plugin_version.criteria:
+        name = criterion['name']
+        lines.append(f"  {name} ({criterion['points']}): {met_when_expected[True].get(name, 0)} of {totals[True]}, "
+                     f"{met_when_expected[False].get(name, 0)} of {totals[False]}")
     return lines
 
 

@@ -46,7 +46,7 @@ class NoFamilyTests(TestCase):
         user, client = signed_in_client('solo@example.com')
         self.assertEqual(client.get(reverse('family')).json(), {'role': 'superadmin', 'family': None})
         self.assertEqual(patch(client, 'user_settings', {'mode': 'child'}).status_code, 200)
-        self.assertEqual(patch(client, 'installed_plugin', {'threshold': 20}, args=['ragebait']).status_code, 200)
+        self.assertEqual(patch(client, 'installed_plugin', {'threshold': 20}, args=['rude-or-toxic']).status_code, 200)
 
 
 class CreateAndJoinTests(FamilyTestCase):
@@ -145,25 +145,25 @@ class MemberSettingsTests(FamilyTestCase):
         child, _ = self.join('kid@example.com', 'child')
         response = patch(self.parent_client, 'member_settings', {'allow_reveal': True}, args=[child.id])
         self.assertEqual(response.status_code, 200)
-        response = patch(self.parent_client, 'member_plugin', {'threshold': 25}, args=[child.id, 'ragebait'])
+        response = patch(self.parent_client, 'member_plugin', {'threshold': 25}, args=[child.id, 'rude-or-toxic'])
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['threshold'], 25)
 
-        response = self.parent_client.delete(reverse('member_plugin', args=[child.id, 'ragebait']))
+        response = self.parent_client.delete(reverse('member_plugin', args=[child.id, 'rude-or-toxic']))
         self.assertEqual(response.status_code, 204)
-        response = post(self.parent_client, 'member_plugins', {'slug': 'ragebait'}, args=[child.id])
+        response = post(self.parent_client, 'member_plugins', {'slug': 'rude-or-toxic'}, args=[child.id])
         self.assertEqual(response.status_code, 201)
 
     def test_admin_changes_only_their_own_settings(self):
         adult, adult_client = self.join('adult@example.com', 'admin')
         self.assertEqual(patch(adult_client, 'user_settings', {'mode': 'child'}).status_code, 200)
         self.assertEqual(
-            patch(adult_client, 'installed_plugin', {'threshold': 30}, args=['ragebait']).status_code, 200)
+            patch(adult_client, 'installed_plugin', {'threshold': 30}, args=['rude-or-toxic']).status_code, 200)
 
         self.assertEqual(
             patch(adult_client, 'member_settings', {'mode': 'child'}, args=[self.parent.id]).status_code, 404)
         self.assertEqual(
-            patch(adult_client, 'member_plugin', {'threshold': 1}, args=[self.parent.id, 'ragebait']).status_code, 404)
+            patch(adult_client, 'member_plugin', {'threshold': 1}, args=[self.parent.id, 'rude-or-toxic']).status_code, 404)
         self.assertEqual(adult_client.get(reverse('member_settings', args=[self.parent.id])).status_code, 404)
 
     def test_child_sees_but_cannot_change_their_settings(self):
@@ -174,8 +174,8 @@ class MemberSettingsTests(FamilyTestCase):
 
         for change in [{'mode': 'adult'}, {'allow_reveal': True}, {'enabled': False}]:
             self.assertEqual(patch(child_client, 'user_settings', change).status_code, 403)
-        self.assertEqual(patch(child_client, 'installed_plugin', {'threshold': 99}, args=['ragebait']).status_code, 403)
-        self.assertEqual(patch(child_client, 'installed_plugin', {'enabled': False}, args=['ragebait']).status_code, 403)
+        self.assertEqual(patch(child_client, 'installed_plugin', {'threshold': 99}, args=['rude-or-toxic']).status_code, 403)
+        self.assertEqual(patch(child_client, 'installed_plugin', {'enabled': False}, args=['rude-or-toxic']).status_code, 403)
         self.assertEqual(UserSettings.objects.get(user=child).mode, 'child')
 
     def test_superadmin_cannot_reach_someone_outside_the_family(self):

@@ -290,7 +290,7 @@ def try_rubric(request):
         rubric_prompt=framed_rubric(fields['rubric']), allowed_labels=PUBLISHED_PLUGIN_LABELS)
     post_description = describe_post(fields['platform'], '', POST_KIND_POST, fields['text'], None, 0)
     messages = build_messages(draft_version, post_description, [])
-    outcome = ask_model(messages, PUBLISHED_PLUGIN_LABELS, settings.INFERENCE_SOURCE, configured_model())
+    outcome = ask_model(messages, draft_version, settings.INFERENCE_SOURCE, configured_model())
     if outcome.answer is None:
         return Response(
             {'error': 'The model did not give an answer. Please try again.'},

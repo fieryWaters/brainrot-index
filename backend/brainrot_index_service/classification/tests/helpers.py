@@ -58,13 +58,16 @@ def model_response(answer):
 
 
 def fake_model_scoring(score):
-    """A stand-in for requests.post that gives every post this score and the plugin's first label."""
+    """A stand-in for requests.post that gives every post this score and the
+    plugin's first label. A plugin scored by criteria takes no score from the
+    model; it is told that no criterion is met, which scores 0."""
     def answer(url, **request):
         schema = request['json']['response_format']['json_schema']['schema']
+        reasoning = 'The post shares a garden photo. Nothing in it fits the rubric.'
+        if 'label' not in schema['properties']:
+            criterion_names = [name for name in schema['properties'] if name != 'reasoning']
+            criteria_answers = {name: False for name in criterion_names}
+            return model_response({'reasoning': reasoning, **criteria_answers})
         first_label = schema['properties']['label']['enum'][0]
-        return model_response({
-            'reasoning': 'The post shares a garden photo. Nothing in it fits the rubric.',
-            'score': score,
-            'label': first_label,
-        })
+        return model_response({'reasoning': reasoning, 'score': score, 'label': first_label})
     return answer

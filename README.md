@@ -1,8 +1,9 @@
 # BrainRot Index
 
 A browser extension classifies social media posts with an LLM and hides the
-unwanted ones: brainrot, ragebait, and engagement bait. This repository holds
-the website behind it: accounts, subscriptions, and the classification API.
+unwanted ones: rude or toxic posts, ultra low effort posts, and brainrot. This
+repository holds the website behind it: accounts, subscriptions, and the
+classification API.
 
 It contains email/password and Google sign-in, the classification API the
 extension calls, the worker that runs the model, a dashboard for settings, and
@@ -15,8 +16,12 @@ The site is public at https://brainrotindex.com (Cloudflare Tunnel to spark).
 
 The extension sends each post it sees to `POST /api/classify/`. Every post is
 stored once (`Post`, with its images downloaded to the `post_images` volume).
-Each plugin (engagement bait, ragebait, brainrot, AI slop) is a rubric prompt
-with immutable versions; a `Classification` row per (post, plugin version) is
+Each plugin (the defaults are Rude or Toxic, Low Effort, and Brainrot) is a
+rubric prompt with immutable versions. A version with criteria asks the model
+only yes-or-no questions about the post, and the score is the sum of the
+points of the criteria met, added up in code (`classification/scoring.py`);
+an older version or a store plugin asks the model for the score. A
+`Classification` row per (post, plugin version) is
 the shared cache, so a post costs one model call per plugin version no matter
 how many users see it. A YouTube video's transcript is fetched once by the
 worker (`VideoTranscript`) before the video is classified, and the model reads

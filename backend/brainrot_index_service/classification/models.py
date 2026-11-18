@@ -244,6 +244,10 @@ class PluginVersion(models.Model):
     # The rubric as a store author wrote it. Blank for the baseline plugins.
     author_rubric = models.TextField(blank=True, default='')
     allowed_labels = models.JSONField()
+    # [{name, question, points}]. With criteria, the model answers only whether
+    # the post meets each one, and the score is the sum of the points of those
+    # met (classification.scoring). Empty: the model gives the score itself.
+    criteria = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -279,6 +283,8 @@ class Classification(models.Model):
     score = models.PositiveSmallIntegerField(null=True, blank=True)
     label = models.CharField(max_length=64, blank=True, default='')
     reasoning = models.TextField(blank=True, default='')
+    # The names of the criteria the post met, for a plugin version with criteria.
+    criteria_met = models.JSONField(default=list, blank=True)
     # The chat messages sent, with each image replaced by "post_image:<PostImage id>".
     prompt = models.JSONField(null=True, blank=True)
     raw_response = models.TextField(blank=True, default='')

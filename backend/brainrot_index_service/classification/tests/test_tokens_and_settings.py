@@ -30,10 +30,9 @@ class ExtensionTokenTests(TestCase):
             'allow_reveal': True,
             'platforms': ['reddit', 'x', 'youtube'],
             'plugins': [
-                {'slug': 'engagement-bait', 'name': 'Engagement bait'},
-                {'slug': 'ragebait', 'name': 'Ragebait'},
                 {'slug': 'brainrot', 'name': 'Brainrot'},
-                {'slug': 'ai-slop', 'name': 'AI slop'},
+                {'slug': 'rude-or-toxic', 'name': 'Rude or Toxic'},
+                {'slug': 'low-effort', 'name': 'Low Effort'},
             ],
         })
         stored_token.refresh_from_db()
@@ -73,16 +72,16 @@ class UserSettingsTests(TestCase):
 
     def test_first_use_installs_the_baseline_plugins(self):
         plugins = self.client.get(reverse('installed_plugins')).json()['plugins']
-        self.assertEqual([plugin['slug'] for plugin in plugins], ['engagement-bait', 'ragebait', 'brainrot', 'ai-slop'])
+        self.assertEqual([plugin['slug'] for plugin in plugins], ['brainrot', 'rude-or-toxic', 'low-effort'])
         for plugin in plugins:
             self.assertEqual(plugin['enabled'], True)
             self.assertEqual(plugin['flagged_action'], 'hide')
         thresholds = {plugin['slug']: plugin['threshold'] for plugin in plugins}
-        self.assertEqual(thresholds, {'engagement-bait': 60, 'ragebait': 40, 'brainrot': 40, 'ai-slop': 30})
+        self.assertEqual(thresholds, {'brainrot': 60, 'rude-or-toxic': 60, 'low-effort': 60})
 
     def test_plugin_settings_can_be_changed(self):
         response = self.client.patch(
-            reverse('installed_plugin', args=['ragebait']),
+            reverse('installed_plugin', args=['rude-or-toxic']),
             {'threshold': 35, 'flagged_action': 'blur', 'enabled': False},
             content_type='application/json',
         )
@@ -93,7 +92,7 @@ class UserSettingsTests(TestCase):
 
     def test_threshold_outside_0_to_100_is_rejected(self):
         response = self.client.patch(
-            reverse('installed_plugin', args=['ragebait']), {'threshold': 101}, content_type='application/json')
+            reverse('installed_plugin', args=['rude-or-toxic']), {'threshold': 101}, content_type='application/json')
         self.assertEqual(response.status_code, 400)
 
     def test_unknown_plugin_is_404(self):

@@ -5,7 +5,6 @@ The production worker and the evaluation command share everything here up to
 the model's parsed answer; only where the post comes from and where the
 answer is saved differ."""
 
-import json
 import logging
 import time
 from dataclasses import dataclass
@@ -25,6 +24,7 @@ from .models import (
     Post,
     VideoTranscript,
 )
+from .scoring import answer_schema, parse_answer, response_instructions
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +43,6 @@ MAX_RESPONSE_TOKENS = 500
 ATTEMPTS_PER_CLASSIFICATION = 2
 
 PLATFORM_NAMES = {'reddit': 'Reddit', 'x': 'X', 'youtube': 'YouTube'}
-
-RESPONSE_INSTRUCTIONS = """\
-Classify the single post the user sends against the rubric above. Judge only
-what the post itself shows. Answer with a JSON object with exactly these
-fields, in this order:
-- reasoning: two or three sentences explaining your judgment, written before
-  you decide the score.
-- score: an integer from 0 to 100, following the score bands.
-- label: exactly one of: {labels}."""
 
 
 @dataclass
@@ -84,8 +75,7 @@ def inference_endpoint(inference_source):
 
 def system_prompt(plugin_version):
     # The rubric comes first and never changes within a version, so providers can cache it.
-    labels = ', '.join(plugin_version.allowed_labels)
-    return plugin_version.rubric_prompt + '\n\n' + RESPONSE_INSTRUCTIONS.format(labels=labels)
+    return plugin_version.rubric_prompt + '\n\n' + response_instructions(plugin_version)
 
 
 def describe_post(platform, community, kind, text, parent_text, image_count, transcript=None):
@@ -135,20 +125,7 @@ def build_messages(plugin_version, post_description, image_urls):
     ]
 
 
-def answer_schema(allowed_labels):
-    return {
-        'type': 'object',
-        'properties': {
-            'reasoning': {'type': 'string'},
-            'score': {'type': 'integer', 'minimum': 0, 'maximum': 100},
-            'label': {'type': 'string', 'enum': allowed_labels},
-        },
-        'required': ['reasoning', 'score', 'label'],
-        'additionalProperties': False,
-    }
-
-
-def request_chat_completion(messages, allowed_labels, inference_source, model):
+def request_chat_completion(messages, plugin_version, inference_source, model):
     base_url, api_key = inference_endpoint(inference_source)
     request_body = {
         'model': model,
@@ -157,7 +134,7 @@ def request_chat_completion(messages, allowed_labels, inference_source, model):
         'max_tokens': MAX_RESPONSE_TOKENS,
         'response_format': {
             'type': 'json_schema',
-            'json_schema': {'name': 'classification', 'strict': True, 'schema': answer_schema(allowed_labels)},
+            'json_schema': {'name': 'classification', 'strict': True, 'schema': answer_schema(plugin_version)},
         },
     }
     if inference_source == INFERENCE_SOURCE_OPENROUTER:
@@ -176,33 +153,14 @@ def request_chat_completion(messages, allowed_labels, inference_source, model):
     )
 
 
-def parse_answer(answer_text, allowed_labels):
-    """The model's answer as a dict, or None when it does not match the schema."""
-    try:
-        answer = json.loads(answer_text)
-    except json.JSONDecodeError:
-        return None
-
-    if not isinstance(answer, dict) or set(answer) != {'reasoning', 'score', 'label'}:
-        return None
-    if not isinstance(answer['reasoning'], str) or not answer['reasoning'].strip():
-        return None
-    # bool is a subclass of int, so compare the type exactly.
-    if type(answer['score']) is not int or not 0 <= answer['score'] <= 100:
-        return None
-    if answer['label'] not in allowed_labels:
-        return None
-    return answer
-
-
-def ask_model(messages, allowed_labels, inference_source, model):
+def ask_model(messages, plugin_version, inference_source, model):
     """Sends the messages to the model, retrying once after a failed request
     or an invalid answer, and returns a ModelOutcome."""
     outcome = ModelOutcome()
     for attempt in range(1, ATTEMPTS_PER_CLASSIFICATION + 1):
         started_at = time.monotonic()
         try:
-            response = request_chat_completion(messages, allowed_labels, inference_source, model)
+            response = request_chat_completion(messages, plugin_version, inference_source, model)
             outcome.latency_ms = round((time.monotonic() - started_at) * 1000)
             outcome.raw_response = response.text
             response.raise_for_status()
@@ -212,7 +170,7 @@ def ask_model(messages, allowed_labels, inference_source, model):
             outcome.completion_tokens = usage.get('completion_tokens')
             if usage.get('cost') is not None:
                 outcome.cost = (outcome.cost or 0) + usage['cost']
-            outcome.answer = parse_answer(completion['choices'][0]['message']['content'], allowed_labels)
+            outcome.answer = parse_answer(completion['choices'][0]['message']['content'], plugin_version)
         except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as error:
             logger.warning("Model request attempt %s failed: %s", attempt, error)
             continue
@@ -259,7 +217,7 @@ def run_classification(classification):
     classification.model = model
     classification.inference_source = settings.INFERENCE_SOURCE
 
-    outcome = ask_model(messages_to_send, plugin_version.allowed_labels, settings.INFERENCE_SOURCE, model)
+    outcome = ask_model(messages_to_send, plugin_version, settings.INFERENCE_SOURCE, model)
     classification.raw_response = outcome.raw_response
     classification.latency_ms = outcome.latency_ms
     classification.prompt_tokens = outcome.prompt_tokens
@@ -273,5 +231,6 @@ def run_classification(classification):
         classification.score = outcome.answer['score']
         classification.label = outcome.answer['label']
         classification.reasoning = outcome.answer['reasoning']
+        classification.criteria_met = outcome.answer['criteria_met']
     classification.completed_at = timezone.now()
     classification.save()

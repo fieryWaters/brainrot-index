@@ -116,4 +116,28 @@ becomes a clear negative for every baseline plugin. A report that expected
 `expected` is left empty: fill in the plugin by hand, otherwise it is not
 scored. Evaluate it like the main set with `--dataset /app/eval/feedback.jsonl`.
 
+`judgments.jsonl` comes from readers' thumbs up and down on posts, and is
+rewritten from the database each time:
+
+```
+docker compose run --rm --no-deps --user "$(id -u):$(id -g)" -v "$PWD/eval:/app/eval" \
+  --entrypoint python backend manage.py export_judgment_examples --output /app/eval/judgments.jsonl
+```
+
+A thumbs up on a shown post is a negative for every filter that was on; a
+thumbs up on a filtered post is a positive for every filter that flagged it; a
+thumbs down on a filtered post is a negative for every filter that flagged it;
+a thumbs down on a shown post is a positive only for the filter the reader
+named, and is skipped when they named none. A verdict of low severity is
+borderline, any other clear. Scoring a new rubric version against it
+(`--dataset /app/eval/judgments.jsonl --plugin low-effort`) shows whether the
+new version fixes what readers disagreed with without breaking what they
+agreed with.
+
+For a plugin scored by criteria, the summary also counts how often each
+criterion was met on examples expected flagged and on examples expected
+allowed. A criterion often met on posts that should stay is the one to
+rewrite; one never met on posts that should be caught is not pulling its
+weight.
+
 To regenerate the images: `uv run --no-project --with pillow python eval/make_images.py`.

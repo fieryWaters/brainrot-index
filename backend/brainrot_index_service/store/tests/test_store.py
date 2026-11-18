@@ -30,7 +30,7 @@ def publish(client, name='Crypto hype', **overrides):
 
 def make_child(user, family_owner):
     family = Family.objects.create(name='The Smiths', created_by=family_owner)
-    FamilyMember.objects.create(user=family_owner, family=family, role='superadmin')
+    FamilyMember.objects.create(user=family_owner, family=family, role='admin')
     FamilyMember.objects.create(user=user, family=family, role=ROLE_CHILD)
 
 
@@ -211,8 +211,9 @@ class StoreBrowsingTests(TestCase):
         self.assertEqual([plugin['slug'] for plugin in found], [self.slug])
 
     def test_official_plugins_are_listed_but_not_installed(self):
-        official_slugs = ['money-hype', 'body-pressure', 'self-harm-adjacent', 'doom-framing', 'hidden-promo']
+        official_slugs = ['money-hype', 'self-harm-adjacent', 'doom-framing', 'hidden-promo']
         plugins = {plugin['slug']: plugin for plugin in self.client.get(reverse('store_plugins')).json()['plugins']}
+        self.assertNotIn('body-pressure', plugins)
         for slug in official_slugs:
             self.assertEqual(plugins[slug]['author_name'], 'Brainrot Index')
             self.assertFalse(plugins[slug]['installed'])

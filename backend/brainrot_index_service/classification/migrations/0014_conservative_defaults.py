@@ -207,7 +207,7 @@ def apply_conservative_defaults(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('classification', '0012_criteria_scoring'),
+        ('classification', '0013_criteria_scoring'),
     ]
 
     operations = [

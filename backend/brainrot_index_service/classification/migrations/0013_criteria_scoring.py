@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('classification', '0011_postjudgment'),
+        ('classification', '0012_video_filter'),
     ]
 
     operations = [

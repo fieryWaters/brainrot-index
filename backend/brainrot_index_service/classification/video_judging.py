@@ -52,6 +52,8 @@ CRITERIA = [ENGAGEMENT_POWER, INFORMATION_CONTENT, COGNITIVE_DRAW]
 MAX_POINTS = CRITERION_MAX * len(CRITERIA)
 # Two thirds of the points: clearly more pull than substance.
 BRAINROT_MIN_POINTS = 10
+# Brainrot needs engagement power: a calm video scores 0 however little it holds.
+MIN_ENGAGEMENT_POWER = 3
 LABEL_BRAINROT = 'brainrot'
 LABEL_NOT_BRAINROT = 'not_brainrot'
 
@@ -65,7 +67,10 @@ hear in it. Answer with a JSON object with exactly these fields, in this order:
 
 
 def brainrot_points(answer):
-    """Engagement counts for brainrot; information and cognitive draw count against it."""
+    """Engagement counts for brainrot; information and cognitive draw count against it.
+    Below MIN_ENGAGEMENT_POWER the video is not brainrot at all, so it scores 0."""
+    if answer[ENGAGEMENT_POWER] < MIN_ENGAGEMENT_POWER:
+        return 0
     return (
         answer[ENGAGEMENT_POWER]
         + (CRITERION_MAX - answer[INFORMATION_CONTENT])

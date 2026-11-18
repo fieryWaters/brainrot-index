@@ -249,7 +249,7 @@ class VideoFilterTests(TestCase):
         self.assertEqual(request['messages'][1]['content'][0]['video_url']['url'], 'https://www.youtube.com/watch?v=vid00000001')
         self.assertEqual(request['provider']['only'], ['google-ai-studio'])
         classification = self.video_classification('vid00000001')
-        self.assertEqual(classification.score, 13)
+        self.assertEqual(classification.score, 0)
         self.assertEqual(classification.label, 'not_brainrot')
 
     def test_long_and_unmeasured_youtube_videos_are_not_watched(self):
@@ -306,7 +306,7 @@ class GeminiVideoTests(TestCase):
         classification = self.video_classification('vid00000001')
         self.assertEqual(classification.status, CLASSIFICATION_DONE)
         self.assertEqual(classification.inference_source, 'gemini')
-        self.assertEqual(classification.score, 7)
+        self.assertEqual(classification.score, 0)
         self.assertEqual(classification.prompt_tokens, 1700)
         self.assertEqual(classification.completion_tokens, 75)
         self.assertIn('Video shown: the first 15 seconds', json.dumps(classification.prompt))
@@ -336,6 +336,12 @@ class VideoRubricTests(TestCase):
         answer = {'engagement_power': 4, 'information_content': 1, 'cognitive_draw': 2}
         self.assertEqual(brainrot_points(answer), 4 + 4 + 3)
         self.assertEqual(score_from_points(11), 73)
+
+    def test_a_calm_video_scores_0_however_little_it_holds(self):
+        calm_and_empty = {'engagement_power': 2, 'information_content': 0, 'cognitive_draw': 0}
+        self.assertEqual(brainrot_points(calm_and_empty), 0)
+        just_engaging_enough = {'engagement_power': 3, 'information_content': 0, 'cognitive_draw': 0}
+        self.assertEqual(brainrot_points(just_engaging_enough), 13)
 
     def test_an_answer_out_of_range_or_incomplete_is_invalid(self):
         valid = {'observations': 'Calm narration.', 'engagement_power': 1, 'information_content': 5, 'cognitive_draw': 4}

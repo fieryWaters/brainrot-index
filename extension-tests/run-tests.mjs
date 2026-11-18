@@ -1,7 +1,7 @@
 // End-to-end tests of the extension in headed Brave against live Reddit, X and YouTube.
 //
 // Usage:
-//   node run-tests.mjs [connect] [reddit] [x] [youtube] [transcripts]
+//   node run-tests.mjs [connect] [reddit] [x] [youtube] [transcripts] [judgments] [consent]
 //     Runs the named groups (all when none are named) against the mock server, which it starts.
 //   BRAINROT_SERVER=https://brainrot.jacob-waters.com BRAINROT_TOKEN=<token> node run-tests.mjs
 //     Runs against a real server. The connect test is skipped (the real site needs a login), and the
@@ -39,6 +39,9 @@ const csrfToken = process.env.BRAINROT_CSRF_TOKEN;
 process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = "1";
 
 const testResults = [];
+
+const NOT_AGREED_FEEDBACK_REASON = "Nothing is sent until you agree to the notice. Open it from the BrainRot Index toolbar button.";
+const CONSENT_PAGE_PATH = "/consent/consent.html";
 
 function check(condition, description) {
   if (!condition) {
@@ -330,6 +333,13 @@ async function testChildMode(page, serviceWorker, classifyCalls, feedUrl) {
 async function connectExtension(context, serviceWorker, extensionId, groupName) {
   // The worker's install handler writes the default address; settings written before it finishes are lost.
   await waitUntil(async () => (await serviceWorker.evaluate(() => chrome.storage.local.get("serverAddress"))).serverAddress !== undefined, 5000);
+  // The consent group tests the consent screen itself; every other group starts having agreed, and
+  // closes the consent tab the install opened so the page under test is the one in front.
+  await serviceWorker.evaluate(() => agreeToDataSharing());
+  await waitUntil(async () => openConsentPages(context).length > 0, 5000);
+  for (const consentPage of openConsentPages(context)) {
+    await consentPage.close();
+  }
   if (usingMockServer) {
     await runTest(`2. ${groupName}: connect flow stores the token, popup shows connected`, () =>
       testConnectFlow(serviceWorker, extensionId, context));
@@ -1092,11 +1102,12 @@ async function testConnectFlow(serviceWorker, extensionId, context) {
   check(await readPopupStatus(context, extensionId) === "Connected to your account", "popup shows connected");
 }
 
-// The website hands over the token with window.postMessage; answers whether the extension replied.
+// The website hands over the token with window.postMessage; answers whether the extension replied,
+// either that it is connected or that the reader must agree on its consent screen first.
 async function sendTokenFromPage(sitePage) {
   return sitePage.evaluate(() => new Promise((resolve) => {
     function onMessage(event) {
-      if (event.data?.type === "brainrot-index-extension-connected") {
+      if (event.data?.type === "brainrot-index-extension-connected" || event.data?.type === "brainrot-index-extension-consent-needed") {
         window.removeEventListener("message", onMessage);
         resolve(true);
       }
@@ -1122,8 +1133,8 @@ async function testConnectFromTabOpenedFirst() {
     await popupPage.fill("#feedback-text", "Automated test feedback before connecting");
     await popupPage.click("#feedback-form button");
     await waitUntil(async () => (await popupPage.textContent("#feedback-status")) !== "", 3000);
-    check(await popupPage.textContent("#feedback-status") === "Not sent. Not connected. Open BrainRot Index and press Connect extension.",
-      "popup feedback before connecting says why it was not sent");
+    check(await popupPage.textContent("#feedback-status") === "Not sent. " + NOT_AGREED_FEEDBACK_REASON,
+      "popup feedback before agreeing says why it was not sent");
     await popupPage.close();
     check(await sendTokenFromPage(sitePage), "a website tab opened before installing gets an answer from the extension");
     await loadExtensionLater(context);
@@ -1917,6 +1928,123 @@ async function runJudgmentsGroup() {
   });
 }
 
+// The consent group runs on the stand-in sites and the mock server. Nothing may reach the server
+// before the reader presses "Agree and continue", and Disconnect withdraws the agreement.
+
+function recordConsentCalls(context) {
+  const consentCalls = [];
+  context.on("requestfinished", async (request) => {
+    if (!request.url().endsWith("/api/extension/consent/")) {
+      return;
+    }
+    const response = await request.response();
+    consentCalls.push({ method: request.method(), body: request.postDataJSON(), status: response.status() });
+  });
+  return consentCalls;
+}
+
+function openConsentPages(context) {
+  return context.pages().filter((page) => page.url().endsWith(CONSENT_PAGE_PATH));
+}
+
+async function testNothingSentBeforeAgreeing(context, serviceWorker, extensionId, classifyCalls, consentCalls) {
+  check(await waitUntil(async () => openConsentPages(context).length === 1, 5000), "installing opens the consent screen");
+  const consentPage = openConsentPages(context)[0];
+  check((await consentPage.textContent("#disclosure-text")).startsWith("To classify posts, BrainRot Index sends the posts you see"),
+    "the consent screen says what is sent");
+  await consentPage.close();
+
+  await waitUntil(async () => (await serviceWorker.evaluate(() => chrome.storage.local.get("serverAddress"))).serverAddress !== undefined, 5000);
+  await serviceWorker.evaluate((address) => chrome.storage.local.set({ serverAddress: address }), serverAddress);
+  const sitePage = await context.newPage();
+  await sitePage.goto(serverAddress + "/");
+  await sitePage.waitForTimeout(1000);
+  await sitePage.click("#connect-button");
+  check(await waitUntil(async () => (await sitePage.textContent("#connect-status")) === "Extension needs agreement", 5000),
+    "the site hears that the extension needs agreement first");
+  await sitePage.close();
+  check((await serviceWorker.evaluate(() => chrome.storage.local.get("token"))).token === MOCK_TOKEN, "the token is kept in the browser");
+  check(await waitUntil(async () => openConsentPages(context).length === 1, 5000), "connecting opens the consent screen again");
+  await openConsentPages(context)[0].close();
+
+  const feedPage = await context.newPage();
+  await feedPage.goto(STAND_IN_URLS.reddit, { waitUntil: "domcontentloaded" });
+  await feedPage.waitForTimeout(3000);
+  await feedPage.close();
+  check(classifyCalls.length === 0, "no posts are sent before agreeing");
+  check(consentCalls.length === 0, "no agreement is recorded before agreeing");
+  check(await readPopupStatus(context, extensionId) === "Nothing is sent until you agree to share the posts you see with BrainRot Index.",
+    "the popup says nothing is sent until the reader agrees");
+}
+
+async function testNotNowSendsNothing(context, extensionId, serviceWorker, classifyCalls) {
+  const consentPage = await context.newPage();
+  await consentPage.goto(`chrome-extension://${extensionId}${CONSENT_PAGE_PATH}`);
+  await consentPage.click("#not-now-button");
+  check((await consentPage.textContent("#outcome")).startsWith("Nothing was sent."), "Not now says nothing was sent");
+  await consentPage.close();
+  check((await serviceWorker.evaluate(() => chrome.storage.local.get("dataSharingConsent"))).dataSharingConsent === undefined,
+    "Not now stores no agreement");
+  const feedPage = await context.newPage();
+  await feedPage.goto(STAND_IN_URLS.reddit, { waitUntil: "domcontentloaded" });
+  await feedPage.waitForTimeout(3000);
+  await feedPage.close();
+  check(classifyCalls.length === 0, "no posts are sent after Not now");
+}
+
+async function testAgreeStartsFiltering(context, extensionId, serviceWorker, classifyCalls, consentCalls) {
+  const consentPage = await context.newPage();
+  await consentPage.goto(`chrome-extension://${extensionId}${CONSENT_PAGE_PATH}`);
+  check(await consentPage.getAttribute("#privacy-link", "href") === serverAddress + "/privacy", "the consent screen links the privacy policy");
+  await consentPage.click("#agree-button");
+  check(await waitUntil(async () => !(await consentPage.isHidden("#outcome")), 3000), "agreeing shows what happens next");
+  check((await consentPage.textContent("#outcome")).startsWith("Thank you. Filtering starts"), "agreeing while connected says filtering starts");
+  await consentPage.close();
+  const stored = await serviceWorker.evaluate(() => chrome.storage.local.get(["dataSharingConsent", "consentRecordedOnServer"]));
+  check(typeof stored.dataSharingConsent?.agreedAt === "string", "the agreement is remembered");
+  check(stored.consentRecordedOnServer === true, "the extension knows the server recorded the agreement");
+  check(consentCalls.length === 1 && consentCalls[0].method === "POST" && consentCalls[0].status === 201
+    && consentCalls[0].body.disclosure_version === stored.dataSharingConsent.version
+    && consentCalls[0].body.agreed_at === stored.dataSharingConsent.agreedAt,
+  "the server is told the wording version and when the reader agreed");
+
+  const feedPage = await context.newPage();
+  await feedPage.goto(STAND_IN_URLS.reddit, { waitUntil: "domcontentloaded" });
+  check(await waitUntil(async () => classifyCalls.length > 0, 10000), "posts are sent once the reader agreed");
+  await feedPage.close();
+  check(consentCalls.length === 1, "the agreement is recorded once");
+}
+
+async function testDisconnectWithdraws(context, extensionId, serviceWorker, consentCalls) {
+  const popupPage = await context.newPage();
+  await popupPage.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+  await popupPage.waitForTimeout(1500);
+  await popupPage.click("#disconnect-button");
+  check(await waitUntil(async () => consentCalls.some((call) => call.method === "DELETE" && call.status === 204), 5000),
+    "the server is told the agreement was withdrawn");
+  check(await waitUntil(async () => (await popupPage.textContent("#account-status")).startsWith("Nothing is sent until you agree"), 3000),
+    "the popup says nothing is sent any more");
+  await popupPage.close();
+  const stored = await serviceWorker.evaluate(() => chrome.storage.local.get(["token", "dataSharingConsent"]));
+  check(stored.token === undefined && stored.dataSharingConsent === undefined, "the token and the agreement are forgotten");
+}
+
+async function runConsentGroup() {
+  await withBrave(makeFreshProfileDir("consent"), {}, async ({ context, serviceWorker, extensionId }) => {
+    await serveStandInPages(context, samplePages());
+    const classifyCalls = recordClassifyCalls(context);
+    const consentCalls = recordConsentCalls(context);
+    await runTest("12a. consent: the screen opens on install and nothing is sent before agreeing", () =>
+      testNothingSentBeforeAgreeing(context, serviceWorker, extensionId, classifyCalls, consentCalls));
+    await runTest("12b. consent: Not now sends nothing", () =>
+      testNotNowSendsNothing(context, extensionId, serviceWorker, classifyCalls));
+    await runTest("12c. consent: agreeing records it on the server and starts filtering", () =>
+      testAgreeStartsFiltering(context, extensionId, serviceWorker, classifyCalls, consentCalls));
+    await runTest("12d. consent: Disconnect withdraws the agreement", () =>
+      testDisconnectWithdraws(context, extensionId, serviceWorker, consentCalls));
+  });
+}
+
 function pgrepFinds(pattern) {
   try {
     return execFileSync("pgrep", ["-f", pattern], { encoding: "utf8" }).trim() !== "";
@@ -1926,7 +2054,7 @@ function pgrepFinds(pattern) {
 }
 
 const requestedGroups = process.argv.slice(2);
-const groupsToRun = requestedGroups.length > 0 ? requestedGroups : ["connect", "reddit", "x", "youtube", "transcripts", "judgments"];
+const groupsToRun = requestedGroups.length > 0 ? requestedGroups : ["connect", "reddit", "x", "youtube", "transcripts", "judgments", "consent"];
 const mockServer = usingMockServer ? await startMockServer(MOCK_PORT) : null;
 console.log("server: " + serverAddress + (usingMockServer ? " (mock)" : ""));
 try {
@@ -1951,6 +2079,9 @@ try {
   }
   if (groupsToRun.includes("judgments")) {
     await runJudgmentsGroup();
+  }
+  if (groupsToRun.includes("consent")) {
+    await runConsentGroup();
   }
 } finally {
   if (mockServer !== null) {

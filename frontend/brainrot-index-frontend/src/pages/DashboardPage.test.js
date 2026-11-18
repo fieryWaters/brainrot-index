@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { screen, fireEvent, waitFor } from '@testing-library/dom'
 import { renderElement } from '../test-utils.js'
-import { mountDashboardPage, TOKEN_MESSAGE_TYPE, CONNECTED_MESSAGE_TYPE, EXTENSION_ANSWER_TIMEOUT_MS } from './DashboardPage.js'
+import { mountDashboardPage, TOKEN_MESSAGE_TYPE, CONNECTED_MESSAGE_TYPE, CONSENT_NEEDED_MESSAGE_TYPE, EXTENSION_ANSWER_TIMEOUT_MS } from './DashboardPage.js'
 
 const PLUGINS = [
   { slug: 'ragebait', name: 'Ragebait', description: 'Made to make you angry.', enabled: true, threshold: 60, flagged_action: 'hide' },
@@ -114,6 +114,15 @@ describe('DashboardPage', () => {
 
     window.dispatchEvent(new MessageEvent('message', { data: { type: CONNECTED_MESSAGE_TYPE }, origin: window.location.origin }))
     expect(screen.getByText('Connected')).toBeInTheDocument()
+  })
+
+  it('points to the extension consent tab when the extension needs agreement first', async () => {
+    renderElement(mountDashboardPage().el)
+    fireEvent.click(screen.getByText('Connect extension'))
+    await waitFor(() => expect(requests.some((request) => request.path.endsWith('/extension/token/'))).toBe(true))
+
+    window.dispatchEvent(new MessageEvent('message', { data: { type: CONSENT_NEEDED_MESSAGE_TYPE }, origin: window.location.origin }))
+    expect(screen.getByText(/Press Agree and continue there/)).toBeInTheDocument()
   })
 
   it('asks an unverified reader to verify their email instead of connecting', async () => {

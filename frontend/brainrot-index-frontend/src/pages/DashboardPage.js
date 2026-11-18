@@ -15,6 +15,8 @@ import { detectExtension } from '../lib/extension.js'
 // Messages exchanged with the extension's content script on this page.
 export const TOKEN_MESSAGE_TYPE = 'brainrot-index-extension-token'
 export const CONNECTED_MESSAGE_TYPE = 'brainrot-index-extension-connected'
+// The extension holds the token but sends nothing until the person agrees on its consent screen.
+export const CONSENT_NEEDED_MESSAGE_TYPE = 'brainrot-index-extension-consent-needed'
 export const EXTENSION_ANSWER_TIMEOUT_MS = 3000
 
 export function mountDashboardPage() {
@@ -54,6 +56,12 @@ export function mountDashboardPage() {
 
   function handleExtensionMessage(event) {
     if (event.origin !== window.location.origin) return
+    if (event.data?.type === CONSENT_NEEDED_MESSAGE_TYPE) {
+      clearTimeout(extensionAnswerTimer)
+      connectStatus.textContent = 'Almost done: the extension opened a tab that explains what it sends. Press Agree and continue there.'
+      checklist.refresh()
+      return
+    }
     if (event.data?.type !== CONNECTED_MESSAGE_TYPE) return
     clearTimeout(extensionAnswerTimer)
     connectStatus.textContent = 'Connected'

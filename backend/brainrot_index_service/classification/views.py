@@ -14,7 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from api.auth_tokens import generate_raw_token, hash_token
-from api.models import DailyNewPostCount, UserProfile
+from api.models import DailyNewPostCount, ExtensionDataConsent, UserProfile
 from api.permissions import HasVerifiedEmail
 from api.throttling import UserRateThrottle
 from billing.permissions import HasAccess
@@ -49,6 +49,7 @@ from .models import (
 )
 from .serializers import (
     ClassifyRequestSerializer,
+    DataConsentSerializer,
     JudgmentDetailsSerializer,
     JudgmentSerializer,
     UserPluginSerializer,
@@ -483,6 +484,35 @@ def judgment_details(request, judgment_id):
     serializer.is_valid(raise_exception=True)
     serializer.save()
     return Response(serializer.data)
+
+
+@api_view(['POST', 'DELETE'])
+@authentication_classes([ExtensionTokenAuthentication])
+@permission_classes([IsAuthenticated])
+def extension_data_consent(request):
+    """POST records that the person agreed, on the extension's consent screen,
+    to the extension sending the posts it sees; DELETE records that they
+    withdrew it by disconnecting. Kept as a record, not checked by /classify/:
+    the extension itself sends nothing before the person agrees."""
+    if request.method == 'DELETE':
+        ExtensionDataConsent.objects.filter(
+            extension_token=request.auth, withdrawn_at__isnull=True,
+        ).update(withdrawn_at=timezone.now())
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    serializer = DataConsentSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    consent, created = ExtensionDataConsent.objects.get_or_create(
+        extension_token=request.auth,
+        disclosure_version=serializer.validated_data['disclosure_version'],
+        withdrawn_at=None,
+        defaults={'user': request.user, 'agreed_at': serializer.validated_data['agreed_at']},
+    )
+    if created:
+        response_status = status.HTTP_201_CREATED
+    else:
+        response_status = status.HTTP_200_OK
+    return Response({'recorded_at': consent.recorded_at.isoformat()}, status=response_status)
 
 
 # -- Website endpoints (session) --

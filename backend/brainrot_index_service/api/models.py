@@ -121,3 +121,33 @@ class DailyNewPostCount(models.Model):
 
     def __str__(self):
         return f"{self.user_id} on {self.day}: {self.count}"
+
+
+class ExtensionDataConsent(models.Model):
+    """An account's agreement, given on the extension's consent screen, that
+    the extension may send the posts it sees to the server. One row for each
+    connected extension that agreed to a version of the screen's wording;
+    withdrawn_at is set when that extension disconnects."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='extension_data_consents',
+    )
+    extension_token = models.ForeignKey(
+        'classification.ExtensionToken',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    # Which wording was agreed to: the date its text last changed.
+    disclosure_version = models.CharField(max_length=32)
+    # When the person pressed "Agree and continue", by the browser's clock.
+    agreed_at = models.DateTimeField()
+    # When the server heard of it.
+    recorded_at = models.DateTimeField(auto_now_add=True)
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        withdrawn = ' (withdrawn)' if self.withdrawn_at else ''
+        return f"consent {self.disclosure_version} by {self.user_id}{withdrawn}"

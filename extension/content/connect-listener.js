@@ -24,7 +24,13 @@ extensionApi.storage.local.get("serverAddress").then((stored) => {
       return;
     }
     await extensionApi.storage.local.set({ token: event.data.token });
-    window.postMessage({ type: "brainrot-index-extension-connected" }, window.location.origin);
+    // Before the reader agrees to the consent screen, the extension opens it and sends nothing.
+    const reply = await extensionApi.runtime.sendMessage({ type: "token-received" });
+    if (reply.consentNeeded) {
+      window.postMessage({ type: "brainrot-index-extension-consent-needed" }, window.location.origin);
+    } else {
+      window.postMessage({ type: "brainrot-index-extension-connected" }, window.location.origin);
+    }
   });
 
   // A page that asked before this listener was ready hears it now.

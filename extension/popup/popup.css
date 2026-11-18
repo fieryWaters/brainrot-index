@@ -50,6 +50,23 @@ p {
   text-decoration: none;
 }
 
+button.subscribe-button {
+  border: none;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--shield-600);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .commit-line {
   margin-top: 10px;
   color: #888;

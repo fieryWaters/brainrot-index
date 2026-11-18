@@ -25,9 +25,19 @@ To work on the extension from a checkout:
 The server address defaults to `https://brainrot.jacob-waters.com`. It can be changed on the
 extension's options page (right-click the toolbar icon, Options).
 
+## Agree before anything is sent
+
+On install the extension opens its consent screen (`consent/consent.html`), which says what it sends
+and links the Privacy Policy. Until the reader presses "Agree and continue" it sends nothing to the
+server; "Not now" leaves it idle, and the popup offers the screen again. The agreement is kept with
+the wording's version (`DATA_SHARING_DISCLOSURE_VERSION` in `background.js`): change the wording,
+change the version, and every reader is asked again. The server records each agreement and each
+withdrawal. "Disconnect and stop sending posts" in the popup withdraws it and forgets the token.
+
 ## Connect it to your account
 
-Sign in at https://brainrot.jacob-waters.com, open the dashboard and press Connect extension. The
+Sign in at https://brainrot.jacob-waters.com, open the dashboard and press Connect extension. If
+the consent screen was not agreed to yet, it opens now and the page says to agree there. Otherwise the
 page says Connected and the extension's popup says "Connected to your account". A website tab that
 was already open when the extension was installed or reloaded is given the connect listener then,
 so reloading it is not needed. If the dashboard still says the extension did not answer, reload the

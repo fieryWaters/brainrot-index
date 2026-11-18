@@ -211,7 +211,7 @@ async function requestAnswers(posts) {
       pendingByPostId.delete(post.post_id);
       receiveAnswer(post.post_id, ALLOW_ANSWER);
     }
-    if (reply.state === "not-connected" || reply.state === "no-subscription" || reply.state === "email-not-verified") {
+    if (reply.state === "consent-needed" || reply.state === "not-connected" || reply.state === "no-subscription" || reply.state === "email-not-verified") {
       stopWatching();
     }
     return;

@@ -5,6 +5,7 @@ from . import views
 urlpatterns = [
     # Browser extension (bearer token)
     path('extension/config/', views.extension_config, name='extension_config'),
+    path('extension/consent/', views.extension_data_consent, name='extension_data_consent'),
     path('classify/', views.classify, name='classify'),
     path('judgments/', views.create_judgment, name='create_judgment'),
     path('judgments/<int:judgment_id>/', views.judgment_details, name='judgment_details'),

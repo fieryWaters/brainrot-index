@@ -24,6 +24,7 @@ from feedback.models import Feedback
 from store.models import PluginRating, PluginReport
 
 from .auth_views import _delete_sessions_for_user, _get_or_create_profile
+from .models import ExtensionDataConsent
 from .throttling import UserRateThrottle
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,14 @@ def account_data(user):
                 'last_used_at': token.last_used_at and token.last_used_at.isoformat(),
             }
             for token in ExtensionToken.objects.filter(user=user).order_by('created_at')
+        ],
+        'extension_data_consents': [
+            {
+                'disclosure_version': consent.disclosure_version,
+                'agreed_at': consent.agreed_at.isoformat(),
+                'withdrawn_at': consent.withdrawn_at and consent.withdrawn_at.isoformat(),
+            }
+            for consent in ExtensionDataConsent.objects.filter(user=user).order_by('agreed_at')
         ],
         'sent_posts': [
             {

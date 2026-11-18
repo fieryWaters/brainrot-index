@@ -1,6 +1,7 @@
 // Toolbar popup: account state, the on/off switch, and counts for this browser session.
 
 const ACCOUNT_STATUS_TEXT = {
+  "consent-needed": "Nothing is sent until you agree to share the posts you see with BrainRot Index.",
   "connected": "Connected to your account",
   "not-connected": "Not connected. Open BrainRot Index and press Connect extension.",
   "no-subscription": "Your free trial has ended. Subscribe to continue.",
@@ -17,6 +18,25 @@ async function showAccountStatus() {
     document.getElementById("subscribe-link").href = serverAddress + "/dashboard";
     document.getElementById("subscribe-row").hidden = false;
   }
+  if (status.state === "consent-needed") {
+    document.getElementById("consent-row").hidden = false;
+  }
+  const { token } = await extensionApi.storage.local.get("token");
+  if (status.state !== "consent-needed" && token !== undefined) {
+    document.getElementById("disconnect-row").hidden = false;
+  }
+}
+
+function setUpConsentAndDisconnectButtons() {
+  document.getElementById("consent-button").addEventListener("click", () => {
+    extensionApi.tabs.create({ url: extensionApi.runtime.getURL("consent/consent.html") });
+  });
+  document.getElementById("disconnect-button").addEventListener("click", async () => {
+    await extensionApi.runtime.sendMessage({ type: "disconnect" });
+    document.getElementById("disconnect-row").hidden = true;
+    await showAccountStatus();
+    await showSessionCounts();
+  });
 }
 
 // Counts the answers the background worker has cached this session: one per post checked.
@@ -74,6 +94,7 @@ async function showExtensionCommit() {
 
 setUpSwitchAndLink();
 setUpFeedbackForm();
+setUpConsentAndDisconnectButtons();
 showExtensionCommit();
 showAccountStatus();
 showSessionCounts();

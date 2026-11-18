@@ -16,6 +16,8 @@
 // POST /api/feedback/ checks the required fields and answers 201 with a new id.
 // POST /api/judgments/ (a thumbs up or down) checks its fields and answers 201 with a new id;
 // PATCH /api/judgments/<id>/ (its details) answers 200 with what it was sent.
+// POST /api/extension/consent/ (the reader agreed on the consent screen) checks its fields and answers
+// 201; DELETE /api/extension/consent/ (the reader disconnected) answers 204.
 //
 // Run on its own with `node mock-server.mjs` (port 8787), or import startMockServer from tests.
 import http from "node:http";
@@ -50,6 +52,9 @@ const CONNECT_PAGE = `<!doctype html>
     window.addEventListener("message", (event) => {
       if (event.origin === window.location.origin && event.data?.type === "brainrot-index-extension-connected") {
         document.getElementById("connect-status").textContent = "Extension connected";
+      }
+      if (event.origin === window.location.origin && event.data?.type === "brainrot-index-extension-consent-needed") {
+        document.getElementById("connect-status").textContent = "Extension needs agreement";
       }
     });
   </script>
@@ -164,6 +169,20 @@ export function startMockServer(port) {
     }
     if (/^\/api\/judgments\/\d+\/$/.test(path) && request.method === "PATCH") {
       sendJson(response, 200, await readJsonBody(request));
+      return;
+    }
+    if (path === "/api/extension/consent/" && request.method === "POST") {
+      const consent = await readJsonBody(request);
+      if (typeof consent.disclosure_version !== "string" || typeof consent.agreed_at !== "string") {
+        sendJson(response, 400, { error: "disclosure_version and agreed_at are required" });
+        return;
+      }
+      sendJson(response, 201, { recorded_at: new Date().toISOString() });
+      return;
+    }
+    if (path === "/api/extension/consent/" && request.method === "DELETE") {
+      response.writeHead(204);
+      response.end();
       return;
     }
     sendJson(response, 404, { error: "not found" });

@@ -58,6 +58,13 @@ class ClassifyRequestSerializer(serializers.Serializer):
     posts = SeenPostSerializer(many=True, max_length=MAX_POSTS_PER_REQUEST)
 
 
+class DataConsentSerializer(serializers.Serializer):
+    """The person's agreement on the extension's consent screen."""
+
+    disclosure_version = serializers.CharField(max_length=32)
+    agreed_at = serializers.DateTimeField()
+
+
 class UserSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserSettings

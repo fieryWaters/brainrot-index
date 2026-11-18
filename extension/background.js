@@ -1,6 +1,8 @@
 // Background service worker: the only part of the extension that talks to the BrainRot Index server.
 // The browser may stop this worker at any time, so everything it remembers lives in storage:
-//   storage.local:   serverAddress, token, extensionEnabled
+//   storage.local:   serverAddress, token, extensionEnabled,
+//                    dataSharingConsent ({ version, agreedAt }) once the reader agreed on the consent screen,
+//                    consentRecordedOnServer once the server has a record of that agreement for this token
 //   storage.session: one "answer:<platform>:<post_id>" entry per post the server has finished with
 importScripts("extension-api.js");
 
@@ -8,6 +10,9 @@ importScripts("extension-api.js");
 // page changes it); the private address is https://brainrot.jacob-waters.com.
 const DEFAULT_SERVER_ADDRESS = "https://brainrotindex.com";
 const MISSED_POST_MENU_ITEM_ID = "should-have-been-filtered";
+// The date the consent screen's wording last changed. A reader who agreed to an older wording is
+// asked again, and nothing is sent until they agree to this one.
+const DATA_SHARING_DISCLOSURE_VERSION = "2026-11-17";
 
 extensionApi.runtime.onInstalled.addListener(async () => {
   extensionApi.contextMenus.create({
@@ -25,7 +30,22 @@ extensionApi.runtime.onInstalled.addListener(async () => {
     await extensionApi.storage.local.set({ extensionEnabled: true });
   }
   await addConnectListenerToOpenSiteTabs();
+  if (!(await hasAgreedToDataSharing())) {
+    await openConsentPage();
+  }
 });
+
+async function hasAgreedToDataSharing() {
+  const { dataSharingConsent } = await extensionApi.storage.local.get("dataSharingConsent");
+  if (dataSharingConsent === undefined) {
+    return false;
+  }
+  return dataSharingConsent.version === DATA_SHARING_DISCLOSURE_VERSION;
+}
+
+async function openConsentPage() {
+  await extensionApi.tabs.create({ url: extensionApi.runtime.getURL("consent/consent.html") });
+}
 
 // The browser gives content scripts only to pages loaded after the extension was installed or
 // reloaded, so a website tab that was already open could not hand over its token. This adds the
@@ -50,6 +70,18 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message.type === "classify") {
     classifyPosts(message.posts).then(sendResponse);
+    return true;
+  }
+  if (message.type === "agree-to-data-sharing") {
+    agreeToDataSharing().then(sendResponse);
+    return true;
+  }
+  if (message.type === "token-received") {
+    startConnection().then(sendResponse);
+    return true;
+  }
+  if (message.type === "disconnect") {
+    disconnect().then(sendResponse);
     return true;
   }
   if (message.type === "get-extension-commit") {
@@ -109,9 +141,74 @@ async function stateFromFailedResponse(response) {
   return "server-error";
 }
 
-// Answers { state, config }. state is "connected", "not-connected", "no-subscription",
-// "email-not-verified", "server-error" or "server-unreachable"; config is present only when connected.
+// The reader pressed "Agree and continue" on the consent screen. Answers { connected }: whether the
+// extension already holds an account token.
+async function agreeToDataSharing() {
+  await extensionApi.storage.local.set({
+    dataSharingConsent: { version: DATA_SHARING_DISCLOSURE_VERSION, agreedAt: new Date().toISOString() },
+    consentRecordedOnServer: false,
+  });
+  const { token } = await extensionApi.storage.local.get("token");
+  if (token === undefined) {
+    return { connected: false };
+  }
+  await recordConsentOnServer();
+  return { connected: true };
+}
+
+// The website's Connect extension button handed over a new token. Answers { consentNeeded }: true
+// when the reader has not agreed yet, in which case the consent screen is opened and nothing is sent.
+async function startConnection() {
+  await extensionApi.storage.local.set({ consentRecordedOnServer: false });
+  if (!(await hasAgreedToDataSharing())) {
+    await openConsentPage();
+    return { consentNeeded: true };
+  }
+  await recordConsentOnServer();
+  return { consentNeeded: false };
+}
+
+// Gives the server a record that this token's reader agreed, and when. Tried again on every status
+// check until the server has it, so a failed attempt is not lost.
+async function recordConsentOnServer() {
+  const { dataSharingConsent } = await extensionApi.storage.local.get("dataSharingConsent");
+  let response;
+  try {
+    response = await callServer("POST", "/api/extension/consent/", {
+      disclosure_version: dataSharingConsent.version,
+      agreed_at: dataSharingConsent.agreedAt,
+    });
+  } catch (networkError) {
+    return;
+  }
+  if (response.ok) {
+    await extensionApi.storage.local.set({ consentRecordedOnServer: true });
+  }
+}
+
+// Withdraws the reader's agreement: tells the server, then forgets the token, the agreement and the
+// answers kept for this session, so nothing more is sent until the reader agrees and connects again.
+async function disconnect() {
+  const { token } = await extensionApi.storage.local.get("token");
+  if (token !== undefined) {
+    try {
+      await callServer("DELETE", "/api/extension/consent/");
+    } catch (networkError) {
+      // The agreement is withdrawn in the browser all the same.
+    }
+  }
+  await extensionApi.storage.local.remove(["token", "dataSharingConsent", "consentRecordedOnServer"]);
+  await extensionApi.storage.session.clear();
+  return { disconnected: true };
+}
+
+// Answers { state, config }. state is "consent-needed", "connected", "not-connected",
+// "no-subscription", "email-not-verified", "server-error" or "server-unreachable"; config is present
+// only when connected. Before the reader agrees on the consent screen nothing is sent to the server.
 async function getStatus() {
+  if (!(await hasAgreedToDataSharing())) {
+    return { state: "consent-needed" };
+  }
   const { token } = await extensionApi.storage.local.get("token");
   if (token === undefined) {
     return { state: "not-connected" };
@@ -126,6 +223,10 @@ async function getStatus() {
   if (!response.ok) {
     return { state: await stateFromFailedResponse(response) };
   }
+  const { consentRecordedOnServer } = await extensionApi.storage.local.get("consentRecordedOnServer");
+  if (!consentRecordedOnServer) {
+    await recordConsentOnServer();
+  }
   return { state: "connected", config: await response.json() };
 }
 
@@ -135,6 +236,9 @@ async function getStatus() {
 // and is not cached, so it is checked once the limit resets. showDailyLimitNotice is true the first
 // time that happens in a browser session.
 async function classifyPosts(posts) {
+  if (!(await hasAgreedToDataSharing())) {
+    return { state: "consent-needed" };
+  }
   const cachedAnswers = await extensionApi.storage.session.get(
     posts.map((post) => answerKey(post.platform, post.post_id))
   );
@@ -203,6 +307,9 @@ async function extensionCommit() {
 // Sends a report to the server. Answers { sent: true, body } with the server's reply when it was
 // recorded, otherwise { sent: false, reason } where reason is a sentence for the reader.
 async function sendReport(method, path, body) {
+  if (!(await hasAgreedToDataSharing())) {
+    return { sent: false, reason: "Nothing is sent until you agree to the notice. Open it from the BrainRot Index toolbar button." };
+  }
   const { token } = await extensionApi.storage.local.get("token");
   if (token === undefined) {
     return { sent: false, reason: "Not connected. Open BrainRot Index and press Connect extension." };

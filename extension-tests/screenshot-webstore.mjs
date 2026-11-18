@@ -252,6 +252,7 @@ try {
     await waitForInstall(serviceWorker);
     await serviceWorker.evaluate(async ([address, token]) => {
       await chrome.storage.local.set({ serverAddress: address, token: token, extensionEnabled: true });
+      await agreeToDataSharing();
     }, [`http://127.0.0.1:${MOCK_PORT}`, MOCK_TOKEN]);
     pictures = await takePictures(context, serviceWorker, extensionId);
   } finally {

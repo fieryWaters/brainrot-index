@@ -1,7 +1,7 @@
 # Chrome Web Store submission kit
 
 Everything the Chrome Web Store Developer Dashboard asks for, checked against the code on
-2026-11-17 (`extension/manifest.json`, `background.js`, `content/`, `sites/`, `popup/`, `options/`)
+2026-11-17 (`extension/manifest.json`, `background.js`, `consent/`, `content/`, `sites/`, `popup/`, `options/`)
 and against the live Privacy Policy at https://brainrotindex.com/privacy. Copy each block into the
 field of the same name. Brave installs extensions from the Chrome Web Store, so one listing covers
 both browsers.
@@ -111,7 +111,7 @@ made-up posts, which each picture says in a footnote.
     X, Reddit and YouTube, in Chrome, Brave and other Chromium browsers on a computer.
 
     PRIVACY
-    While filtering is on, the extension sends the posts and videos it checks on those sites to the BrainRot Index service: their text, links, author names and image addresses. They are stored with your account to run and improve the filters and to prevent abuse. The extension does not read your messages, what you type, or any other site. We do not sell your data or use it for advertising. Details: https://brainrotindex.com/privacy
+    Before it sends anything, the extension asks for your agreement on one short screen. Once you agree, it sends the posts and videos you see on those sites to the BrainRot Index service: their text, links, images, video and who posted them. They are stored with your account to classify posts, to improve the service and to detect fraud and abuse. Disconnect in the toolbar button withdraws your agreement. The extension does not read your messages, what you type, or any other site. We don't sell your data or use it for advertising. Details: https://brainrotindex.com/privacy
 
 The one line naming the supported sites is kept on purpose: the install prompt names them anyway,
 and a listing that hides where the extension works invites a "misleading description" rejection.
@@ -144,7 +144,12 @@ What each screenshot shows:
    and a hidden reply.
 3. "Videos too": a dark video grid with one hidden and one blurred video.
 4. "You choose what goes": the dashboard's My plugins card with strictness sliders and Blur or Hide.
-5. "Tell it when it is wrong": the thumbs-down details box, and the toolbar popup.
+5. "Tell it when it is wrong": the thumbs-down details box, and the toolbar popup (with its Disconnect
+   link).
+
+The consent screen is not among them: the store takes five screenshots at most, and the five above
+show what the extension does. Reviewers see the consent screen when they install it (Test
+instructions, step 1).
 
 ## Privacy tab
 
@@ -156,13 +161,13 @@ What each screenshot shows:
 
 | Permission | Justification |
 | --- | --- |
-| `storage` | Keeps the account connection key, the on/off switch and the service address, and remembers the service's answers for posts during the browser session so a post is not sent twice. |
+| `storage` | Keeps the account connection key, the on/off switch, the service address and whether the user agreed on the consent screen, and remembers the service's answers for posts during the browser session so a post is not sent twice. |
 | `contextMenus` | Adds "BrainRot Index: report this post" to the right-click menu on the supported sites, so the user can report a post the filters missed or got wrong. |
 | `activeTab` | When the user sends feedback from the toolbar popup, reads the address of the current tab to attach it to the report. |
 | `scripting` | Right after install, adds the connect script to brainrotindex.com tabs that were already open, so the site's Connect extension button works without reloading the page. |
-| Host permission `https://brainrotindex.com/*` | The extension's own service: it sends posts there to be scored, reads the user's filter settings, sends feedback, and receives the account connection key from the site's Connect extension button. |
-| Content scripts on `https://x.com/*`, `https://www.reddit.com/*` | Read the posts and replies shown in the feed and in threads, and blur or hide the ones the service flags. |
-| Content script on `https://www.youtube.com/*` | Reads the video tiles on the home page, in search results, beside a playing video and in Shorts shelves, and blurs or hides the ones the service flags. |
+| Host permission `https://brainrotindex.com/*` | The extension's own service: after the user agrees on the consent screen, it sends posts there to be scored, reads the user's filter settings, sends feedback, records the user's agreement, and receives the account connection key from the site's Connect extension button. |
+| Content scripts on `https://x.com/*`, `https://www.reddit.com/*` | Read the posts and replies shown in the feed and in threads, including whether a post has a video, and blur or hide the ones the service flags. |
+| Content script on `https://www.youtube.com/*` | Reads the video tiles on the home page, in search results, beside a playing video and in Shorts shelves, including a video's length, and blurs or hides the ones the service flags. |
 
 **Remote code**: "No, I am not using remote code." All JavaScript is in the package; the service only
 returns JSON data.
@@ -170,10 +175,13 @@ returns JSON data.
 **Data usage**: tick these.
 
 - **Website content**: yes. For each post and reply on X and Reddit: its text, address, community,
-  author's username and image addresses. For each YouTube video tile: the video id, title, channel
-  name, description snippet (search results only) and thumbnail address. Stored with the account
-  that sent them; the service also downloads and stores the images. Also the thumbs up or down,
-  severity, filter and optional note the user gives a post.
+  author's username, image addresses and, for a post with a video, the video's address (a Reddit
+  post's video playlist; for X, the post's own address). For each YouTube video tile: the video id,
+  title, channel name, description snippet (search results only), thumbnail address and length.
+  Stored with the account that sent them; the service also downloads and stores the images, and,
+  for an account using a video filter, the first seconds of Reddit and X videos from those sites'
+  video hosts (YouTube videos are watched by Google's Gemini model from their link instead). Also
+  the thumbs up or down, severity, filter and optional note the user gives a post.
 - **Personally identifiable information**: yes. The usernames of post authors are sent with each
   post, and posts are stored with the account, which carries the user's email address.
 - **Authentication information**: yes. The extension stores and sends an account connection key.
@@ -188,11 +196,12 @@ returns JSON data.
 **Certifications**: all three can be ticked truthfully.
 
 - I do not sell or transfer user data to third parties, outside of the approved use cases.
-  (Post content goes to the AI model provider, OpenRouter, which runs Google's Gemini model, only to
-  score it; Stripe, Resend and Cloudflare receive only what they need to run the site. Nothing is
-  sold or used for advertising.)
+  (Post content, including video clips and YouTube links, goes to the AI model providers, OpenRouter
+  and Google's Gemini API, only to score it; Stripe, Resend and Cloudflare receive only what they
+  need to run the site. Nothing is sold or used for advertising.)
 - I do not use or transfer user data for purposes that are unrelated to my item's single purpose.
-  (Stored posts are used to run the filters, to improve them, and to detect and investigate abuse.)
+  (Stored posts are used to classify posts, to improve the service, and to detect fraud and abuse,
+  the uses the consent screen and the Privacy Policy name.)
 - I do not use or transfer user data to determine creditworthiness or for lending purposes.
 
 People reading stored posts, under Limited Use: a person on our side reads an individual stored post
@@ -200,17 +209,23 @@ only when the user reports it (thumbs or report form), to investigate abuse or a
 when the law requires it, as the Privacy Policy says. Those are the cases the policy allows. Keep the
 admin used that way.
 
+The Privacy Policy carries the Limited Use statement Google asks for ("adheres to the Chrome Web
+Store User Data Policy, including the Limited Use requirements").
+
 **Privacy policy URL**: https://brainrotindex.com/privacy
 
 ## Test instructions tab
 
-Fill in the reviewer account from step 4, and paste:
+Fill in the reviewer account from step 4 (`grant_comp` gives it permanent free access, so the
+trial cannot run out during review), and paste this into the additional instructions box, which
+takes 500 characters at most (this is 482). Reddit and YouTube work without signing in to
+those sites, so the reviewer needs no account there; X does need one, so it is not mentioned.
 
-    BrainRot Index needs an account; this one is free and already verified.
-    1. Install the extension, then sign in at https://brainrotindex.com/login with the account above.
-    2. Open https://brainrotindex.com/dashboard and press "Connect extension". The toolbar popup then says "Connected to your account".
-    3. Open https://www.reddit.com/r/popular/ or https://www.youtube.com/ (no sign-in needed). Within a few seconds posts the filters flag show a "Blurred" or "Hidden" label with the filter's name; "Show" reveals one.
-    4. On the dashboard, under My plugins, move a filter's slider left to filter more posts, or switch it between Blur and Hide.
+    Account has permanent free access; no payment.
+    1. Install. A BrainRot Index tab opens: press "Agree and continue". Nothing is sent before that.
+    2. Sign in at https://brainrotindex.com/login, open /dashboard, press "Connect extension".
+    3. Open https://www.reddit.com/r/popular/ or https://www.youtube.com/ (no sign-in to those sites needed). Flagged posts show "Blurred" or "Hidden" with the filter's name; "Show" reveals one.
+    4. Toolbar button: "Disconnect" withdraws the agreement.
 
 ## Things a reviewer may question
 
@@ -218,12 +233,15 @@ Ordered from most to least likely to cause trouble.
 
 1. **Reading and sending feed content.** Risk: medium. The whole product is sending what the user
    scrolls past to a server, which is the data Google's User Data policy watches most. It passes if
-   the listing, the Privacy tab and the Privacy Policy agree, which they now do. There is no consent
-   screen inside the extension itself; consent is the sign-up page's "By creating an account you
-   agree to the Terms of Service and the Privacy Policy" line and the user pressing Connect
-   extension. Google asks for in-product disclosure only when collection is not closely tied to the
-   described purpose, which is not the case here, but a reviewer may still ask. If one does, a
-   one-screen notice on the dashboard before Connect extension answers it.
+   the listing, the Privacy tab and the Privacy Policy agree, which they now do, and if the user
+   agrees in the product first. The extension's consent screen (`extension/consent/`) opens on
+   install and again on Connect extension, says in one paragraph what is sent and why, links the
+   Privacy Policy, and has "Agree and continue" and "Not now". Nothing goes to the server before
+   the user agrees; "Not now" leaves the extension doing nothing; Disconnect in the popup withdraws
+   it. The server records each agreement and withdrawal with the wording's version
+   (`ExtensionDataConsent`), and a change of wording (`DATA_SHARING_DISCLOSURE_VERSION` in
+   `background.js`) asks again. Keep the screen, the Privacy tab answers and the Privacy Policy in
+   step when any of them changes.
 2. **The extension needs an account to do anything.** Risk: medium if the Test instructions are
    empty, low with the reviewer account from step 4. Reviewers reject items they cannot try.
 3. **Host access to three big sites.** Risk: low. The install prompt reads roughly "Read and change

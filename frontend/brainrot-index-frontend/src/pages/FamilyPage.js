@@ -163,7 +163,8 @@ export function mountFamilyPage() {
   }
 
   // -- Invites (admin) --
-  function createInviteCard(invites) {
+  // onInviteCreated runs after each invite is made; the first one makes the family.
+  function createInviteCard(invites, onInviteCreated) {
     const roleSelect = createRoleSelect('child', 'Role for the invited person')
 
     let result = el('div')
@@ -180,6 +181,7 @@ export function mountFamilyPage() {
       const next = createInviteResult(data)
       result.replaceWith(next)
       result = next
+      if (onInviteCreated) onInviteCreated()
     })
 
     const pending = invites.map((invite) => {
@@ -239,10 +241,12 @@ export function mountFamilyPage() {
       leaveButton)
   }
 
-  // Someone in no family is their own admin: their first invite makes the family.
+  // Someone in no family is their own admin: their first invite makes the
+  // family, and from then on they cannot join another, so the code box goes.
   function render(data) {
     if (data.family === null) {
-      content.replaceChildren(createInviteCard([]), createJoinCard())
+      const joinCard = createJoinCard()
+      content.replaceChildren(createInviteCard([], () => joinCard.remove()), joinCard)
       return
     }
 

@@ -68,6 +68,10 @@ describe('FamilyPage', () => {
     expect(await screen.findByRole('button', { name: 'Create invite' })).toBeInTheDocument()
     expect(screen.getByLabelText('Invite code')).toBeInTheDocument()
     expect(screen.getByText(ROLE_DESCRIPTIONS.adult)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create invite' }))
+    expect(await screen.findByDisplayValue(`${window.location.origin}/family/join?code=ABCDE23456`)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Invite code')).not.toBeInTheDocument()
   })
 
   it('shows the server reason and keeps the role when the last admin steps down', async () => {

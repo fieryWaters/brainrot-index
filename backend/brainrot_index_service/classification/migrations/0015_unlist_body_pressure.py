@@ -24,7 +24,7 @@ def relist(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('classification', '0011_postjudgment'),
+        ('classification', '0014_conservative_defaults'),
     ]
 
     operations = [

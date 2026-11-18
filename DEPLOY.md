@@ -134,11 +134,13 @@ listing is live, set `WEBSTORE_URL=<listing address>` in `.env` and redeploy;
 the page then shows a single "Add to Brave or Chrome" button. Submitting the
 listing is described in `docs/webstore/README.md`.
 
-## Support mailbox
+## Contact
 
-The site, the error messages and the legal pages give
-`support@brainrotindex.com` as the contact address. It needs a real mailbox
-(or forwarding, for example Cloudflare Email Routing to a personal inbox).
+There is no support mailbox. People reach the owner with the Feedback button on
+every page (the footer's Contact link opens it); someone not signed in may add
+an email address for a reply. Each report is stored and emailed, with a link to
+it in the admin, to `ADMIN_EMAIL` through the normal transactional mail setup.
+A failed email is logged and never fails the report.
 
 ## Payments (Stripe)
 

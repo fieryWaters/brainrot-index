@@ -7,7 +7,6 @@ import { createFeedbackButton } from './FeedbackButton.js'
 import { createIcon } from './Icons.js'
 import { createLogoMark } from './LogoMark.js'
 import { onNavigate, navigate } from '../lib/router.js'
-import { SUPPORT_EMAIL } from '../lib/site.js'
 
 // The git commit this build came from, passed in by deploy.sh.
 const GIT_COMMIT = import.meta.env.VITE_GIT_COMMIT || 'unknown'
@@ -149,12 +148,16 @@ export function createLayout() {
     ['Install the extension', '/install'],
     ['Privacy Policy', '/privacy'],
     ['Terms of Service', '/terms'],
-    ['Contact', `mailto:${SUPPORT_EMAIL}`],
   ].map(([text, href]) => {
     const anchor = el('a', 'hover:text-white/80 transition-colors', text)
     anchor.href = href
     return anchor
   })
+  // Contact is the Feedback form; there is no support mailbox.
+  const contactButton = el('button', 'hover:text-white/80 transition-colors', 'Contact')
+  contactButton.type = 'button'
+  contactButton.addEventListener('click', () => feedbackButton.open())
+  footerLinks.push(contactButton)
 
   const footer = el('footer', 'border-t border-white/10 py-8 px-4 text-center text-sm text-white/40',
     el('nav', 'flex flex-wrap justify-center gap-x-6 gap-y-2', ...footerLinks),

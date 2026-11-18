@@ -5,7 +5,6 @@ import json
 import logging
 
 import stripe
-from django.conf import settings
 from django.contrib.auth import logout as django_logout, update_session_auth_hash
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
@@ -238,8 +237,8 @@ def delete_account(request):
         except stripe.StripeError:
             logger.warning('delete_account: could not cancel Stripe subscription of user %s', user.id)
             return Response(
-                {'error': f'Could not cancel your subscription, so nothing was deleted. '
-                          f'Please try again, or write to {settings.SUPPORT_EMAIL}.'},
+                {'error': 'Could not cancel your subscription, so nothing was deleted. '
+                          'Please try again, or tell us with the Feedback button.'},
                 status=502,
             )
 

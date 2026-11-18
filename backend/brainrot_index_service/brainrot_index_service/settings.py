@@ -90,6 +90,7 @@ CORS_ALLOW_CREDENTIALS = True
 # true: new accounts need an invite code (see InviteCode); existing accounts never do.
 SIGNUP_REQUIRES_INVITE = config('SIGNUP_REQUIRES_INVITE', default=False, cast=bool)
 # The one account allowed into /admin/, and only after signing in with Google.
+# It is also where each feedback report is emailed.
 ADMIN_EMAIL = config('ADMIN_EMAIL', default='').strip().lower()
 # Posts one account may send for classification per day (UTC) that no
 # classification exists for yet. Posts already classified are always answered.
@@ -170,8 +171,6 @@ ANYMAIL = {
     'RESEND_API_KEY': config('RESEND_API_KEY', default=''),
 }
 DEFAULT_FROM_EMAIL = 'BrainRot Index <noreply@brainrotindex.com>'
-# Where people write to us; named in error messages and on the legal pages.
-SUPPORT_EMAIL = 'support@brainrotindex.com'
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',

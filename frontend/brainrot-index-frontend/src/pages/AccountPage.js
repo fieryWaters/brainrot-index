@@ -6,7 +6,6 @@ import { getState, subscribe, logout, resendVerification, requestPasswordReset }
 import { el } from '../lib/dom.js'
 import { navigate } from '../lib/router.js'
 import { createPasswordField } from '../components/PasswordField.js'
-import { SUPPORT_EMAIL } from '../lib/site.js'
 
 const CARD_CLASS = 'rounded-2xl border border-white/10 bg-black/30 p-6 mb-6'
 const ACCENT_BUTTON_CLASS = 'px-4 py-2 rounded-lg text-sm font-semibold bg-shield-400/25 hover:bg-shield-400/40 text-glow-300 transition-colors disabled:opacity-60'
@@ -180,7 +179,7 @@ function createDeleteCard(email, onDeleted) {
     })
     if (!response.ok) {
       deleteButton.disabled = false
-      status.textContent = data.error || `Could not delete the account. Please try again, or write to ${SUPPORT_EMAIL}.`
+      status.textContent = data.error || 'Could not delete the account. Please try again, or tell us with the Feedback button.'
       return
     }
     onDeleted()

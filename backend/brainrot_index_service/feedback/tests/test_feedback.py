@@ -1,10 +1,13 @@
 from io import StringIO
+from unittest.mock import patch
 
+from django.core import mail
 from django.core.management import CommandError, call_command
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from classification.tests.helpers import bearer, create_user_with_token
+from api.tests.test_invites import run_thread_now
 from feedback.models import Feedback
 
 
@@ -108,6 +111,52 @@ class FeedbackEndpointTests(TestCase):
     def test_health_reports_the_running_commit(self):
         response = self.client.get(reverse('health_check'), HTTP_X_FORWARDED_PROTO='https')
         self.assertEqual(response.json(), {'status': 'ok', 'commit': 'abc1234'})
+
+
+@override_settings(GIT_COMMIT='abc1234', ADMIN_EMAIL='owner@example.com', FRONTEND_BASE_URL='https://brainrotindex.com')
+class FeedbackAlertTests(TestCase):
+    def send(self, body, **extra):
+        with patch('api.emails.threading.Thread', side_effect=run_thread_now):
+            return self.client.post(reverse('create_feedback'), body, content_type='application/json', **extra)
+
+    def test_each_report_emails_the_admin_once_with_the_text_sender_and_admin_link(self):
+        user, token = create_user_with_token('reader@example.com')
+        response = self.send(
+            {'source': 'extension', 'platform': 'x', 'post_id': '185', 'expected_action': 'hide', 'text': 'Missed this one'},
+            **bearer(token))
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(len(mail.outbox), 1)
+        alert = mail.outbox[0]
+        self.assertEqual(alert.to, ['owner@example.com'])
+        self.assertIn('From: reader@example.com', alert.body)
+        self.assertIn('Source: Extension', alert.body)
+        self.assertIn('Missed this one', alert.body)
+        feedback_id = response.json()['id']
+        self.assertIn(f'https://brainrotindex.com/admin/feedback/feedback/{feedback_id}/change/', alert.body)
+
+    def test_someone_not_signed_in_can_leave_a_reply_address(self):
+        response = self.send({'source': 'site', 'text': 'How do I cancel?', 'reply_email': 'visitor@example.com'})
+
+        self.assertEqual(response.status_code, 201)
+        feedback = Feedback.objects.get(id=response.json()['id'])
+        self.assertIsNone(feedback.user)
+        self.assertEqual(feedback.reply_email, 'visitor@example.com')
+        self.assertIn('From: visitor@example.com (not signed in)', mail.outbox[0].body)
+
+    def test_an_invalid_reply_address_is_refused(self):
+        response = self.send({'source': 'site', 'text': 'Hi', 'reply_email': 'not an address'})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_a_failed_alert_is_logged_and_the_report_is_still_stored(self):
+        with patch('api.emails.send_mail', side_effect=RuntimeError('domain not verified')), \
+                self.assertLogs('api.emails', level='ERROR') as logs:
+            response = self.send({'source': 'site', 'rating': 'up'})
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Feedback.objects.count(), 1)
+        self.assertIn('feedback alert', logs.output[0])
 
 
 class ResolvingFeedbackTests(TestCase):

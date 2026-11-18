@@ -7,7 +7,7 @@ class FeedbackSerializer(serializers.ModelSerializer):
     class Meta:
         model = Feedback
         fields = [
-            'source', 'rating', 'text', 'page_url', 'extension_commit',
+            'source', 'rating', 'text', 'page_url', 'reply_email', 'extension_commit',
             'platform', 'post_id', 'shown_action', 'expected_action',
         ]
 

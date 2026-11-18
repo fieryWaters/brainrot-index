@@ -1,9 +1,12 @@
 // A small fixed "Feedback" button on every page, for everyone, signed in or not.
 // It opens a thumbs up and a thumbs down; picking one shows an optional text
 // box, and Send posts the rating and note, with the current page address, to
-// /api/feedback/. The server stamps each report with the site's commit.
+// /api/feedback/. Someone not signed in may add an email address for a reply.
+// The server stamps each report with the site's commit and emails it to the owner.
+// This is the site's only contact channel; the footer's Contact link opens it.
 
 import { apiFetch } from '../lib/api.js'
+import { getState } from '../lib/auth.js'
 import { el } from '../lib/dom.js'
 import { createIcon } from './Icons.js'
 
@@ -23,6 +26,9 @@ const GIT_COMMIT = import.meta.env.VITE_GIT_COMMIT || 'unknown'
 function failureMessage(response) {
   if (response.status === 0) {
     return 'Not sent: cannot reach the server. Check your connection and try again.'
+  }
+  if (response.status === 400) {
+    return 'Not sent: check the email address and try again.'
   }
   if (response.status === 403) {
     return 'Not sent: your session has expired. Reload the page and try again.'
@@ -46,6 +52,12 @@ export function createFeedbackButton() {
     'w-full h-24 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-white/30 focus:border-glow-400 focus:outline-none')
   textBox.setAttribute('aria-label', 'Feedback note')
 
+  const replyEmailBox = el('input',
+    'w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-white/30 focus:border-glow-400 focus:outline-none')
+  replyEmailBox.type = 'email'
+  replyEmailBox.placeholder = 'Your email, if you want a reply (optional)'
+  replyEmailBox.setAttribute('aria-label', 'Reply email')
+
   const status = el('p', 'text-xs text-white/60')
   status.setAttribute('role', 'status')
   const sendButton = el('button',
@@ -55,6 +67,7 @@ export function createFeedbackButton() {
 
   const details = el('div', 'hidden flex-col gap-2',
     textBox,
+    replyEmailBox,
     el('p', 'text-xs text-white/40', `Sent with this page's address and site version ${GIT_COMMIT}.`),
     el('div', 'flex justify-end', sendButton))
 
@@ -79,6 +92,8 @@ export function createFeedbackButton() {
       button.setAttribute('aria-pressed', String(chosen))
     }
     textBox.placeholder = TEXT_PLACEHOLDERS[value]
+    // A signed-in sender is answered at their account's address.
+    replyEmailBox.classList.toggle('hidden', getState().isAuthenticated)
     details.classList.remove('hidden')
     details.classList.add('flex')
     status.textContent = ''
@@ -101,25 +116,28 @@ export function createFeedbackButton() {
     details,
     status)
 
-  toggleButton.addEventListener('click', () => {
-    const opening = panel.classList.contains('hidden')
-    panel.classList.toggle('hidden')
-    panel.classList.toggle('flex')
-    toggleButton.setAttribute('aria-expanded', String(opening))
+  function setPanelOpen(open) {
+    panel.classList.toggle('hidden', !open)
+    panel.classList.toggle('flex', open)
+    toggleButton.setAttribute('aria-expanded', String(open))
     status.textContent = ''
-    if (opening) ratingButtons.up.focus()
-  })
+    if (open) ratingButtons.up.focus()
+  }
+
+  toggleButton.addEventListener('click', () => setPanelOpen(panel.classList.contains('hidden')))
 
   sendButton.addEventListener('click', async () => {
     sendButton.disabled = true
     status.textContent = 'Sending...'
-    const { response } = await apiFetch('/feedback/', {
-      method: 'POST',
-      body: { source: 'site', rating, text: textBox.value.trim(), page_url: window.location.href },
-    })
+    const body = { source: 'site', rating, text: textBox.value.trim(), page_url: window.location.href }
+    if (!getState().isAuthenticated) {
+      body.reply_email = replyEmailBox.value.trim()
+    }
+    const { response } = await apiFetch('/feedback/', { method: 'POST', body })
     sendButton.disabled = false
     if (response.ok) {
       textBox.value = ''
+      replyEmailBox.value = ''
       clearRating()
       status.textContent = 'Thanks, sent.'
     } else {
@@ -129,5 +147,5 @@ export function createFeedbackButton() {
 
   const widget = el('div', 'fixed bottom-4 right-4 z-50',
     el('div', 'flex flex-col items-end', panel, toggleButton))
-  return { el: widget }
+  return { el: widget, open: () => setPanelOpen(true) }
 }

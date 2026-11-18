@@ -39,8 +39,8 @@ made-up posts, which each picture says in a footnote.
    account that should own the listing. That account needs 2-Step Verification turned on. Accept the
    developer agreement and pay the one-time registration fee (US $5 when last checked; the page
    shows the current amount).
-2. **Account tab.** Set the publisher name (`BrainRot Index`) and a contact email that is read, such
-   as support@brainrotindex.com, and verify it from the email Google sends. Declare **trader**
+2. **Account tab.** Set the publisher name (`BrainRot Index`) and a contact email that is read, and
+   verify it from the email Google sends. Declare **trader**
    status: BrainRot Index is sold for $5 a month, so it is a trader under EU law, and Google then
    asks for an address and phone number that it shows to people in the EU.
 3. **Optional: verify the domain.** Verify brainrotindex.com in Google Search Console with the same
@@ -116,7 +116,7 @@ made-up posts, which each picture says in a footnote.
 
 **Official URL**: https://brainrotindex.com (only after step 3; otherwise leave it unset).
 **Homepage URL**: https://brainrotindex.com
-**Support URL**: https://brainrotindex.com/install (or mailto:support@brainrotindex.com)
+**Support URL**: https://brainrotindex.com/install
 
 **Mature content**: No.
 

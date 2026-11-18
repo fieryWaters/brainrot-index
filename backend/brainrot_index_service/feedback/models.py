@@ -36,6 +36,8 @@ class Feedback(models.Model):
     rating = models.CharField(max_length=8, choices=RATING_CHOICES, blank=True, default='')
     text = models.TextField(blank=True, default='')
     page_url = models.TextField(blank=True, default='')
+    # Where to answer someone not signed in, if they gave an address.
+    reply_email = models.EmailField(blank=True, default='')
     site_commit = models.CharField(max_length=64)
     extension_commit = models.CharField(max_length=64, blank=True, default='')
 

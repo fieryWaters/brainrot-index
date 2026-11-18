@@ -1,7 +1,5 @@
 // Facts about the site that several pages state.
 
-export const SUPPORT_EMAIL = 'support@brainrotindex.com'
-
 // The extension's Chrome Web Store listing, set at build time (WEBSTORE_URL in
 // .env). Empty until the listing is live; the install page then explains Load unpacked.
 export const WEBSTORE_URL = import.meta.env.VITE_WEBSTORE_URL || ''

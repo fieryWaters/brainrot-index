@@ -28,7 +28,7 @@ sites make can stop the extension from working until we update it.</p>
   <li>Give a real email address you can read, and keep your password to yourself. You are responsible for what happens under your account.</li>
   <li>One account is for one person. A parent or guardian may use their account, in child mode, on a browser their child uses;
   they are responsible for that use.</li>
-  <li>Tell us at <a href="mailto:support@brainrotindex.com">support@brainrotindex.com</a> if you think someone else is using your account.</li>
+  <li>Tell us with the Feedback button if you think someone else is using your account.</li>
 </ul>
 
 <h2>3. Free trial, subscription and cancellation</h2>
@@ -82,7 +82,7 @@ Nothing in these terms limits liability that the law does not allow to be limite
 changes take effect. If you keep using the service after that, the new terms apply; if you do not agree, you can cancel and delete your account.</p>
 
 <h2>11. Contact</h2>
-<p>Questions about these terms: <a href="mailto:support@brainrotindex.com">support@brainrotindex.com</a>.</p>
+<p>For questions about these terms, use the Feedback button on any page.</p>
 `
 
 export function mountTermsPage() {

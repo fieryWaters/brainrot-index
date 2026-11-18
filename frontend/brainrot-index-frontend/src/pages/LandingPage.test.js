@@ -31,7 +31,7 @@ describe('Legal pages', () => {
     expect(screen.getByRole('heading', { name: 'Privacy Policy' })).toBeInTheDocument()
     expect(screen.getAllByText(/the extension\s+sends us the posts you see on supported sites/).length).toBeGreaterThan(0)
     expect(screen.getByRole('heading', { name: 'Who we share it with' })).toBeInTheDocument()
-    expect(screen.getAllByText('support@brainrotindex.com').length).toBeGreaterThan(0)
+    expect(screen.getByText('For questions and requests, use the Feedback button on any page.')).toBeInTheDocument()
   })
 
   it('state the price and how to cancel', () => {

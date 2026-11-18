@@ -84,3 +84,47 @@ def send_password_reset(user, raw_token):
         html_body=html_body,
         log_tag="password reset email",
     )
+
+
+def send_feedback_alert(feedback):
+    """Tells the admin a feedback report arrived; the site has no support mailbox."""
+    if not settings.ADMIN_EMAIL:
+        logger.warning("ADMIN_EMAIL is not set - skipping alert for feedback %s", feedback.id)
+        return
+
+    if feedback.user is not None:
+        sender = feedback.user.email
+    elif feedback.reply_email:
+        sender = f"{feedback.reply_email} (not signed in)"
+    else:
+        sender = "someone not signed in, no reply address"
+
+    details = [
+        f"From: {sender}",
+        f"Source: {feedback.get_source_display()}",
+    ]
+    if feedback.rating:
+        details.append(f"Rating: {feedback.get_rating_display()}")
+    if feedback.platform:
+        details.append(f"Platform: {feedback.get_platform_display()}")
+    if feedback.post_id:
+        details.append(f"Post: {feedback.post_id}")
+    if feedback.shown_action or feedback.expected_action:
+        details.append(f"Shown: {feedback.shown_action or '-'}, expected: {feedback.expected_action or '-'}")
+    if feedback.page_url:
+        details.append(f"Page: {feedback.page_url}")
+
+    admin_url = _build_frontend_url(f'/admin/feedback/feedback/{feedback.id}/change/')
+    text_body = (
+        "New feedback\n\n"
+        + "\n".join(details)
+        + f"\n\n{feedback.text or '(no text)'}\n\n"
+        + f"Open it in the admin: {admin_url}\n"
+    )
+    _send_async(
+        subject=f"Feedback {feedback.id} - BrainRot Index",
+        recipient=settings.ADMIN_EMAIL,
+        text_body=text_body,
+        html_body=None,
+        log_tag="feedback alert",
+    )

@@ -4,6 +4,7 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.decorators import api_view, authentication_classes, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from api.emails import send_feedback_alert
 from api.throttling import AnonRateThrottle
 from classification.authentication import ExtensionTokenAuthentication
 
@@ -17,7 +18,8 @@ class AnonymousFeedbackThrottle(AnonRateThrottle):
 
 # The extension sends a bearer token (no CSRF); the website sends its session
 # cookie, and SessionAuthentication then enforces CSRF. Someone not signed in
-# may send feedback from the website; it is stored without a user.
+# may send feedback from the website; it is stored without a user, with the
+# reply address they typed, if any. Each report is emailed to the admin.
 @api_view(['POST'])
 @authentication_classes([ExtensionTokenAuthentication, SessionAuthentication])
 @permission_classes([AllowAny])
@@ -30,4 +32,5 @@ def create_feedback(request):
     else:
         user = None
     feedback = serializer.save(user=user, site_commit=settings.GIT_COMMIT)
+    send_feedback_alert(feedback)
     return Response({'id': feedback.id}, status=status.HTTP_201_CREATED)

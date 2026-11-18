@@ -251,5 +251,5 @@ class DeleteAccountTests(TestCase):
                                         content_type='application/json')
 
         self.assertEqual(response.status_code, 502)
-        self.assertIn('support@brainrotindex.com', response.json()['error'])
+        self.assertIn('Feedback button', response.json()['error'])
         self.assertTrue(User.objects.filter(email='reader@example.com').exists())

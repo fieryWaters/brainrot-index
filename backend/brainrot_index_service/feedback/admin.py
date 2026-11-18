@@ -6,10 +6,10 @@ from .models import Feedback
 @admin.register(Feedback)
 class FeedbackAdmin(admin.ModelAdmin):
     list_display = [
-        'id', 'created_at', 'resolved', 'user', 'source', 'short_text',
+        'id', 'created_at', 'resolved', 'user', 'source', 'rating', 'short_text',
         'platform', 'post_id', 'shown_action', 'expected_action', 'site_commit', 'extension_commit',
     ]
-    list_filter = ['resolved', 'source', 'site_commit', 'expected_action']
+    list_filter = ['resolved', 'source', 'rating', 'site_commit', 'expected_action']
     list_editable = ['resolved']
     search_fields = ['text', 'post_id', 'page_url', 'user__email', 'resolved_note']
     date_hierarchy = 'created_at'

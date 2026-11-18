@@ -74,7 +74,13 @@ class FeedbackEndpointTests(TestCase):
         )
         self.assertEqual(response.status_code, 201)
 
-    def test_text_or_expected_action_is_required(self):
+    def test_a_rating_alone_is_enough(self):
+        response = self.client.post(
+            reverse('create_feedback'), {'source': 'site', 'rating': 'down'}, content_type='application/json')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Feedback.objects.get(id=response.json()['id']).rating, 'down')
+
+    def test_rating_text_or_expected_action_is_required(self):
         response = self.client.post(
             reverse('create_feedback'), {'source': 'extension'}, content_type='application/json', **bearer(self.token))
         self.assertEqual(response.status_code, 400)

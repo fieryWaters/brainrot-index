@@ -10,6 +10,13 @@ SOURCE_CHOICES = [
     (SOURCE_EXTENSION, 'Extension'),
 ]
 
+RATING_UP = 'up'
+RATING_DOWN = 'down'
+RATING_CHOICES = [
+    (RATING_UP, 'Thumbs up'),
+    (RATING_DOWN, 'Thumbs down'),
+]
+
 ACTION_CHOICES = [
     (ACTION_ALLOW, 'Allow'),
     (ACTION_BLUR, 'Blur'),
@@ -25,6 +32,8 @@ class Feedback(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='feedback', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     source = models.CharField(max_length=16, choices=SOURCE_CHOICES)
+    # A thumbs up or down from the website's feedback button; the text is optional with it.
+    rating = models.CharField(max_length=8, choices=RATING_CHOICES, blank=True, default='')
     text = models.TextField(blank=True, default='')
     page_url = models.TextField(blank=True, default='')
     site_commit = models.CharField(max_length=64)

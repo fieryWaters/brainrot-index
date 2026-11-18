@@ -1,9 +1,20 @@
 // A small fixed "Feedback" button on every page, for everyone, signed in or not.
-// It opens a text box and sends the note, with the current page address, to
+// It opens a thumbs up and a thumbs down; picking one shows an optional text
+// box, and Send posts the rating and note, with the current page address, to
 // /api/feedback/. The server stamps each report with the site's commit.
 
 import { apiFetch } from '../lib/api.js'
 import { el } from '../lib/dom.js'
+import { createIcon } from './Icons.js'
+
+const TEXT_PLACEHOLDERS = {
+  up: 'What do you like? (optional)',
+  down: 'What went wrong, or what should change? (optional)',
+}
+
+const RATING_BUTTON_CLASS = 'flex-1 flex items-center justify-center py-3 rounded-lg border text-sm font-medium transition-colors'
+const RATING_IDLE_CLASS = 'border-white/10 bg-black/30 text-white/70 hover:text-white hover:border-white/30'
+const RATING_CHOSEN_CLASS = 'border-glow-400 bg-shield-400/25 text-glow-300'
 
 // The git commit this build came from, passed in by deploy.sh.
 const GIT_COMMIT = import.meta.env.VITE_GIT_COMMIT || 'unknown'
@@ -29,10 +40,11 @@ export function createFeedbackButton() {
   toggleButton.type = 'button'
   toggleButton.setAttribute('aria-expanded', 'false')
 
+  let rating = ''
+
   const textBox = el('textarea',
-    'w-full h-28 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-white/30 focus:border-glow-400 focus:outline-none')
-  textBox.placeholder = 'What went wrong, or what should change?'
-  textBox.setAttribute('aria-label', 'Feedback')
+    'w-full h-24 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-white/30 focus:border-glow-400 focus:outline-none')
+  textBox.setAttribute('aria-label', 'Feedback note')
 
   const status = el('p', 'text-xs text-white/60')
   status.setAttribute('role', 'status')
@@ -41,11 +53,53 @@ export function createFeedbackButton() {
     'Send')
   sendButton.type = 'button'
 
-  const panel = el('div', 'hidden mb-2 w-80 p-4 rounded-xl bg-navy-900 border border-white/10 shadow-2xl shadow-black/50 flex-col gap-2',
-    el('p', 'text-sm font-semibold text-white', 'Send feedback'),
+  const details = el('div', 'hidden flex-col gap-2',
     textBox,
     el('p', 'text-xs text-white/40', `Sent with this page's address and site version ${GIT_COMMIT}.`),
-    el('div', 'flex items-center justify-between gap-2', status, sendButton))
+    el('div', 'flex justify-end', sendButton))
+
+  function createRatingButton(value, iconName, label) {
+    const button = el('button', `${RATING_BUTTON_CLASS} ${RATING_IDLE_CLASS}`, createIcon(iconName, 'w-6 h-6'))
+    button.type = 'button'
+    button.setAttribute('aria-label', label)
+    button.setAttribute('aria-pressed', 'false')
+    button.addEventListener('click', () => chooseRating(value))
+    return button
+  }
+  const ratingButtons = {
+    up: createRatingButton('up', 'thumbsUp', 'Thumbs up'),
+    down: createRatingButton('down', 'thumbsDown', 'Thumbs down'),
+  }
+
+  function chooseRating(value) {
+    rating = value
+    for (const [buttonValue, button] of Object.entries(ratingButtons)) {
+      const chosen = buttonValue === value
+      button.className = `${RATING_BUTTON_CLASS} ${chosen ? RATING_CHOSEN_CLASS : RATING_IDLE_CLASS}`
+      button.setAttribute('aria-pressed', String(chosen))
+    }
+    textBox.placeholder = TEXT_PLACEHOLDERS[value]
+    details.classList.remove('hidden')
+    details.classList.add('flex')
+    status.textContent = ''
+    textBox.focus()
+  }
+
+  function clearRating() {
+    rating = ''
+    for (const button of Object.values(ratingButtons)) {
+      button.className = `${RATING_BUTTON_CLASS} ${RATING_IDLE_CLASS}`
+      button.setAttribute('aria-pressed', 'false')
+    }
+    details.classList.add('hidden')
+    details.classList.remove('flex')
+  }
+
+  const panel = el('div', 'hidden mb-2 w-80 max-w-[calc(100vw-2rem)] p-4 rounded-xl bg-navy-900 border border-white/10 shadow-2xl shadow-black/50 flex-col gap-3',
+    el('p', 'text-sm font-semibold text-white', 'How is BrainRot Index working for you?'),
+    el('div', 'flex gap-2', ratingButtons.up, ratingButtons.down),
+    details,
+    status)
 
   toggleButton.addEventListener('click', () => {
     const opening = panel.classList.contains('hidden')
@@ -53,24 +107,20 @@ export function createFeedbackButton() {
     panel.classList.toggle('flex')
     toggleButton.setAttribute('aria-expanded', String(opening))
     status.textContent = ''
-    if (opening) textBox.focus()
+    if (opening) ratingButtons.up.focus()
   })
 
   sendButton.addEventListener('click', async () => {
-    const text = textBox.value.trim()
-    if (!text) {
-      status.textContent = 'Write a few words first.'
-      return
-    }
     sendButton.disabled = true
     status.textContent = 'Sending...'
     const { response } = await apiFetch('/feedback/', {
       method: 'POST',
-      body: { source: 'site', text, page_url: window.location.href },
+      body: { source: 'site', rating, text: textBox.value.trim(), page_url: window.location.href },
     })
     sendButton.disabled = false
     if (response.ok) {
       textBox.value = ''
+      clearRating()
       status.textContent = 'Thanks, sent.'
     } else {
       status.textContent = failureMessage(response)

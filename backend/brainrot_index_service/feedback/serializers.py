@@ -7,11 +7,11 @@ class FeedbackSerializer(serializers.ModelSerializer):
     class Meta:
         model = Feedback
         fields = [
-            'source', 'text', 'page_url', 'extension_commit',
+            'source', 'rating', 'text', 'page_url', 'extension_commit',
             'platform', 'post_id', 'shown_action', 'expected_action',
         ]
 
     def validate(self, data):
-        if not data.get('text', '').strip() and not data.get('expected_action'):
-            raise serializers.ValidationError('Give text, an expected_action, or both.')
+        if not data.get('text', '').strip() and not data.get('expected_action') and not data.get('rating'):
+            raise serializers.ValidationError('Give a rating, text, an expected_action, or more than one.')
         return data

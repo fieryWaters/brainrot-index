@@ -18,8 +18,7 @@ collect, why, and your choices.</p>
 <h2>What we collect</h2>
 <ul>
   <li><strong>Posts you see.</strong> Once you agree on the extension's consent screen, and while it is on and connected, the extension
-  sends us the posts you see on supported sites (text, images, video, and who posted them). We store them with your account, along
-  with what the filters decided.</li>
+  sends us the posts you see on supported sites (text, images, video, and who posted them).</li>
   <li><strong>Your account.</strong> Your email address, your name if you sign in with Google, your settings, your consent choices, and
   the reports and feedback you send.</li>
   <li><strong>Payments.</strong> Payments are handled by our payment provider.</li>

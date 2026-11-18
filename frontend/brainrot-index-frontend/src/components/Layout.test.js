@@ -71,8 +71,7 @@ describe('Layout', () => {
     const layout = createLayout()
     renderElement(layout.el)
 
-    // Open the profile dropdown (avatar shows the email's first letter).
-    fireEvent.click(screen.getByText('A'))
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
     fireEvent.click(screen.getByRole('button', { name: 'Sign Out' }))
 
     await waitFor(() => expect(window.location.pathname).toBe('/'))

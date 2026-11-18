@@ -4,6 +4,7 @@
 import { getState, subscribe, logout } from '../lib/auth.js'
 import { el } from '../lib/dom.js'
 import { createFeedbackButton } from './FeedbackButton.js'
+import { createIcon } from './Icons.js'
 import { createLogoMark } from './LogoMark.js'
 import { onNavigate, navigate } from '../lib/router.js'
 import { SUPPORT_EMAIL } from '../lib/site.js'
@@ -25,7 +26,11 @@ export function createLayout() {
   // -- Profile dropdown (created once, toggled) --
   let dropdownOpen = false
 
-  const avatarBtn = el('button', 'w-9 h-9 rounded-full bg-gradient-to-br from-shield-400 to-shield-600 flex items-center justify-center text-sm font-bold hover:ring-2 hover:ring-glow-400/50 transition-all')
+  const avatarBtn = el('button', 'w-9 h-9 rounded-full bg-gradient-to-br from-shield-400 to-shield-600 flex items-center justify-center text-white hover:ring-2 hover:ring-glow-400/50 transition-all',
+    createIcon('person', 'w-5 h-5'))
+  avatarBtn.type = 'button'
+  avatarBtn.setAttribute('aria-label', 'Account menu')
+  avatarBtn.setAttribute('aria-expanded', 'false')
 
   const emailP = el('p', 'text-sm font-medium truncate')
 
@@ -57,11 +62,13 @@ export function createLayout() {
   function openDropdown() {
     dropdownOpen = true
     dropdown.classList.remove('hidden')
+    avatarBtn.setAttribute('aria-expanded', 'true')
   }
 
   function closeDropdown() {
     dropdownOpen = false
     dropdown.classList.add('hidden')
+    avatarBtn.setAttribute('aria-expanded', 'false')
   }
 
   avatarBtn.addEventListener('click', (e) => {
@@ -86,7 +93,6 @@ export function createLayout() {
 
     if (isAuthenticated) {
       emailP.textContent = email || ''
-      avatarBtn.textContent = email ? email[0].toUpperCase() : '?'
 
       rightSlot.replaceChildren(navStoreLink, dropdownWrapper)
     } else {

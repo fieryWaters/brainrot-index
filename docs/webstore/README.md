@@ -107,15 +107,8 @@ made-up posts, which each picture says in a footnote.
     3. Open your dashboard and press Connect extension.
     An account is required. After the free trial BrainRot Index costs $5 a month, paid on the website.
 
-    WHERE IT WORKS
-    X, Reddit and YouTube, in Chrome, Brave and other Chromium browsers on a computer.
-
     PRIVACY
-    Before it sends anything, the extension asks for your agreement on one short screen. Once you agree, it sends the posts and videos you see on those sites to the BrainRot Index service: their text, links, images, video and who posted them. They are stored with your account to classify posts, to improve the service and to detect fraud and abuse. Disconnect in the toolbar button withdraws your agreement. The extension does not read your messages, what you type, or any other site. We don't sell your data or use it for advertising. Details: https://brainrotindex.com/privacy
-
-The one line naming the supported sites is kept on purpose: the install prompt names them anyway,
-and a listing that hides where the extension works invites a "misleading description" rejection.
-It is the only place they are named.
+    Before it sends anything, the extension asks for your agreement. Once you agree, it sends the posts you see on supported sites (text, images, video, and who posted them) to the BrainRot Index service to classify them. They are also used to improve the service and to detect fraud and abuse. We don't sell your data. Details: https://brainrotindex.com/privacy
 
 **Category**: Lifestyle, Well-being. (Second choice: Social Networking.)
 
@@ -155,62 +148,43 @@ instructions, step 1).
 
 **Single purpose**
 
-    BrainRot Index filters unwanted posts out of social media feeds: it sends the posts and videos shown on supported sites to the BrainRot Index service, which scores them with the filters the user chose, and it blurs or hides the ones the service flags.
+    BrainRot Index filters unwanted posts out of social media feeds: it sends the posts shown on supported sites to the BrainRot Index service, which classifies them with the user's filters, and blurs or hides the ones flagged.
 
 **Permission justifications** (one box per permission; the dashboard also asks about host access)
 
 | Permission | Justification |
 | --- | --- |
-| `storage` | Keeps the account connection key, the on/off switch, the service address and whether the user agreed on the consent screen, and remembers the service's answers for posts during the browser session so a post is not sent twice. |
-| `contextMenus` | Adds "BrainRot Index: report this post" to the right-click menu on the supported sites, so the user can report a post the filters missed or got wrong. |
-| `activeTab` | When the user sends feedback from the toolbar popup, reads the address of the current tab to attach it to the report. |
-| `scripting` | Right after install, adds the connect script to brainrotindex.com tabs that were already open, so the site's Connect extension button works without reloading the page. |
-| Host permission `https://brainrotindex.com/*` | The extension's own service: after the user agrees on the consent screen, it sends posts there to be scored, reads the user's filter settings, sends feedback, records the user's agreement, and receives the account connection key from the site's Connect extension button. |
-| Content scripts on `https://x.com/*`, `https://www.reddit.com/*` | Read the posts and replies shown in the feed and in threads, including whether a post has a video, and blur or hide the ones the service flags. |
-| Content script on `https://www.youtube.com/*` | Reads the video tiles on the home page, in search results, beside a playing video and in Shorts shelves, including a video's length, and blurs or hides the ones the service flags. |
+| `storage` | Stores the user's settings, account connection and consent choice, and remembers results for posts already checked. |
+| `contextMenus` | Adds a right-click menu item to report a post. |
+| `activeTab` | Attaches the current tab's address to feedback the user sends from the toolbar popup. |
+| `scripting` | After install, adds the connect script to brainrotindex.com tabs that are already open. |
+| Host permission `https://brainrotindex.com/*` | The extension's own service: sends posts to be classified, reads the user's filter settings, sends feedback and connects the account. |
+| Content scripts on `https://x.com/*`, `https://www.reddit.com/*`, `https://www.youtube.com/*` | Read the posts shown in the feed and blur or hide the ones flagged. |
 
 **Remote code**: "No, I am not using remote code." All JavaScript is in the package; the service only
 returns JSON data.
 
 **Data usage**: tick these.
 
-- **Website content**: yes. For each post and reply on X and Reddit: its text, address, community,
-  author's username, image addresses and, for a post with a video, the video's address (a Reddit
-  post's video playlist; for X, the post's own address). For each YouTube video tile: the video id,
-  title, channel name, description snippet (search results only), thumbnail address and length.
-  Stored with the account that sent them; the service also downloads and stores the images, and,
-  for an account using a video filter, the first seconds of Reddit and X videos from those sites'
-  video hosts (YouTube videos are watched by Google's Gemini model from their link instead). Also
-  the thumbs up or down, severity, filter and optional note the user gives a post.
-- **Personally identifiable information**: yes. The usernames of post authors are sent with each
-  post, and posts are stored with the account, which carries the user's email address.
-- **Authentication information**: yes. The extension stores and sends an account connection key.
-- **Web history**: yes. The service keeps, with the account, the addresses of the posts and videos
-  the extension saw on the supported sites and when each was first and last sent, which is a record
-  of what the user scrolled past there. Feedback sent from the popup carries the current tab's
-  address. The list of other pages visited is never sent.
-- **User activity**: no. Clicks, keystrokes, mouse movement and scrolling are not recorded.
-- **Location, health, financial and payment, personal communications**: no. Payments happen on the
-  website through Stripe, not in the extension.
+- **Website content**: yes. The posts and videos shown on supported sites (text, links, images,
+  video, and who posted them), and the feedback the user gives on a post.
+- **Personally identifiable information**: yes. Post authors' usernames, and posts are stored with
+  the user's account, which has their email address.
+- **Authentication information**: yes. The account connection key.
+- **Web history**: yes. The addresses of the posts and videos seen on supported sites, and the
+  current tab's address on feedback sent from the popup.
+- **User activity**: no.
+- **Location, health, financial and payment, personal communications**: no.
 
-**Certifications**: all three can be ticked truthfully.
+**Certifications**: tick all three.
 
 - I do not sell or transfer user data to third parties, outside of the approved use cases.
-  (Post content, including video clips and YouTube links, goes to the AI model providers, OpenRouter
-  and Google's Gemini API, only to score it; Stripe, Resend and Cloudflare receive only what they
-  need to run the site. Nothing is sold or used for advertising.)
 - I do not use or transfer user data for purposes that are unrelated to my item's single purpose.
-  (Stored posts are used to classify posts, to improve the service, and to detect fraud and abuse,
-  the uses the consent screen and the Privacy Policy name.)
 - I do not use or transfer user data to determine creditworthiness or for lending purposes.
 
-People reading stored posts, under Limited Use: a person on our side reads an individual stored post
-only when the user reports it (thumbs or report form), to investigate abuse or a security problem, or
-when the law requires it, as the Privacy Policy says. Those are the cases the policy allows. Keep the
-admin used that way.
-
-The Privacy Policy carries the Limited Use statement Google asks for ("adheres to the Chrome Web
-Store User Data Policy, including the Limited Use requirements").
+Not for the dashboard: Limited Use allows a person on our side to read an individual stored post only
+with the user's consent (such as a post they report), for security or abuse, or when the law
+requires it.
 
 **Privacy policy URL**: https://brainrotindex.com/privacy
 

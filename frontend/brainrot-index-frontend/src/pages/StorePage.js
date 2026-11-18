@@ -135,7 +135,7 @@ export function mountStorePage() {
     isChild = response.ok && data.role === 'child'
     if (isChild) {
       actionsRow.before(el('p', 'text-sm text-white/50 mb-6',
-        "Child accounts can look around; your family's superadmin installs plugins for you."))
+        'Child accounts can look around; an admin of your family installs plugins for you.'))
     } else {
       actionsRow.append(publishLink)
     }

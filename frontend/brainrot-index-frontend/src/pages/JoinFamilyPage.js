@@ -73,7 +73,7 @@ export function mountJoinFamilyPage() {
       return
     }
     if (data.already_in_a_family) {
-      showMessage(`You are already in a family. To join ${data.family_name}, leave your family first.`,
+      showMessage('You are already in a family. To accept this invite, leave your family first.',
         link('Family page', '/family', ACCENT_BUTTON_CLASS))
       return
     }
@@ -102,10 +102,10 @@ export function mountJoinFamilyPage() {
       navigate('/dashboard')
     })
 
-    const invitedBy = data.invited_by ? ` ${data.invited_by} invited you.` : ''
+    const heading = data.invited_by ? `${data.invited_by} invited you to their family` : 'You are invited to a family'
     card.replaceChildren(
-      el('h2', 'text-lg font-semibold text-white mb-1', data.family_name),
-      el('p', 'text-sm text-white/60 mb-4', `You are invited to join as ${ROLE_NAMES[data.role]}.${invitedBy}`),
+      el('h2', 'text-lg font-semibold text-white mb-1 break-words', heading),
+      el('p', 'text-sm text-white/60 mb-4', `You would join as ${ROLE_NAMES[data.role]}.`),
       el('p', 'text-sm text-white/70 mb-6', ROLE_DESCRIPTIONS[data.role]),
       errorSlot,
       el('div', 'flex flex-wrap gap-3', joinButton, declineButton))

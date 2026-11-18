@@ -18,8 +18,8 @@ from rest_framework.response import Response
 from billing.access import PAYING_STATUSES, subscription_for_user
 from billing.stripe_sync import stripe_client
 from classification.models import ExtensionToken, Plugin, PostSubmission, UserPlugin, UserSettings
-from families.models import ROLE_SUPERADMIN, FamilyMember
-from families.views import LAST_SUPERADMIN_MESSAGE
+from families.models import ROLE_ADMIN, FamilyMember
+from families.views import LAST_ADMIN_MESSAGE
 from feedback.models import Feedback
 from store.models import PluginRating, PluginReport
 
@@ -193,14 +193,14 @@ def family_data_for_export(user):
     }
 
 
-def is_last_superadmin_of_a_family_with_others(user):
+def is_last_admin_of_a_family_with_others(user):
     membership = FamilyMember.objects.filter(user=user).first()
-    if membership is None or membership.role != ROLE_SUPERADMIN:
+    if membership is None or membership.role != ROLE_ADMIN:
         return False
     others = FamilyMember.objects.filter(family=membership.family).exclude(user=user)
     if not others.exists():
         return False
-    return not others.filter(role=ROLE_SUPERADMIN).exists()
+    return not others.filter(role=ROLE_ADMIN).exists()
 
 
 @api_view(['GET'])
@@ -226,9 +226,9 @@ def delete_account(request):
     if typed_email != user.email.lower():
         return Response({'error': 'Type your email address exactly as shown to confirm.'}, status=400)
 
-    # The same rule as leaving the family: the others must not be left without a superadmin.
-    if is_last_superadmin_of_a_family_with_others(user):
-        return Response({'error': LAST_SUPERADMIN_MESSAGE}, status=400)
+    # The same rule as leaving the family: the others must not be left without an admin.
+    if is_last_admin_of_a_family_with_others(user):
+        return Response({'error': LAST_ADMIN_MESSAGE}, status=400)
 
     # A paid subscription is canceled first, so a deleted account is never charged again.
     subscription = subscription_for_user(user)

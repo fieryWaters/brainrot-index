@@ -194,7 +194,7 @@ function createDeleteCard(email, onDeleted) {
       el('li', '', 'your settings and the filters you installed'),
       el('li', '', 'every extension connection (each extension stops filtering)'),
       el('li', '', 'the reports and feedback you sent us, and your plugin ratings and reports'),
-      el('li', '', 'your place in your family (if you are its only superadmin and others are in it, make someone else a superadmin first)'),
+      el('li', '', 'your place in your family (if you are its only admin and others are in it, make someone else an admin first)'),
       el('li', '', 'your name on plugins you published (the plugins stay for the people who installed them)'),
       el('li', '', 'your subscription, which is canceled at once with no further charges')),
     el('p', 'mt-3 text-sm text-white/70',

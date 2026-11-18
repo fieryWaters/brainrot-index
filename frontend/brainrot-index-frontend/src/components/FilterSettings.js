@@ -10,7 +10,7 @@ import { createErrorBanner } from './ErrorBanner.js'
 import { CARD_CLASS, QUIET_BUTTON_CLASS, SELECT_CLASS, ACCENT_BUTTON_CLASS } from './styles.js'
 
 const SAVE_FAILED_MESSAGE = 'Could not save that change. Please try again.'
-const MANAGED_BY_FAMILY_MESSAGE = "Your family's superadmin manages these settings."
+const MANAGED_BY_FAMILY_MESSAGE = 'An admin of your family manages these settings.'
 
 export function thresholdDescription(threshold) {
   return `Filter posts that score ${threshold} or more out of 100`

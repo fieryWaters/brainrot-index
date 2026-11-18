@@ -215,7 +215,7 @@ class Plugin(models.Model):
     # An unlisted plugin is hidden from the store and cannot be installed;
     # accounts that already installed it keep it.
     is_listed = models.BooleanField(default=True)
-    # Suggested on the family page when a superadmin edits a child's plugins.
+    # Suggested on the family page when an admin edits a child's plugins.
     suggested_for_children = models.BooleanField(default=False)
     # The threshold a user starts with when the plugin is installed.
     default_threshold = models.PositiveSmallIntegerField(

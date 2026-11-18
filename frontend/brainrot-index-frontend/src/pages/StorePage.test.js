@@ -20,7 +20,7 @@ let role
 
 beforeEach(() => {
   requests = []
-  role = 'superadmin'
+  role = 'admin'
   document.cookie = 'csrftoken=test-csrf'
   vi.stubGlobal('fetch', vi.fn(async (url, options) => {
     const path = String(url)

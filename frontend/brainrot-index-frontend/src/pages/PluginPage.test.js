@@ -30,7 +30,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (url, options) => {
     const path = String(url)
     requests.push({ path, method: options.method, body: options.body ? JSON.parse(options.body) : null })
-    if (path.endsWith('/family/')) return jsonResponse({ role: 'admin', family: null })
+    if (path.endsWith('/family/')) return jsonResponse({ role: 'adult', family: null })
     if (path.endsWith('/store/plugins/crypto-hype/')) return jsonResponse(detail)
     if (path.endsWith('/store/plugins/missing/')) return jsonResponse({ detail: 'Not found.' }, 404)
     if (path.endsWith('/store/try/')) return jsonResponse({ score: 85, label: 'flagged', reasoning: 'Token shilling.' })

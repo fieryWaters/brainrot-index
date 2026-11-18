@@ -25,11 +25,11 @@ def patch(client, name, body, args=None):
 
 
 class FamilyTestCase(TestCase):
-    """A family made by parent, with helpers to invite and join."""
+    """A family made by parent's first invite, with helpers to invite and join."""
 
     def setUp(self):
         self.parent, self.parent_client = signed_in_client('parent@example.com')
-        post(self.parent_client, 'family', {'name': 'The Smiths'})
+        self.invite('adult')
 
     def invite(self, role):
         return post(self.parent_client, 'family_invites', {'role': role}).json()['code']
@@ -42,42 +42,42 @@ class FamilyTestCase(TestCase):
 
 
 class NoFamilyTests(TestCase):
-    def test_a_user_with_no_family_is_their_own_superadmin(self):
+    def test_a_user_with_no_family_is_their_own_admin(self):
         user, client = signed_in_client('solo@example.com')
-        self.assertEqual(client.get(reverse('family')).json(), {'role': 'superadmin', 'family': None})
+        self.assertEqual(client.get(reverse('family')).json(), {'role': 'admin', 'family': None})
         self.assertEqual(patch(client, 'user_settings', {'mode': 'child'}).status_code, 200)
         self.assertEqual(patch(client, 'installed_plugin', {'threshold': 20}, args=['rude-or-toxic']).status_code, 200)
 
 
 class CreateAndJoinTests(FamilyTestCase):
-    def test_creator_is_superadmin(self):
+    def test_the_first_invite_makes_a_family_with_its_creator_as_admin(self):
         family = self.parent_client.get(reverse('family')).json()
-        self.assertEqual(family['role'], 'superadmin')
+        self.assertEqual(family['role'], 'admin')
         self.assertEqual(family['family']['members'], [
-            {'user_id': self.parent.id, 'email': 'parent@example.com', 'role': 'superadmin', 'is_you': True},
+            {'user_id': self.parent.id, 'email': 'parent@example.com', 'role': 'admin', 'is_you': True},
         ])
 
     def test_invite_joins_with_the_chosen_role_and_is_single_use(self):
-        code = self.invite('admin')
+        code = self.invite('adult')
         adult, adult_client = signed_in_client('adult@example.com')
         preview = post(adult_client, 'family_invite_preview', {'code': code.lower()}).json()
-        self.assertEqual(preview['family_name'], 'The Smiths')
-        self.assertEqual(preview['role'], 'admin')
+        self.assertEqual(preview['invited_by'], 'parent@example.com')
+        self.assertEqual(preview['role'], 'adult')
 
         self.assertEqual(post(adult_client, 'family_join', {'code': code}).status_code, 200)
-        self.assertEqual(FamilyMember.objects.get(user=adult).role, 'admin')
+        self.assertEqual(FamilyMember.objects.get(user=adult).role, 'adult')
 
         _, late_client = signed_in_client('late@example.com')
         self.assertEqual(post(late_client, 'family_join', {'code': code}).status_code, 400)
 
     def test_only_the_hash_of_the_code_is_stored(self):
-        code = self.invite('admin')
+        code = self.invite('adult')
         self.assertFalse(FamilyInvite.objects.filter(code_hash=code).exists())
 
     def test_expired_and_revoked_invites_do_not_work(self):
-        expired_code = self.invite('admin')
+        expired_code = self.invite('adult')
         FamilyInvite.objects.update(expires_at=timezone.now() - timedelta(minutes=1))
-        revoked_code = self.invite('admin')
+        revoked_code = self.invite('adult')
         revoked_id = FamilyInvite.objects.latest('id').id
         post(self.parent_client, 'family_invite_revoke', args=[revoked_id])
 
@@ -92,41 +92,39 @@ class CreateAndJoinTests(FamilyTestCase):
         self.assertFalse(user_settings.allow_reveal)
 
     def test_cannot_join_a_second_family(self):
-        adult, adult_client = self.join('adult@example.com', 'admin')
+        adult, adult_client = self.join('adult@example.com', 'adult')
         _, other_parent_client = signed_in_client('other@example.com')
-        post(other_parent_client, 'family', {'name': 'The Joneses'})
-        code = post(other_parent_client, 'family_invites', {'role': 'admin'}).json()['code']
+        code = post(other_parent_client, 'family_invites', {'role': 'adult'}).json()['code']
         self.assertEqual(post(adult_client, 'family_join', {'code': code}).status_code, 400)
-        self.assertEqual(post(adult_client, 'family', {'name': 'Another'}).status_code, 400)
 
 
 class RoleRuleTests(FamilyTestCase):
-    def test_only_a_superadmin_invites_or_changes_roles(self):
-        adult, adult_client = self.join('adult@example.com', 'admin')
-        self.assertEqual(post(adult_client, 'family_invites', {'role': 'superadmin'}).status_code, 403)
+    def test_only_an_admin_invites_or_changes_roles(self):
+        adult, adult_client = self.join('adult@example.com', 'adult')
+        self.assertEqual(post(adult_client, 'family_invites', {'role': 'admin'}).status_code, 403)
         self.assertEqual(
-            patch(adult_client, 'family_member', {'role': 'superadmin'}, args=[adult.id]).status_code, 403)
+            patch(adult_client, 'family_member', {'role': 'admin'}, args=[adult.id]).status_code, 403)
 
-    def test_last_superadmin_cannot_be_demoted(self):
-        self.join('adult@example.com', 'admin')
-        response = patch(self.parent_client, 'family_member', {'role': 'admin'}, args=[self.parent.id])
+    def test_last_admin_cannot_be_demoted(self):
+        self.join('adult@example.com', 'adult')
+        response = patch(self.parent_client, 'family_member', {'role': 'adult'}, args=[self.parent.id])
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(FamilyMember.objects.get(user=self.parent).role, 'superadmin')
+        self.assertEqual(FamilyMember.objects.get(user=self.parent).role, 'admin')
 
-    def test_a_superadmin_can_step_down_once_another_exists(self):
-        adult, _ = self.join('adult@example.com', 'admin')
-        patch(self.parent_client, 'family_member', {'role': 'superadmin'}, args=[adult.id])
-        response = patch(self.parent_client, 'family_member', {'role': 'admin'}, args=[self.parent.id])
+    def test_an_admin_can_step_down_once_another_exists(self):
+        adult, _ = self.join('adult@example.com', 'adult')
+        patch(self.parent_client, 'family_member', {'role': 'admin'}, args=[adult.id])
+        response = patch(self.parent_client, 'family_member', {'role': 'adult'}, args=[self.parent.id])
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['role'], 'admin')
+        self.assertEqual(response.json()['role'], 'adult')
 
-    def test_last_superadmin_cannot_leave_while_others_remain(self):
-        self.join('adult@example.com', 'admin')
+    def test_last_admin_cannot_leave_while_others_remain(self):
+        self.join('adult@example.com', 'adult')
         self.assertEqual(post(self.parent_client, 'family_leave').status_code, 400)
 
     def test_last_member_can_leave(self):
         response = post(self.parent_client, 'family_leave')
-        self.assertEqual(response.json(), {'role': 'superadmin', 'family': None})
+        self.assertEqual(response.json(), {'role': 'admin', 'family': None})
 
     def test_child_cannot_leave_but_can_be_removed(self):
         child, child_client = self.join('kid@example.com', 'child')
@@ -135,13 +133,13 @@ class RoleRuleTests(FamilyTestCase):
         self.assertEqual(child_client.get(reverse('family')).json()['family'], None)
 
     def test_demoting_to_child_turns_on_child_mode(self):
-        adult, _ = self.join('adult@example.com', 'admin')
+        adult, _ = self.join('adult@example.com', 'adult')
         patch(self.parent_client, 'family_member', {'role': 'child'}, args=[adult.id])
         self.assertEqual(UserSettings.objects.get(user=adult).mode, 'child')
 
 
 class MemberSettingsTests(FamilyTestCase):
-    def test_superadmin_changes_a_members_settings_and_plugins(self):
+    def test_admin_changes_a_members_settings_and_plugins(self):
         child, _ = self.join('kid@example.com', 'child')
         response = patch(self.parent_client, 'member_settings', {'allow_reveal': True}, args=[child.id])
         self.assertEqual(response.status_code, 200)
@@ -154,8 +152,8 @@ class MemberSettingsTests(FamilyTestCase):
         response = post(self.parent_client, 'member_plugins', {'slug': 'rude-or-toxic'}, args=[child.id])
         self.assertEqual(response.status_code, 201)
 
-    def test_admin_changes_only_their_own_settings(self):
-        adult, adult_client = self.join('adult@example.com', 'admin')
+    def test_adult_changes_only_their_own_settings(self):
+        adult, adult_client = self.join('adult@example.com', 'adult')
         self.assertEqual(patch(adult_client, 'user_settings', {'mode': 'child'}).status_code, 200)
         self.assertEqual(
             patch(adult_client, 'installed_plugin', {'threshold': 30}, args=['rude-or-toxic']).status_code, 200)
@@ -178,7 +176,7 @@ class MemberSettingsTests(FamilyTestCase):
         self.assertEqual(patch(child_client, 'installed_plugin', {'enabled': False}, args=['rude-or-toxic']).status_code, 403)
         self.assertEqual(UserSettings.objects.get(user=child).mode, 'child')
 
-    def test_superadmin_cannot_reach_someone_outside_the_family(self):
+    def test_admin_cannot_reach_someone_outside_the_family(self):
         stranger, _ = signed_in_client('stranger@example.com')
         self.assertEqual(
             patch(self.parent_client, 'member_settings', {'mode': 'child'}, args=[stranger.id]).status_code, 404)

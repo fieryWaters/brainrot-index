@@ -1,6 +1,7 @@
-// Family page: start a family or enter an invite code; in a family, the
-// members and their roles. A superadmin also changes roles, edits each
-// member's settings and plugins, invites people and removes them.
+// Family page: what each role can do, and the members with their roles. An
+// admin invites people (the first invite makes the family), changes roles,
+// edits each member's settings and plugins and removes them. Someone in no
+// family can also enter an invite code.
 
 import { apiFetch, errorMessageFrom } from '../lib/api.js'
 import { el } from '../lib/dom.js'
@@ -12,7 +13,7 @@ import {
   ACCENT_BUTTON_CLASS, CARD_CLASS, INPUT_CLASS, LABEL_CLASS, PRIMARY_BUTTON_CLASS, QUIET_BUTTON_CLASS, SELECT_CLASS,
 } from '../components/styles.js'
 
-const ROLE_OPTIONS = ['superadmin', 'admin', 'child']
+const ROLE_OPTIONS = ['admin', 'adult', 'child']
 
 function createRoleSelect(value, label) {
   const select = el('select', SELECT_CLASS)
@@ -84,23 +85,7 @@ export function mountFamilyPage() {
   }
 
   // -- No family yet --
-  function createStartCards() {
-    const nameInput = el('input', INPUT_CLASS)
-    nameInput.placeholder = 'The Smiths'
-    nameInput.maxLength = 60
-    nameInput.setAttribute('aria-label', 'Family name')
-    const createFamilyButton = createButton(PRIMARY_BUTTON_CLASS + ' shrink-0', 'Start a family')
-    createFamilyButton.addEventListener('click', async () => {
-      const name = nameInput.value.trim()
-      if (!name) {
-        showError('Give your family a name first.')
-        return
-      }
-      createFamilyButton.disabled = true
-      await send('/family/', 'POST', { name }, 'Could not start the family. Please try again.')
-      createFamilyButton.disabled = false
-    })
-
+  function createJoinCard() {
     const codeInput = el('input', INPUT_CLASS)
     codeInput.placeholder = 'ABCDE-23456'
     codeInput.setAttribute('aria-label', 'Invite code')
@@ -114,24 +99,25 @@ export function mountFamilyPage() {
       navigate(`/family/join?code=${encodeURIComponent(code)}`)
     })
 
-    return [
-      el('div', CARD_CLASS,
-        el('h2', 'text-lg font-semibold text-white mb-1', 'Start a family'),
-        el('p', 'text-sm text-white/60 mb-4',
-          "You become its superadmin: you can change everyone's settings and plugins, and choose who else is a superadmin, an admin or a child."),
-        el('div', 'flex flex-col sm:flex-row gap-3', nameInput, createFamilyButton)),
-      el('div', CARD_CLASS,
-        el('h2', 'text-lg font-semibold text-white mb-1', 'Have an invite code?'),
-        el('p', 'text-sm text-white/60 mb-4', 'Enter the code someone in your family sent you.'),
-        el('div', 'flex flex-col sm:flex-row gap-3', codeInput, codeButton)),
-    ]
+    return el('div', CARD_CLASS,
+      el('h2', 'text-lg font-semibold text-white mb-1', 'Have an invite code?'),
+      el('p', 'text-sm text-white/60 mb-4', 'Enter the code someone in your family sent you.'),
+      el('div', 'flex flex-col sm:flex-row gap-3', codeInput, codeButton))
+  }
+
+  // -- Roles --
+  function createRoleList() {
+    return el('dl', 'grid gap-3 sm:grid-cols-3',
+      ...ROLE_OPTIONS.map((role) => el('div', 'rounded-xl border border-white/10 bg-white/5 p-3',
+        el('dt', 'text-sm font-semibold text-glow-300', ROLE_NAMES[role]),
+        el('dd', 'mt-1 text-xs text-white/60', ROLE_DESCRIPTIONS[role]))))
   }
 
   // -- Members --
-  function createMemberRow(member, isSuperadmin) {
+  function createMemberRow(member, isAdmin) {
     const memberName = el('p', 'text-white truncate', member.email, member.is_you ? el('span', 'text-white/40', ' (you)') : '')
 
-    if (!isSuperadmin) {
+    if (!isAdmin) {
       return el('div', 'py-3 border-t border-white/10 first:border-t-0 flex items-center justify-between gap-4 text-sm',
         memberName,
         el('span', 'text-white/60 shrink-0', ROLE_NAMES[member.role]))
@@ -176,13 +162,9 @@ export function mountFamilyPage() {
       editor)
   }
 
-  // -- Invites (superadmin) --
+  // -- Invites (admin) --
   function createInviteCard(invites) {
     const roleSelect = createRoleSelect('child', 'Role for the invited person')
-    const roleHelp = el('p', 'text-xs text-white/40', ROLE_DESCRIPTIONS.child)
-    roleSelect.addEventListener('change', () => {
-      roleHelp.textContent = ROLE_DESCRIPTIONS[roleSelect.value]
-    })
 
     let result = el('div')
     const inviteButton = createButton(PRIMARY_BUTTON_CLASS + ' shrink-0', 'Create invite')
@@ -214,12 +196,11 @@ export function mountFamilyPage() {
     return el('div', CARD_CLASS,
       el('h2', 'text-lg font-semibold text-white mb-1', 'Invite someone'),
       el('p', 'text-sm text-white/60 mb-4', 'Each invite works once, for 7 days. Send the link or the code to the person you are inviting.'),
-      el('div', 'flex flex-col gap-1 mb-4',
-        el('label', 'flex flex-col sm:flex-row sm:items-center gap-3',
-          el('span', LABEL_CLASS, 'Joins as'),
-          roleSelect,
-          inviteButton),
-        roleHelp),
+      el('div', 'mb-4', createRoleList()),
+      el('label', 'flex flex-col sm:flex-row sm:items-center gap-3 mb-4',
+        el('span', LABEL_CLASS, 'Joins as'),
+        roleSelect,
+        inviteButton),
       result,
       pending.length > 0 ? el('div', 'mt-4', el('p', LABEL_CLASS + ' mb-1', 'Waiting to be accepted'), ...pending) : '')
   }
@@ -249,7 +230,7 @@ export function mountFamilyPage() {
   // -- Leaving --
   function createLeaveCard(role) {
     if (role === 'child') {
-      return el('p', 'text-sm text-white/50', 'To leave this family, ask a superadmin to remove you.')
+      return el('p', 'text-sm text-white/50', 'To leave this family, ask an admin to remove you.')
     }
     const leaveButton = createConfirmButton('Leave family', 'Click again to leave', () =>
       send('/family/leave/', 'POST', undefined, 'Could not leave the family. Please try again.'))
@@ -258,25 +239,27 @@ export function mountFamilyPage() {
       leaveButton)
   }
 
+  // Someone in no family is their own admin: their first invite makes the family.
   function render(data) {
     if (data.family === null) {
-      content.replaceChildren(...createStartCards())
+      content.replaceChildren(createInviteCard([]), createJoinCard())
       return
     }
 
-    const isSuperadmin = data.role === 'superadmin'
+    const isAdmin = data.role === 'admin'
     const dashboardLink = el('a', 'text-glow-400 hover:text-glow-300', 'dashboard')
     dashboardLink.href = '/dashboard'
 
     content.replaceChildren(
+      isAdmin ? createInviteCard(data.family.invites) : '',
       el('div', CARD_CLASS,
-        el('h2', 'text-lg font-semibold text-white mb-1', data.family.name),
+        el('h2', 'text-lg font-semibold text-white mb-1', 'Members'),
         el('p', 'text-sm text-white/60 mb-4',
-          `Your role: ${ROLE_NAMES[data.role]}. ${ROLE_DESCRIPTIONS[data.role]} `,
+          `Your role: ${ROLE_NAMES[data.role]}. `,
           data.role === 'child' ? 'Your filters are on your ' : 'Change your own filters on your ',
           dashboardLink, '.'),
-        ...data.family.members.map((member) => createMemberRow(member, isSuperadmin))),
-      isSuperadmin ? createInviteCard(data.family.invites) : '',
+        isAdmin ? '' : el('div', 'mb-4', createRoleList()),
+        ...data.family.members.map((member) => createMemberRow(member, isAdmin))),
       el('div', CARD_CLASS, createLeaveCard(data.role)),
     )
   }

@@ -1,13 +1,13 @@
 // The three family roles, as people read them.
 
 export const ROLE_NAMES = {
-  superadmin: 'Superadmin',
   admin: 'Admin',
+  adult: 'Adult',
   child: 'Child',
 }
 
 export const ROLE_DESCRIPTIONS = {
-  superadmin: "Can change everyone's settings, plugins and roles.",
-  admin: 'Can change only their own settings and plugins.',
-  child: 'Cannot change settings or plugins. Posts stay blurred until checked and cannot be revealed.',
+  admin: "Full control: changes everyone's settings and plugins, invites people and chooses their roles.",
+  adult: 'Controls their own settings and plugins. Cannot change anyone else.',
+  child: 'Settings and plugins are controlled by an admin. Posts stay blurred until checked and cannot be revealed.',
 }

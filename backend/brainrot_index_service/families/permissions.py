@@ -1,14 +1,14 @@
 """Who may see and change whose filters.
 
-A user with no family is their own superadmin, so everything works for them
+A user with no family is their own admin, so everything works for them
 exactly as it did before families existed."""
 
 from django.contrib.auth import get_user_model
 from rest_framework.exceptions import NotFound, PermissionDenied
 
-from .models import ROLE_CHILD, ROLE_SUPERADMIN, FamilyMember
+from .models import ROLE_ADMIN, ROLE_CHILD, FamilyMember
 
-CHILD_CANNOT_CHANGE_MESSAGE = "Your family's superadmin manages your filters."
+CHILD_CANNOT_CHANGE_MESSAGE = "An admin of your family manages your filters."
 
 
 def membership_of(user):
@@ -19,7 +19,7 @@ def membership_of(user):
 def role_of(user):
     membership = membership_of(user)
     if membership is None:
-        return ROLE_SUPERADMIN
+        return ROLE_ADMIN
     return membership.role
 
 
@@ -28,9 +28,9 @@ def is_child(user):
 
 
 def manages(actor, target):
-    """True when actor is a superadmin of the family target belongs to."""
+    """True when actor is an admin of the family target belongs to."""
     actor_membership = membership_of(actor)
-    if actor_membership is None or actor_membership.role != ROLE_SUPERADMIN:
+    if actor_membership is None or actor_membership.role != ROLE_ADMIN:
         return False
     return FamilyMember.objects.filter(user=target, family=actor_membership.family).exists()
 

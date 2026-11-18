@@ -2,24 +2,26 @@ from django.conf import settings
 from django.db import models
 
 
-# A superadmin changes anyone's settings, plugins and roles in the family.
-# An admin changes only their own. A child changes nothing and sees what is
-# applied to them.
-ROLE_SUPERADMIN = 'superadmin'
+# An admin changes anyone's settings, plugins and roles in the family.
+# An adult changes only their own. A child changes nothing and sees what an
+# admin applies to them.
 ROLE_ADMIN = 'admin'
+ROLE_ADULT = 'adult'
 ROLE_CHILD = 'child'
 ROLE_CHOICES = [
-    (ROLE_SUPERADMIN, 'Superadmin'),
     (ROLE_ADMIN, 'Admin'),
+    (ROLE_ADULT, 'Adult'),
     (ROLE_CHILD, 'Child'),
 ]
 
 
 class Family(models.Model):
-    """People who filter their feeds together. Its superadmins manage everyone."""
+    """People who filter their feeds together. Its admins manage everyone. A
+    family is made the first time someone with none invites another person."""
 
-    name = models.CharField(max_length=60)
-    # The account that created the family and became its first superadmin.
+    # Unused: a family is known by its members. Kept for families named before.
+    name = models.CharField(max_length=60, blank=True, default='')
+    # The account that created the family and became its first admin.
     # When payments exist, the person who pays is tied to the family here.
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -33,12 +35,12 @@ class Family(models.Model):
         verbose_name_plural = 'families'
 
     def __str__(self):
-        return self.name
+        return f"family {self.id}"
 
 
 class FamilyMember(models.Model):
     """A user's place in a family. A user belongs to at most one family; a
-    user with none is treated as their own superadmin."""
+    user with none is treated as their own admin."""
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='family_membership')
     family = models.ForeignKey(Family, on_delete=models.PROTECT, related_name='members')

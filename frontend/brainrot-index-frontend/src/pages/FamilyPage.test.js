@@ -4,11 +4,11 @@ import { renderElement } from '../test-utils.js'
 import { _resetForTesting, loginWithPassword } from '../lib/auth.js'
 import { mountFamilyPage } from './FamilyPage.js'
 import { mountJoinFamilyPage, pendingFamilyInviteCode } from './JoinFamilyPage.js'
+import { ROLE_DESCRIPTIONS } from '../lib/roles.js'
 
 const FAMILY = {
-  name: 'The Smiths',
   members: [
-    { user_id: 1, email: 'parent@example.com', role: 'superadmin', is_you: true },
+    { user_id: 1, email: 'parent@example.com', role: 'admin', is_you: true },
     { user_id: 2, email: 'kid@example.com', role: 'child', is_you: false },
   ],
   invites: [],
@@ -23,7 +23,7 @@ let familyAnswer
 
 beforeEach(() => {
   requests = []
-  familyAnswer = { role: 'superadmin', family: FAMILY }
+  familyAnswer = { role: 'admin', family: FAMILY }
   document.cookie = 'csrftoken=test-csrf'
   vi.stubGlobal('fetch', vi.fn(async (url, options) => {
     const path = String(url)
@@ -31,7 +31,7 @@ beforeEach(() => {
     if (path.endsWith('/auth/login/')) return jsonResponse({ email: 'kid@example.com', email_verified: true })
     if (path.endsWith('/family/') && options.method === 'GET') return jsonResponse(familyAnswer)
     if (path.endsWith('/family/members/1/')) {
-      return jsonResponse({ error: 'A family needs at least one superadmin. Make someone else a superadmin first.' }, 400)
+      return jsonResponse({ error: 'A family needs at least one admin. Make someone else an admin first.' }, 400)
     }
     if (path.endsWith('/family/invites/')) {
       const inviteCount = requests.filter((request) => request.path.endsWith('/family/invites/')).length
@@ -39,7 +39,7 @@ beforeEach(() => {
       return jsonResponse({ id: 4 + inviteCount, code, role: 'child', expires_at: '2026-11-23T00:00:00Z' }, 201)
     }
     if (path.endsWith('/family/invites/preview/')) {
-      return jsonResponse({ family_name: 'The Smiths', role: 'child', invited_by: 'parent@example.com', already_in_a_family: false })
+      return jsonResponse({ role: 'child', invited_by: 'parent@example.com', already_in_a_family: false })
     }
     if (path.endsWith('/family/members/2/settings/')) return jsonResponse({ enabled: true, mode: 'child', allow_reveal: false })
     if (path.endsWith('/family/members/2/plugins/')) return jsonResponse({ plugins: [], enabled_limit: 8, can_change: true })
@@ -62,19 +62,20 @@ afterEach(() => {
 })
 
 describe('FamilyPage', () => {
-  it('offers to start a family or enter a code when there is none', async () => {
-    familyAnswer = { role: 'superadmin', family: null }
+  it('offers invites and an invite code at once when there is no family yet', async () => {
+    familyAnswer = { role: 'admin', family: null }
     renderElement(mountFamilyPage().el)
-    expect(await screen.findByRole('button', { name: 'Start a family' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Create invite' })).toBeInTheDocument()
     expect(screen.getByLabelText('Invite code')).toBeInTheDocument()
+    expect(screen.getByText(ROLE_DESCRIPTIONS.adult)).toBeInTheDocument()
   })
 
-  it('shows the server reason and keeps the role when the last superadmin steps down', async () => {
+  it('shows the server reason and keeps the role when the last admin steps down', async () => {
     renderElement(mountFamilyPage().el)
     const roleSelect = await screen.findByLabelText('Role of parent@example.com')
-    fireEvent.change(roleSelect, { target: { value: 'admin' } })
-    expect(await screen.findByText('A family needs at least one superadmin. Make someone else a superadmin first.')).toBeInTheDocument()
-    expect(roleSelect.value).toBe('superadmin')
+    fireEvent.change(roleSelect, { target: { value: 'adult' } })
+    expect(await screen.findByText('A family needs at least one admin. Make someone else an admin first.')).toBeInTheDocument()
+    expect(roleSelect.value).toBe('admin')
   })
 
   it('creates an invite and shows its link once', async () => {
@@ -87,7 +88,7 @@ describe('FamilyPage', () => {
     expect(await screen.findByDisplayValue(`${window.location.origin}/family/join?code=FGHJK78923`)).toBeInTheDocument()
   })
 
-  it("opens a member's settings and plugins for a superadmin", async () => {
+  it("opens a member's settings and plugins for an admin", async () => {
     renderElement(mountFamilyPage().el)
     fireEvent.click(await screen.findByText('Edit settings'))
     expect(await screen.findByText('Plugins for kid@example.com')).toBeInTheDocument()
@@ -99,7 +100,7 @@ describe('FamilyPage', () => {
   it('shows a child the members without controls', async () => {
     familyAnswer = { role: 'child', family: { ...FAMILY, invites: undefined } }
     renderElement(mountFamilyPage().el)
-    expect(await screen.findByText('To leave this family, ask a superadmin to remove you.')).toBeInTheDocument()
+    expect(await screen.findByText('To leave this family, ask an admin to remove you.')).toBeInTheDocument()
     expect(screen.queryByText('Create invite')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Role of kid@example.com')).not.toBeInTheDocument()
   })
@@ -113,11 +114,11 @@ describe('JoinFamilyPage', () => {
     expect(pendingFamilyInviteCode()).toBe('ABCDE23456')
   })
 
-  it('shows the family and role, then joins', async () => {
+  it('shows who invited them and the role, then joins', async () => {
     await loginWithPassword('kid@example.com', 'password')
     window.history.replaceState({}, '', '/family/join?code=ABCDE23456')
     renderElement(mountJoinFamilyPage().el)
-    expect(await screen.findByText('The Smiths')).toBeInTheDocument()
+    expect(await screen.findByText('parent@example.com invited you to their family')).toBeInTheDocument()
     fireEvent.click(screen.getByText('Join as Child'))
     await waitFor(() => expect(requests).toContainEqual({ path: '/api/family/join/', method: 'POST', body: { code: 'ABCDE23456' } }))
   })

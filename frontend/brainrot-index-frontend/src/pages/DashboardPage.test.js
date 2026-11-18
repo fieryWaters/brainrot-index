@@ -16,7 +16,7 @@ let role
 
 beforeEach(() => {
   requests = []
-  role = 'superadmin'
+  role = 'admin'
   document.cookie = 'csrftoken=test-csrf'
   vi.stubGlobal('fetch', vi.fn(async (url, options) => {
     const path = String(url)
@@ -100,7 +100,7 @@ describe('DashboardPage', () => {
     renderElement(mountDashboardPage().el)
     expect(await screen.findByLabelText('Ragebait threshold')).toBeDisabled()
     expect(screen.getByLabelText('Mode')).toBeDisabled()
-    expect(screen.getAllByText("Your family's superadmin manages these settings.").length).toBe(2)
+    expect(screen.getAllByText('An admin of your family manages these settings.').length).toBe(2)
     expect(screen.queryByText('Uninstall')).not.toBeInTheDocument()
   })
 

@@ -18,7 +18,7 @@ from classification.models import (
     UserSettings,
 )
 from classification.tests.helpers import bearer, create_user_with_token, create_verified_user, seen_post
-from families.models import ROLE_CHILD, ROLE_SUPERADMIN, Family, FamilyMember
+from families.models import ROLE_ADMIN, ROLE_CHILD, Family, FamilyMember
 from feedback.models import Feedback
 from store.models import PluginRating
 
@@ -201,9 +201,9 @@ class DeleteAccountTests(TestCase):
         plugin.refresh_from_db()
         self.assertIsNone(plugin.author)
 
-    def test_the_last_superadmin_of_a_family_with_others_must_hand_over_first(self):
+    def test_the_last_admin_of_a_family_with_others_must_hand_over_first(self):
         family = Family.objects.create(name='The Readers', created_by=self.user)
-        FamilyMember.objects.create(user=self.user, family=family, role=ROLE_SUPERADMIN)
+        FamilyMember.objects.create(user=self.user, family=family, role=ROLE_ADMIN)
         child = create_verified_user('kid@example.com')
         FamilyMember.objects.create(user=child, family=family, role=ROLE_CHILD)
 
@@ -211,12 +211,12 @@ class DeleteAccountTests(TestCase):
                                     content_type='application/json')
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('superadmin', response.json()['error'])
+        self.assertIn('admin', response.json()['error'])
         self.assertTrue(User.objects.filter(id=self.user.id).exists())
 
     def test_ratings_and_family_place_go_with_the_account(self):
         family = Family.objects.create(name='Just me', created_by=self.user)
-        FamilyMember.objects.create(user=self.user, family=family, role=ROLE_SUPERADMIN)
+        FamilyMember.objects.create(user=self.user, family=family, role=ROLE_ADMIN)
         plugin = Plugin.objects.filter(is_baseline=True).first()
         PluginRating.objects.create(user=self.user, plugin=plugin, stars=4, review='Useful.')
 

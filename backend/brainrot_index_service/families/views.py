@@ -1,4 +1,5 @@
-"""Creating a family, inviting and removing members, and changing roles.
+"""Inviting and removing family members, and changing roles. A family is
+made the first time someone with none creates an invite, with them as admin.
 Each member's settings and plugins are changed through the classification
 endpoints under /api/family/members/<user_id>/."""
 
@@ -20,7 +21,7 @@ from api.throttling import ChangeRateThrottle, UserRateThrottle
 from classification.models import MODE_CHILD
 from classification.views import settings_for_user
 
-from .models import ROLE_CHILD, ROLE_CHOICES, ROLE_SUPERADMIN, Family, FamilyInvite, FamilyMember
+from .models import ROLE_ADMIN, ROLE_CHILD, ROLE_CHOICES, Family, FamilyInvite, FamilyMember
 from .permissions import membership_of, role_of
 
 INVITE_LIFETIME = timedelta(days=7)
@@ -28,8 +29,8 @@ INVITE_LIFETIME = timedelta(days=7)
 INVITE_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
 INVITE_CODE_LENGTH = 10
 
-NOT_SUPERADMIN_MESSAGE = 'Only a superadmin of your family can do that.'
-LAST_SUPERADMIN_MESSAGE = 'A family needs at least one superadmin. Make someone else a superadmin first.'
+NOT_ADMIN_MESSAGE = 'Only an admin of your family can do that.'
+LAST_ADMIN_MESSAGE = 'A family needs at least one admin. Make someone else an admin first.'
 INVALID_INVITE_MESSAGE = 'This invite is not valid any more. Ask for a new one.'
 
 
@@ -39,10 +40,6 @@ class FamilyChangeThrottle(ChangeRateThrottle):
 
 class FamilyJoinThrottle(UserRateThrottle):
     scope = 'family_join'
-
-
-class FamilyNameSerializer(serializers.Serializer):
-    name = serializers.CharField(min_length=1, max_length=60)
 
 
 class RoleSerializer(serializers.Serializer):
@@ -85,17 +82,26 @@ def apply_child_settings(user):
     user_settings.save(update_fields=['mode', 'allow_reveal'])
 
 
-def superadmin_membership(user):
+def admin_membership(user):
     membership = membership_of(user)
-    if membership is None or membership.role != ROLE_SUPERADMIN:
-        raise PermissionDenied(NOT_SUPERADMIN_MESSAGE)
+    if membership is None or membership.role != ROLE_ADMIN:
+        raise PermissionDenied(NOT_ADMIN_MESSAGE)
     return membership
+
+
+def admin_membership_creating_family(user):
+    """The user's admin membership, first making them a family of their own
+    when they are in none."""
+    if membership_of(user) is None:
+        with transaction.atomic():
+            family = Family.objects.create(created_by=user)
+            FamilyMember.objects.create(user=user, family=family, role=ROLE_ADMIN)
+    return admin_membership(user)
 
 
 def family_data(membership):
     members = membership.family.members.select_related('user').order_by('joined_at', 'id')
     data = {
-        'name': membership.family.name,
         'members': [
             {
                 'user_id': member.user_id,
@@ -106,7 +112,7 @@ def family_data(membership):
             for member in members
         ],
     }
-    if membership.role == ROLE_SUPERADMIN:
+    if membership.role == ROLE_ADMIN:
         open_invites = membership.family.invites.filter(
             accepted_at__isnull=True, revoked_at__isnull=True, expires_at__gt=timezone.now(),
         ).order_by('created_at')
@@ -126,8 +132,8 @@ def family_response(user, response_status=status.HTTP_200_OK):
     return Response({'role': role_of(user), 'family': family}, status=response_status)
 
 
-def superadmin_count_after(family, changed_member, new_role):
-    """How many superadmins the family would have if changed_member had new_role
+def admin_count_after(family, changed_member, new_role):
+    """How many admins the family would have if changed_member had new_role
     (None for leaving). Locks the members, so two changes cannot both pass."""
     count = 0
     for member in FamilyMember.objects.select_for_update().filter(family=family):
@@ -135,27 +141,17 @@ def superadmin_count_after(family, changed_member, new_role):
             role = new_role
         else:
             role = member.role
-        if role == ROLE_SUPERADMIN:
+        if role == ROLE_ADMIN:
             count += 1
     return count
 
 
-@api_view(['GET', 'POST'])
+@api_view(['GET'])
 @permission_classes([IsAuthenticated])
 @throttle_classes([FamilyChangeThrottle])
 def family_detail(request):
-    """GET is the user's role and family (null when they have none); POST {name} creates one."""
-    if request.method == 'GET':
-        return family_response(request.user)
-
-    serializer = FamilyNameSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    if membership_of(request.user) is not None:
-        return Response({'error': 'You are already in a family.'}, status=status.HTTP_400_BAD_REQUEST)
-    with transaction.atomic():
-        family = Family.objects.create(name=serializer.validated_data['name'], created_by=request.user)
-        FamilyMember.objects.create(user=request.user, family=family, role=ROLE_SUPERADMIN)
-    return family_response(request.user, status.HTTP_201_CREATED)
+    """The user's role and family (null when they have none)."""
+    return family_response(request.user)
 
 
 @api_view(['POST'])
@@ -163,9 +159,9 @@ def family_detail(request):
 @throttle_classes([FamilyChangeThrottle])
 def create_invite(request):
     """POST {role} makes a single-use invite. The code is returned only here."""
-    membership = superadmin_membership(request.user)
     serializer = RoleSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
+    membership = admin_membership_creating_family(request.user)
     code = generate_invite_code()
     invite = FamilyInvite.objects.create(
         family=membership.family,
@@ -184,7 +180,7 @@ def create_invite(request):
 @permission_classes([IsAuthenticated])
 @throttle_classes([FamilyChangeThrottle])
 def revoke_invite(request, invite_id):
-    membership = superadmin_membership(request.user)
+    membership = admin_membership(request.user)
     invite = get_object_or_404(FamilyInvite, id=invite_id, family=membership.family, accepted_at__isnull=True)
     invite.revoked_at = timezone.now()
     invite.save(update_fields=['revoked_at'])
@@ -195,7 +191,7 @@ def revoke_invite(request, invite_id):
 @permission_classes([IsAuthenticated, HasVerifiedEmail])
 @throttle_classes([FamilyJoinThrottle])
 def preview_invite(request):
-    """POST {code}: which family the invite is for and with what role, before accepting."""
+    """POST {code}: who the invite is from and with what role, before accepting."""
     serializer = InviteCodeSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     invite = open_invite_for(serializer.validated_data['code'])
@@ -206,7 +202,6 @@ def preview_invite(request):
     else:
         invited_by = invite.created_by.email
     return Response({
-        'family_name': invite.family.name,
         'role': invite.role,
         'invited_by': invited_by,
         'already_in_a_family': membership_of(request.user) is not None,
@@ -250,12 +245,12 @@ def leave_family(request):
     if membership is None:
         return Response({'error': 'You are not in a family.'}, status=status.HTTP_400_BAD_REQUEST)
     if membership.role == ROLE_CHILD:
-        raise PermissionDenied('Ask a superadmin of your family to remove you.')
+        raise PermissionDenied('Ask an admin of your family to remove you.')
 
     with transaction.atomic():
         others_remain = FamilyMember.objects.filter(family=membership.family).exclude(id=membership.id).exists()
-        if others_remain and superadmin_count_after(membership.family, membership, None) == 0:
-            return Response({'error': LAST_SUPERADMIN_MESSAGE}, status=status.HTTP_400_BAD_REQUEST)
+        if others_remain and admin_count_after(membership.family, membership, None) == 0:
+            return Response({'error': LAST_ADMIN_MESSAGE}, status=status.HTTP_400_BAD_REQUEST)
         membership.delete()
     return family_response(request.user)
 
@@ -265,7 +260,7 @@ def leave_family(request):
 @throttle_classes([FamilyChangeThrottle])
 def family_member_detail(request, user_id):
     """PATCH {role} changes a member's role; DELETE removes them from the family."""
-    membership = superadmin_membership(request.user)
+    membership = admin_membership(request.user)
     member = get_object_or_404(FamilyMember, family=membership.family, user_id=user_id)
 
     if request.method == 'DELETE':
@@ -281,8 +276,8 @@ def family_member_detail(request, user_id):
     serializer.is_valid(raise_exception=True)
     new_role = serializer.validated_data['role']
     with transaction.atomic():
-        if superadmin_count_after(membership.family, member, new_role) == 0:
-            return Response({'error': LAST_SUPERADMIN_MESSAGE}, status=status.HTTP_400_BAD_REQUEST)
+        if admin_count_after(membership.family, member, new_role) == 0:
+            return Response({'error': LAST_ADMIN_MESSAGE}, status=status.HTTP_400_BAD_REQUEST)
         member.role = new_role
         member.save(update_fields=['role'])
         if new_role == ROLE_CHILD:

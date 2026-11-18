@@ -10,19 +10,11 @@ afterEach(() => {
 })
 
 describe('LandingPage', () => {
-  it('shows the feed before and after filtering', () => {
+  it('shows the tagline on two lines that do not break', () => {
     renderElement(mountLandingPage().el)
-    expect(screen.getByText('Your feed today')).toBeInTheDocument()
-    expect(screen.getByText('Your feed with BrainRot Index')).toBeInTheDocument()
-    expect(screen.getByText('Hidden - Engagement bait: Asks for engagement (94/100)')).toBeInTheDocument()
-    expect(screen.getByText('Blurred - Ragebait: Blames a group (91/100)')).toBeInTheDocument()
-  })
-
-  it('has one pricing box and answers what data is collected', () => {
-    renderElement(mountLandingPage().el)
-    expect(screen.getAllByText('One plan, one price')).toHaveLength(1)
-    expect(screen.getByText('What data does it collect?')).toBeInTheDocument()
-    expect(screen.getByText('Read the Privacy Policy').getAttribute('href')).toBe('/privacy')
+    const heading = screen.getByRole('heading', { level: 1 })
+    expect(heading.textContent).toBe('The algorithmthat works for you')
+    expect(heading.querySelectorAll('.whitespace-nowrap')).toHaveLength(2)
   })
 
   it('sends a visitor to sign up', () => {

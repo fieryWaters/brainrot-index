@@ -23,6 +23,22 @@ TRANSCRIPT_REPORT_NONE = 'none'
 TRANSCRIPT_REPORT_FAILED = 'failed'
 
 
+class QuotedPostSerializer(serializers.Serializer):
+    """Another post shown inside the seen one: an X quote or a Reddit crosspost."""
+
+    author = serializers.CharField(max_length=255, allow_blank=True, default='')
+    url = serializers.CharField(allow_blank=True, default='')
+    text = serializers.CharField(allow_blank=True, default='', trim_whitespace=False)
+
+
+class LinkPreviewSerializer(serializers.Serializer):
+    """The preview of a linked page: an X card or a Reddit link post. text is every line it shows."""
+
+    url = serializers.CharField(allow_blank=True, default='')
+    domain = serializers.CharField(max_length=255, allow_blank=True, default='')
+    text = serializers.CharField(allow_blank=True, default='', trim_whitespace=False)
+
+
 class SeenPostSerializer(serializers.Serializer):
     """A post or reply as the extension saw it in the feed."""
 
@@ -50,6 +66,9 @@ class SeenPostSerializer(serializers.Serializer):
     # Where the page plays the post's video: a Reddit post's HLS playlist, or an X post's own URL.
     # Blank for a post without a video, and for YouTube, whose every post is a video.
     video_url = serializers.CharField(allow_blank=True, default='')
+    # Null when the post shows none, as in older extensions.
+    quoted_post = QuotedPostSerializer(allow_null=True, default=None)
+    link_preview = LinkPreviewSerializer(allow_null=True, default=None)
     # A YouTube video's length as its tile shows it. Null when the tile shows none, as for Shorts.
     video_duration_seconds = serializers.IntegerField(min_value=0, allow_null=True, default=None)
 

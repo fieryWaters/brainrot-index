@@ -135,6 +135,9 @@ def store_post(seen_post):
             'community': seen_post['community'],
             'text': seen_post['text'],
             'image_urls': image_urls,
+            'quoted_post': seen_post['quoted_post'] or {},
+            'link_preview': seen_post['link_preview'] or {},
+            'video_url': seen_post['video_url'],
         },
     )
     if created:
@@ -163,11 +166,13 @@ def store_post_video(post, seen_post):
             'settled_at': timezone.now(),
         })
         return
-    if seen_post['video_url'] == '':
+    # Posts stored before video_url was kept have it blank; the reader's report stands in.
+    video_url = post.video_url or seen_post['video_url']
+    if video_url == '':
         return
-    if post.platform == PLATFORM_REDDIT and not reddit_video_url_is_allowed(seen_post['video_url']):
+    if post.platform == PLATFORM_REDDIT and not reddit_video_url_is_allowed(video_url):
         return
-    PostVideo.objects.get_or_create(post=post, defaults={'source_url': seen_post['video_url']})
+    PostVideo.objects.get_or_create(post=post, defaults={'source_url': video_url})
 
 
 def new_classification(post, plugin, plugin_version, post_ids_with_video):

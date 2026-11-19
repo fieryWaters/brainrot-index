@@ -25,6 +25,7 @@ from .inference import (
     OPENROUTER_BASE_URL,
     PLATFORM_NAMES,
     ModelOutcome,
+    describe_shown_content,
 )
 from .models import (
     CLASSIFICATION_DONE,
@@ -138,8 +139,7 @@ def describe_video_post(post, watched):
     lines = [f"Platform: {PLATFORM_NAMES[post.platform]}"]
     if post.community:
         lines.append(f"Community: {post.community}")
-    lines.append("Text:")
-    lines.append(post.text[:MAX_TEXT_CHARACTERS] or "(no text)")
+    lines.extend(describe_shown_content(post.text[:MAX_TEXT_CHARACTERS], post.quoted_post, post.link_preview))
     lines.append(f"Video shown: {watched}")
     return '\n'.join(lines)
 

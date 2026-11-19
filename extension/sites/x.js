@@ -14,13 +14,18 @@ function ownStatusPath(tweetElement) {
   return timestamp.closest("a").getAttribute("href");
 }
 
-// Image URLs at the best size X offers. Photos ("/media/" URLs) come in sizes chosen by the "name"
-// parameter, and "orig" is the upload. Video and GIF thumbnails appear both as an <img> in the photo
-// area and as the video's poster, so duplicates are dropped.
+// Image URLs at the best size X offers, in reading order: the tweet's photos, then those of the tweet
+// it quotes, then the picture of a link card. Photos ("/media/" URLs) come in sizes chosen by the
+// "name" parameter, and "orig" is the upload. Video and GIF thumbnails appear both as an <img> in the
+// photo area and as the video's poster, so duplicates are dropped. A video's photo area also holds the
+// avatar of the account it comes from, which is not part of the post.
 function imageUrls(tweetElement) {
   const urls = new Set();
-  for (const image of tweetElement.querySelectorAll('[data-testid="tweetPhoto"] img[src]')) {
+  for (const image of tweetElement.querySelectorAll('[data-testid="tweetPhoto"] img[src], [data-testid="card.wrapper"] img[src]')) {
     const url = new URL(image.src);
+    if (url.pathname.startsWith("/profile_images/")) {
+      continue;
+    }
     if (url.pathname.startsWith("/media/")) {
       url.searchParams.set("name", "orig");
     }
@@ -30,6 +35,67 @@ function imageUrls(tweetElement) {
     urls.add(video.poster);
   }
   return [...urls];
+}
+
+// A quoted tweet is a box inside the tweet that X makes clickable as a whole (role="link"). It holds
+// the second name line of the article. X never shows a quote inside a quote.
+function quotedTweetElement(tweetElement) {
+  const nameLines = tweetElement.querySelectorAll('[data-testid="User-Name"]');
+  if (nameLines.length < 2) {
+    return null;
+  }
+  return nameLines[1].closest('div[role="link"]');
+}
+
+// The first element matching selector that belongs to the tweet itself rather than to the tweet it quotes.
+function ownElement(tweetElement, quotedElement, selector) {
+  for (const element of tweetElement.querySelectorAll(selector)) {
+    if (quotedElement === null || !quotedElement.contains(element)) {
+      return element;
+    }
+  }
+  return null;
+}
+
+// The quoted tweet as the reader sees it: its author's handle, its text, and its address when the box
+// links to it (only its photos do). Its photos and video are sent with the tweet's own.
+function quotedPost(quotedElement) {
+  const nameLine = quotedElement.querySelector('[data-testid="User-Name"]');
+  const handleSpan = [...nameLine.querySelectorAll("span")].find((span) => span.textContent.startsWith("@"));
+  const author = handleSpan === undefined ? "" : handleSpan.textContent.slice(1);
+  const textElement = quotedElement.querySelector('[data-testid="tweetText"]');
+  let url = "";
+  const statusLink = quotedElement.querySelector(`a[href^="/${author}/status/"]`);
+  if (statusLink !== null) {
+    const [, linkAuthor, , statusId] = statusLink.getAttribute("href").split("/");
+    url = new URL(`/${linkAuthor}/status/${statusId}`, location.origin).href;
+  }
+  return {
+    author: author,
+    url: url,
+    text: textElement === null ? "" : textElement.textContent,
+  };
+}
+
+// A link card (or a poll, which X draws as a card) as the reader sees it. Its link's label is the
+// linked site's domain followed by the title; its text is every line it shows (the title, and the
+// description or the poll's choices when it shows them).
+function linkPreview(cardElement) {
+  const link = cardElement.querySelector("a[href]");
+  let url = "";
+  let domain = "";
+  if (link !== null) {
+    url = link.href;
+    domain = (link.getAttribute("aria-label") ?? "").split(" ")[0];
+  }
+  const lines = [];
+  for (const span of cardElement.querySelectorAll("span")) {
+    const line = span.textContent.trim();
+    if (span.querySelector("span") === null && line !== "" && line !== domain && !lines.includes(line)) {
+      lines.push(line);
+    }
+  }
+  return { url: url, domain: domain, text: lines.join("\n") };
 }
 
 // On a post's page X ends the replies with a section of unrelated posts under a "Discover more" heading,
@@ -90,7 +156,9 @@ const siteAdapter = {
       return null;
     }
     const [, author, , statusId] = statusPath.split("/");
-    const textElement = tweetElement.querySelector('[data-testid="tweetText"]');
+    const quotedElement = quotedTweetElement(tweetElement);
+    const textElement = ownElement(tweetElement, quotedElement, '[data-testid="tweetText"]');
+    const cardElement = ownElement(tweetElement, quotedElement, '[data-testid="card.wrapper"]');
     const record = {
       platform: "x",
       kind: "post",
@@ -101,8 +169,11 @@ const siteAdapter = {
       text: textElement === null ? "" : textElement.textContent,
       image_urls: imageUrls(tweetElement),
       video_url: "",
+      quoted_post: quotedElement === null ? null : quotedPost(quotedElement),
+      link_preview: cardElement === null ? null : linkPreview(cardElement),
     };
-    // A tweet showing a video or GIF sends its own address; the server finds the video's files from it.
+    // A tweet showing a video or GIF, its own or its quoted tweet's, sends its own address; the server
+    // finds the video's files from it.
     if (tweetElement.querySelector('[data-testid="videoPlayer"], video') !== null) {
       record.video_url = record.url;
     }

@@ -166,9 +166,12 @@ def x_embed_token(post_id):
 
 
 def x_video_file(post_id):
-    """(URL, length in seconds) of the smallest MP4 file of the post's video."""
-    response = get_from_site(X_EMBED_ENDPOINT, params={'id': post_id, 'token': x_embed_token(post_id)})
-    for media in response.json().get('mediaDetails', []):
+    """(URL, length in seconds) of the smallest MP4 file of the post's video or
+    GIF, or, when the post has none, of the post it quotes, whose video the
+    reader sees inside it."""
+    embedded_post = get_from_site(X_EMBED_ENDPOINT, params={'id': post_id, 'token': x_embed_token(post_id)}).json()
+    media_shown = embedded_post.get('mediaDetails', []) + embedded_post.get('quoted_tweet', {}).get('mediaDetails', [])
+    for media in media_shown:
         video_info = media.get('video_info')
         if video_info is None:
             continue

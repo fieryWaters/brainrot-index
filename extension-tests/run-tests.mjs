@@ -1,7 +1,7 @@
 // End-to-end tests of the extension in headed Brave against live Reddit, X and YouTube.
 //
 // Usage:
-//   node run-tests.mjs [connect] [reddit] [x] [youtube] [transcripts] [judgments] [consent]
+//   node run-tests.mjs [connect] [reddit] [x] [youtube] [transcripts] [judgments] [consent] [capture]
 //     Runs the named groups (all when none are named) against the mock server, which it starts.
 //   BRAINROT_SERVER=https://brainrot.jacob-waters.com BRAINROT_TOKEN=<token> node run-tests.mjs
 //     Runs against a real server. The connect test is skipped (the real site needs a login), and the
@@ -1928,6 +1928,76 @@ async function runJudgmentsGroup() {
   });
 }
 
+// The capture group checks what the X adapter sends for tweets saved from x.com (fixtures/x-tweets.html,
+// see save-x-snapshots.mjs): everything the reader sees, the quoted tweet and link card included.
+// Nothing is asked of X: the tweets' images and videos are refused.
+
+const X_FIXTURE_URL = "https://x.com/home";
+
+function xFixturePage() {
+  const tweets = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", "x-tweets.html"), "utf8");
+  // The saved tweets carry no styling, so icons and media are kept small or the page is very long.
+  const styles = "svg { width: 20px; height: 20px; } img, video { max-width: 200px; max-height: 200px; }";
+  return `<!doctype html><html><head><meta charset="utf-8"><title>X (saved tweets)</title><style>${styles}</style></head><body><main>${tweets}</main></body></html>`;
+}
+
+function sentPostById(classifyCalls) {
+  return new Map(allSentPosts(classifyCalls).map((post) => [post.post_id, post]));
+}
+
+async function testCaptureOfSavedTweets(page, classifyCalls) {
+  await page.goto(X_FIXTURE_URL, { waitUntil: "domcontentloaded" });
+  await scrollDown(page, 12);
+  await waitUntil(() => sentPostById(classifyCalls).size >= 9, 20000);
+  const sent = sentPostById(classifyCalls);
+  check(sent.size === 9, `every saved tweet is sent (${sent.size} of 9: ${[...sent.keys()].join(", ")})`);
+
+  const plain = sent.get("2123188349783715872");
+  check(plain?.quoted_post === null && plain?.link_preview === null && plain?.video_url === "",
+    "a text-only tweet sends no quote, card or video");
+
+  const quote = sent.get("2122924448861008163");
+  check(quote?.text === "I wrote this 18 months ago", "a quote tweet's own text is its own: " + quote?.text);
+  check(quote?.quoted_post?.author === "elonmusk"
+    && quote.quoted_post.text.startsWith("To be clear here, the Verizon communication system"),
+  "a quote tweet sends the quoted tweet's author and text: " + JSON.stringify(quote?.quoted_post).slice(0, 160));
+
+  const card = sent.get("2123117805570580933");
+  check(card?.text === "Start exploring:", "a card tweet's own text");
+  check(card?.link_preview?.domain === "blog.google" && card.link_preview.text === "Genie 4 is now available"
+    && card.link_preview.url === "https://t.co/fYTJeBDOde",
+  "a link card sends its domain, title and link: " + JSON.stringify(card?.link_preview));
+  check(card?.image_urls.some((url) => url.includes("/card_img/")), "and its picture");
+
+  const quotedVideo = sent.get("2123077080887984588");
+  check(quotedVideo?.quoted_post?.author === "MarioNawfal", "a quote of a video tweet names the quoted author");
+  check(quotedVideo?.video_url === "https://x.com/chrisheatherly/status/2123077080887984588",
+    "and sends the quoting tweet's address for the quoted video");
+  check(quotedVideo?.image_urls.every((url) => !url.includes("/profile_images/")),
+    "an avatar inside a video is not sent as an image: " + JSON.stringify(quotedVideo?.image_urls));
+
+  const gif = sent.get("2123143850210533408");
+  check(gif?.video_url === "https://x.com/sundarpichai/status/2123143850210533408", "a GIF is sent as a video");
+
+  const photoQuote = sent.get("2123108654597697792");
+  check(photoQuote?.text === "He was right." && photoQuote.quoted_post?.url === "https://x.com/BowTiedPhys/status/2120170112695386542",
+    "a quoted tweet's address is sent when its photo links to it: " + photoQuote?.quoted_post?.url);
+  check(photoQuote?.image_urls.length === 2, "the photos of the tweet and of its quote are both sent");
+
+  check(sent.get("2123109385757204821")?.image_urls.length === 3, "every photo of a tweet with three is sent");
+}
+
+async function runCaptureGroup() {
+  await withBrave(makeFreshProfileDir("capture"), {}, async ({ context, serviceWorker, extensionId }) => {
+    await serveStandInPages(context, { [X_FIXTURE_URL]: xFixturePage() });
+    await context.route(/^https:\/\/(pbs|video|abs)\.twimg\.com\//, (route) => route.fulfill({ status: 404, body: "" }));
+    const classifyCalls = recordClassifyCalls(context);
+    const page = context.pages()[0] ?? (await context.newPage());
+    await connectExtension(context, serviceWorker, extensionId, "saved tweets profile");
+    await runTest("13a. capture: saved X tweets are sent whole", () => testCaptureOfSavedTweets(page, classifyCalls));
+  });
+}
+
 // The consent group runs on the stand-in sites and the mock server. Nothing may reach the server
 // before the reader presses "Agree and continue", and Disconnect withdraws the agreement.
 
@@ -2054,7 +2124,7 @@ function pgrepFinds(pattern) {
 }
 
 const requestedGroups = process.argv.slice(2);
-const groupsToRun = requestedGroups.length > 0 ? requestedGroups : ["connect", "reddit", "x", "youtube", "transcripts", "judgments", "consent"];
+const groupsToRun = requestedGroups.length > 0 ? requestedGroups : ["connect", "reddit", "x", "youtube", "transcripts", "judgments", "consent", "capture"];
 const mockServer = usingMockServer ? await startMockServer(MOCK_PORT) : null;
 console.log("server: " + serverAddress + (usingMockServer ? " (mock)" : ""));
 try {
@@ -2082,6 +2152,9 @@ try {
   }
   if (groupsToRun.includes("consent")) {
     await runConsentGroup();
+  }
+  if (groupsToRun.includes("capture")) {
+    await runCaptureGroup();
   }
 } finally {
   if (mockServer !== null) {

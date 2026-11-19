@@ -37,6 +37,9 @@ def seen_post(post_id, text='A photo of my garden this morning.', **overrides):
         'community': 'r/gardening',
         'text': text,
         'image_urls': [],
+        'video_url': '',
+        'quoted_post': None,
+        'link_preview': None,
     }
     post.update(overrides)
     return post

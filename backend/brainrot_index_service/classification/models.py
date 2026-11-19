@@ -103,7 +103,17 @@ class Post(models.Model):
     author = models.CharField(max_length=255, blank=True, default='')
     community = models.CharField(max_length=255, blank=True, default='')
     text = models.TextField(blank=True, default='')
+    # Every image the reader sees in the post, its quoted post and its link preview, in reading order.
     image_urls = models.JSONField(default=list, blank=True)
+    # Another post shown inside this one, as an X quote or a Reddit crosspost:
+    # {author, url, text}. Empty when there is none.
+    quoted_post = models.JSONField(default=dict, blank=True)
+    # The preview of a linked page, as an X card or a Reddit link post:
+    # {url, domain, text}, text being every line the preview shows. Empty when there is none.
+    link_preview = models.JSONField(default=dict, blank=True)
+    # Where the page plays a video shown in the post (see SeenPostSerializer.video_url).
+    # Blank when the post shows none. Every YouTube post is a video and leaves it blank.
+    video_url = models.TextField(blank=True, default='')
     first_seen_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

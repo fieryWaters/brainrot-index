@@ -78,9 +78,28 @@ def system_prompt(plugin_version):
     return plugin_version.rubric_prompt + '\n\n' + response_instructions(plugin_version)
 
 
-def describe_post(platform, community, kind, text, parent_text, image_count, transcript=None):
+def describe_shown_content(text, quoted_post, link_preview):
+    """What the post shows in words: its own text, then the post it quotes and
+    the preview of the page it links to, each empty when there is none."""
+    lines = ["Text:", text[:MAX_TEXT_CHARACTERS] or "(no text)"]
+    if quoted_post:
+        lines.append(f"Quoted post, by {quoted_post['author'] or 'an unknown author'}:")
+        lines.append(quoted_post['text'][:MAX_TEXT_CHARACTERS] or "(no text)")
+    if link_preview:
+        if link_preview['domain']:
+            lines.append(f"Link preview, from {link_preview['domain']}:")
+        else:
+            lines.append("Link preview:")
+        lines.append(link_preview['text'][:MAX_TEXT_CHARACTERS] or "(no text)")
+    return lines
+
+
+def describe_post(platform, community, kind, text, parent_text, image_count, transcript=None,
+                  quoted_post=None, link_preview=None, has_video=False):
     """The post as the model reads it. parent_text is None when a reply's
-    parent post is unknown. transcript is None for a post that is not a video."""
+    parent post is unknown. transcript is None for a post that is not a video.
+    has_video says the post shows a video or GIF, which this model cannot
+    watch; the images include its thumbnail."""
     lines = [f"Platform: {PLATFORM_NAMES[platform]}"]
     if community:
         lines.append(f"Community: {community}")
@@ -93,8 +112,9 @@ def describe_post(platform, community, kind, text, parent_text, image_count, tra
         lines.append("Kind: post")
 
     lines.append(f"Images attached: {image_count}")
-    lines.append("Text:")
-    lines.append(text[:MAX_TEXT_CHARACTERS] or "(no text)")
+    if has_video:
+        lines.append("Video: yes (its thumbnail is among the images)")
+    lines.extend(describe_shown_content(text, quoted_post, link_preview))
     if transcript is not None:
         lines.append("Transcript:")
         lines.append(transcript)
@@ -204,7 +224,7 @@ def run_classification(classification):
         parent_text = stored_parent_text(post)
     post_description = describe_post(
         post.platform, post.community, post.kind, post.text, parent_text, len(images_with_data),
-        transcript_for_model(post))
+        transcript_for_model(post), post.quoted_post, post.link_preview, post.video_url != '')
 
     messages_to_send = build_messages(
         plugin_version, post_description, [data_url for _, data_url in images_with_data])

@@ -54,6 +54,31 @@ class ClassifyEndpointTests(TestCase):
             'platform': 'reddit', 'post_id': 'p1', 'status': 'done', 'action': 'allow', 'reasons': [],
         }]})
 
+    def test_text_filters_read_the_quoted_post_link_preview_and_video(self):
+        self.classify([
+            seen_post(
+                '2123117805570580933', text='Start exploring:', platform='x', community='',
+                link_preview={'url': 'https://t.co/fYTJeBDOde', 'domain': 'blog.google', 'text': 'Genie 4 is now available'}),
+            seen_post(
+                '2122924448861008163', text='I wrote this 18 months ago', platform='x', community='',
+                quoted_post={'author': 'elonmusk', 'url': '', 'text': 'To be clear here, the Verizon communication system'}),
+            seen_post(
+                '2123143850210533408', text='Happy WedNEsday!', platform='x', community='',
+                video_url='https://x.com/sundarpichai/status/2123143850210533408'),
+        ])
+        with patch('classification.inference.requests.post', side_effect=fake_model_scoring(10)) as model_call:
+            run_worker_until_idle()
+        described_posts = {call.kwargs['json']['messages'][1]['content'][0]['text'] for call in model_call.call_args_list}
+
+        self.assertIn('Text:\nStart exploring:\nLink preview, from blog.google:\nGenie 4 is now available', '\n\n'.join(described_posts))
+        self.assertIn(
+            'Text:\nI wrote this 18 months ago\nQuoted post, by elonmusk:\nTo be clear here, the Verizon communication system',
+            '\n\n'.join(described_posts))
+        self.assertIn('Video: yes (its thumbnail is among the images)\nText:\nHappy WedNEsday!', '\n\n'.join(described_posts))
+        stored = Post.objects.get(post_id='2123117805570580933')
+        self.assertEqual(stored.link_preview['domain'], 'blog.google')
+        self.assertEqual(stored.quoted_post, {})
+
     def test_new_classifications_use_the_latest_rubric_versions(self):
         self.classify([seen_post('p1')])
         versions = set(Classification.objects.filter(post__post_id='p1').values_list(

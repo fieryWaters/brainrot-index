@@ -18,6 +18,7 @@ from classification.models import (
     VIDEO_READY,
     Classification,
     Plugin,
+    Post,
     PostVideo,
     UserPlugin,
 )
@@ -149,6 +150,8 @@ class VideoFilterTests(TestCase):
         self.classify([seen_reddit_video('p1')])
 
         self.assertFalse(PostVideo.objects.exists())
+        # The post still records where its video plays, for a video filter turned on later.
+        self.assertEqual(Post.objects.get(post_id='p1').video_url, REDDIT_PLAYLIST)
 
     def test_a_reddit_video_is_downloaded_once_and_judged_on_its_clip(self):
         self.classify([seen_reddit_video('p1')])
@@ -233,6 +236,30 @@ class VideoFilterTests(TestCase):
         post_video = PostVideo.objects.get(post__post_id='2072832093684678915')
         self.assertEqual(post_video.status, VIDEO_READY)
         self.assertEqual(post_video.duration_seconds, 41)
+
+    def test_the_video_of_a_quoted_x_post_is_watched_with_the_quoting_post(self):
+        self.classify([seen_post(
+            '2123077080887984588', platform='x', text='Yeah they better find that new CEO real quick',
+            video_url='https://x.com/chrisheatherly/status/2123077080887984588',
+            quoted_post={'author': 'MarioNawfal', 'url': '', 'text': 'Nvidia confirms Huang will NOT return as CEO!'})])
+        # As the embed endpoint answered for this post: no media of its own, the video in the quoted post.
+        embed = {'text': 'Yeah they better find that new CEO real quick', 'quoted_tweet': {'mediaDetails': [
+            {'type': 'video', 'video_info': {'duration_millis': 33767, 'variants': [
+                {'content_type': 'video/mp4', 'bitrate': 832000, 'url': 'https://video.twimg.com/amplify_video/2/vid/480x270/d.mp4'},
+                {'content_type': 'video/mp4', 'bitrate': 256000, 'url': 'https://video.twimg.com/amplify_video/2/vid/320x180/e.mp4'},
+            ]}}]}}
+        with (
+            patch('classification.video_sources.requests.get', return_value=http_response(200, json_body=embed)),
+            patch('classification.video_sources.subprocess.run', side_effect=ffmpeg_writing_a_clip) as ffmpeg,
+        ):
+            self.assertTrue(download_next_pending_video())
+        self.assertIn('https://video.twimg.com/amplify_video/2/vid/320x180/e.mp4', ffmpeg.call_args_list[0].args[0])
+        self.assertEqual(PostVideo.objects.get(post__post_id='2123077080887984588').status, VIDEO_READY)
+
+        with patch('classification.video_judging.requests.post', side_effect=model_watching(1, 4, 4)) as model_call:
+            self.assertTrue(classify_next_pending())
+        described_post = model_call.call_args.kwargs['json']['messages'][1]['content'][1]['text']
+        self.assertIn('Quoted post, by MarioNawfal:\nNvidia confirms Huang will NOT return as CEO!', described_post)
 
     def test_a_short_youtube_video_is_watched_by_url_without_any_download(self):
         self.classify([seen_youtube_video('vid00000001', 95)])

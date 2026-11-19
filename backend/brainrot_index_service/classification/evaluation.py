@@ -62,6 +62,12 @@ def example_from_post(example_id, source, post, images_dir):
         'community': post.community,
         'text': post.text,
     }
+    if post.quoted_post:
+        example['quoted_post'] = post.quoted_post
+    if post.link_preview:
+        example['link_preview'] = post.link_preview
+    if post.video_url:
+        example['has_video'] = True
     if post.kind == POST_KIND_REPLY:
         parent_text = stored_parent_text(post)
         if parent_text is not None:
@@ -97,6 +103,9 @@ def example_messages(example, plugin_version, images_dir):
         example['text'],
         example.get('parent_text'),
         len(image_urls),
+        quoted_post=example.get('quoted_post'),
+        link_preview=example.get('link_preview'),
+        has_video=example.get('has_video', False),
     )
     return build_messages(plugin_version, post_description, image_urls)
 

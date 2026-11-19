@@ -19,6 +19,8 @@ import { mountJoinFamilyPage } from './pages/JoinFamilyPage.js'
 import { mountInstallPage } from './pages/InstallPage.js'
 import { mountPrivacyPage } from './pages/PrivacyPage.js'
 import { mountTermsPage } from './pages/TermsPage.js'
+import { mountContactPage } from './pages/ContactPage.js'
+import { mountInboxPage } from './pages/InboxPage.js'
 import { mountNotFoundPage } from './pages/NotFoundPage.js'
 
 // Build the persistent shell and mount it into #root
@@ -39,6 +41,7 @@ register('/verify-email', mountVerifyEmailPage, { title: 'Verify email' })
 register('/install', mountInstallPage, { title: 'Install the extension' })
 register('/privacy', mountPrivacyPage, { title: 'Privacy Policy' })
 register('/terms', mountTermsPage, { title: 'Terms of Service' })
+register('/contact', mountContactPage, { title: 'Contact us' })
 register('/account', mountAccountPage, { requiresAuth: true, title: 'Account' })
 register('/dashboard', mountDashboardPage, { requiresAuth: true, title: 'Dashboard' })
 register('/billing/success', mountBillingSuccessPage, { requiresAuth: true })
@@ -49,6 +52,9 @@ register('/store/:slug', mountPluginPage, { requiresAuth: true, title: 'Plugin s
 register('/family', mountFamilyPage, { requiresAuth: true, title: 'Family' })
 // Open to people who are signed out, so an invite link can ask them to sign in.
 register('/family/join', mountJoinFamilyPage, { title: 'Join a family' })
+// The owner's inbox; the server refuses everyone else.
+register('/inbox', mountInboxPage, { requiresAuth: true, title: 'Inbox' })
+register('/inbox/:itemId', mountInboxPage, { requiresAuth: true, title: 'Inbox' })
 
 // Centralized auth gate: protected routes redirect to '/' when there's no
 // session. Reads live state so a fresh refreshSession() on boot is honored.

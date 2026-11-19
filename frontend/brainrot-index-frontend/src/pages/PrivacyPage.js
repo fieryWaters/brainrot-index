@@ -21,7 +21,8 @@ collect, why, and your choices.</p>
   sends us the posts you see on supported sites (text, images, video, and who posted them).</li>
   <li><strong>Your account.</strong> Your email address, your name if you sign in with Google, your settings, your consent choices, and
   the reports and feedback you send.</li>
-  <li><strong>Feedback when not signed in.</strong> What you send with the Feedback button, and an email address if you give one for a reply.</li>
+  <li><strong>Feedback and messages.</strong> What you send with the Feedback button or the contact form, and the name and email address
+  you give for a reply.</li>
   <li><strong>Payments.</strong> Payments are handled by our payment provider.</li>
   <li><strong>Technical data.</strong> IP addresses, cookies and similar records used to sign you in and keep accounts secure.</li>
 </ul>
@@ -47,7 +48,7 @@ Limited Use requirements.</p>
 </ul>
 
 <h2>Contact</h2>
-<p>For questions and requests, use the Feedback button on any page.</p>
+<p>For questions and requests, use the <a href="/contact">contact form</a>.</p>
 `
 
 export function mountPrivacyPage() {

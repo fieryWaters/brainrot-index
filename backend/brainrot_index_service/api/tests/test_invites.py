@@ -80,7 +80,7 @@ class EmailSignupInviteTests(TestCase):
     def test_a_failed_email_is_logged_as_an_error_and_signup_still_succeeds(self):
         invite = InviteCode.objects.create(note='friend')
         with patch('api.emails.threading.Thread', side_effect=run_thread_now), \
-                patch('api.emails.send_mail', side_effect=RuntimeError('domain not verified')), \
+                patch('api.emails.EmailMultiAlternatives.send', side_effect=RuntimeError('domain not verified')), \
                 self.assertLogs('api.emails', level='ERROR') as logs:
             response = Client().post(
                 reverse('auth_signup'),

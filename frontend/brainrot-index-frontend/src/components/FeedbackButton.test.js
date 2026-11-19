@@ -81,13 +81,6 @@ describe('FeedbackButton when not signed in', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Thumbs up' }))
     expect(screen.getByLabelText('Reply email').classList.contains('hidden')).toBe(true)
   })
-
-  it('opens from outside, as the footer Contact link does', () => {
-    const feedbackButton = createFeedbackButton()
-    renderElement(feedbackButton.el)
-    feedbackButton.open()
-    expect(screen.getByText('How is BrainRot Index working for you?').parentElement.classList.contains('hidden')).toBe(false)
-  })
 })
 
 describe('FeedbackButton failures', () => {

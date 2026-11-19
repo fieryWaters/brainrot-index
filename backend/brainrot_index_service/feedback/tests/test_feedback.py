@@ -119,7 +119,7 @@ class FeedbackAlertTests(TestCase):
         with patch('api.emails.threading.Thread', side_effect=run_thread_now):
             return self.client.post(reverse('create_feedback'), body, content_type='application/json', **extra)
 
-    def test_each_report_emails_the_admin_once_with_the_text_sender_and_admin_link(self):
+    def test_each_report_emails_the_admin_once_with_the_text_sender_and_inbox_link(self):
         user, token = create_user_with_token('reader@example.com')
         response = self.send(
             {'source': 'extension', 'platform': 'x', 'post_id': '185', 'expected_action': 'hide', 'text': 'Missed this one'},
@@ -133,7 +133,8 @@ class FeedbackAlertTests(TestCase):
         self.assertIn('Source: Extension', alert.body)
         self.assertIn('Missed this one', alert.body)
         feedback_id = response.json()['id']
-        self.assertIn(f'https://brainrotindex.com/admin/feedback/feedback/{feedback_id}/change/', alert.body)
+        self.assertIn(f'https://brainrotindex.com/inbox/feedback-{feedback_id}', alert.body)
+        self.assertEqual(alert.reply_to, ['reader@example.com'])
 
     def test_someone_not_signed_in_can_leave_a_reply_address(self):
         response = self.send({'source': 'site', 'text': 'How do I cancel?', 'reply_email': 'visitor@example.com'})
@@ -143,6 +144,7 @@ class FeedbackAlertTests(TestCase):
         self.assertIsNone(feedback.user)
         self.assertEqual(feedback.reply_email, 'visitor@example.com')
         self.assertIn('From: visitor@example.com (not signed in)', mail.outbox[0].body)
+        self.assertEqual(mail.outbox[0].reply_to, ['visitor@example.com'])
 
     def test_an_invalid_reply_address_is_refused(self):
         response = self.send({'source': 'site', 'text': 'Hi', 'reply_email': 'not an address'})
@@ -150,7 +152,7 @@ class FeedbackAlertTests(TestCase):
         self.assertEqual(len(mail.outbox), 0)
 
     def test_a_failed_alert_is_logged_and_the_report_is_still_stored(self):
-        with patch('api.emails.send_mail', side_effect=RuntimeError('domain not verified')), \
+        with patch('api.emails.EmailMultiAlternatives.send', side_effect=RuntimeError('domain not verified')), \
                 self.assertLogs('api.emails', level='ERROR') as logs:
             response = self.send({'source': 'site', 'rating': 'up'})
 

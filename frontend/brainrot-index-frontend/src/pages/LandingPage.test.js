@@ -31,7 +31,7 @@ describe('Legal pages', () => {
     expect(screen.getByRole('heading', { name: 'Privacy Policy' })).toBeInTheDocument()
     expect(screen.getAllByText(/the extension\s+sends us the posts you see on supported sites/).length).toBeGreaterThan(0)
     expect(screen.getByRole('heading', { name: 'Who we share it with' })).toBeInTheDocument()
-    expect(screen.getByText('For questions and requests, use the Feedback button on any page.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'contact form' }).getAttribute('href')).toBe('/contact')
   })
 
   it('state the price and how to cancel', () => {

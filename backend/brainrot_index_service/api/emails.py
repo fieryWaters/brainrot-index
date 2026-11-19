@@ -2,7 +2,7 @@ import logging
 import threading
 
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 
 logger = logging.getLogger(__name__)
@@ -15,16 +15,14 @@ def _build_frontend_url(path):
     return f"{base}{path}"
 
 
-def _send_async(*, subject, recipient, text_body, html_body, log_tag):
+def _send_async(*, subject, recipient, text_body, html_body, log_tag, reply_to=None):
     def _run():
         try:
-            send_mail(
-                subject=subject,
-                message=text_body,
-                from_email=None,
-                recipient_list=[recipient],
-                html_message=html_body,
-            )
+            message = EmailMultiAlternatives(
+                subject=subject, body=text_body, to=[recipient], reply_to=reply_to)
+            if html_body:
+                message.attach_alternative(html_body, 'text/html')
+            message.send()
             logger.info("%s sent to %s", log_tag, recipient)
         except Exception as error:
             # Sending runs after the response, so this log line is the only
@@ -87,7 +85,8 @@ def send_password_reset(user, raw_token):
 
 
 def send_feedback_alert(feedback):
-    """Tells the admin a feedback report arrived; the site has no support mailbox."""
+    """Tells the admin a feedback report or contact message arrived; the site
+    has no support mailbox. Replying to the email answers the sender."""
     if not settings.ADMIN_EMAIL:
         logger.warning("ADMIN_EMAIL is not set - skipping alert for feedback %s", feedback.id)
         return
@@ -99,10 +98,23 @@ def send_feedback_alert(feedback):
     else:
         sender = "someone not signed in, no reply address"
 
+    # The address the sender typed comes first: the contact form asks for one
+    # even from someone signed in.
+    if feedback.reply_email:
+        reply_to = [feedback.reply_email]
+    elif feedback.user is not None:
+        reply_to = [feedback.user.email]
+    else:
+        reply_to = []
+
     details = [
         f"From: {sender}",
         f"Source: {feedback.get_source_display()}",
     ]
+    if feedback.name:
+        details.append(f"Name: {feedback.name}")
+    if feedback.subject:
+        details.append(f"Subject: {feedback.subject}")
     if feedback.rating:
         details.append(f"Rating: {feedback.get_rating_display()}")
     if feedback.platform:
@@ -114,17 +126,22 @@ def send_feedback_alert(feedback):
     if feedback.page_url:
         details.append(f"Page: {feedback.page_url}")
 
-    admin_url = _build_frontend_url(f'/admin/feedback/feedback/{feedback.id}/change/')
+    inbox_url = _build_frontend_url(f'/inbox/feedback-{feedback.id}')
+    if feedback.subject:
+        subject = f"Contact {feedback.id}: {feedback.subject} - BrainRot Index"
+    else:
+        subject = f"Feedback {feedback.id} - BrainRot Index"
     text_body = (
         "New feedback\n\n"
         + "\n".join(details)
         + f"\n\n{feedback.text or '(no text)'}\n\n"
-        + f"Open it in the admin: {admin_url}\n"
+        + f"Open it in the inbox: {inbox_url}\n"
     )
     _send_async(
-        subject=f"Feedback {feedback.id} - BrainRot Index",
+        subject=subject,
         recipient=settings.ADMIN_EMAIL,
         text_body=text_body,
         html_body=None,
         log_tag="feedback alert",
+        reply_to=reply_to,
     )

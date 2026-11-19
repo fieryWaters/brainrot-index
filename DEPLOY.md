@@ -136,11 +136,13 @@ listing is described in `docs/webstore/README.md`.
 
 ## Contact
 
-There is no support mailbox. People reach the owner with the Feedback button on
-every page (the footer's Contact link opens it); someone not signed in may add
-an email address for a reply. Each report is stored and emailed, with a link to
-it in the admin, to `ADMIN_EMAIL` through the normal transactional mail setup.
-A failed email is logged and never fails the report.
+There is no support mailbox. People reach the owner with the contact form at
+`/contact` (the footer's Contact link) or the Feedback button on every page;
+someone not signed in may add an email address for a reply to feedback, and
+the contact form always asks for one. Each message is stored in the inbox
+(`/inbox`, see README.md) and emailed, with a link to its inbox item, to
+`ADMIN_EMAIL` through the normal transactional mail setup, with Reply-To set
+to the sender's address. A failed email is logged and never fails the message.
 
 ## Payments (Stripe)
 

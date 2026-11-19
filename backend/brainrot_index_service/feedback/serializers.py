@@ -15,3 +15,19 @@ class FeedbackSerializer(serializers.ModelSerializer):
         if not data.get('text', '').strip() and not data.get('expected_action') and not data.get('rating'):
             raise serializers.ValidationError('Give a rating, text, an expected_action, or more than one.')
         return data
+
+
+class ContactSerializer(serializers.Serializer):
+    """A message from the contact form. The email is where the owner replies."""
+
+    name = serializers.CharField(max_length=100, allow_blank=True, default='')
+    email = serializers.EmailField()
+    subject = serializers.CharField(max_length=200)
+    message = serializers.CharField()
+
+
+class ResolveSerializer(serializers.Serializer):
+    """What fixed an inbox item. Some items need no fix, so the commit may be blank."""
+
+    commit = serializers.CharField(max_length=64, allow_blank=True, default='')
+    note = serializers.CharField()

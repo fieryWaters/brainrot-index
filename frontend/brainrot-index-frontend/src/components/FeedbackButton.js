@@ -3,7 +3,7 @@
 // box, and Send posts the rating and note, with the current page address, to
 // /api/feedback/. Someone not signed in may add an email address for a reply.
 // The server stamps each report with the site's commit and emails it to the owner.
-// This is the site's only contact channel; the footer's Contact link opens it.
+// Longer messages go through the contact form at /contact.
 
 import { apiFetch } from '../lib/api.js'
 import { getState } from '../lib/auth.js'
@@ -147,5 +147,5 @@ export function createFeedbackButton() {
 
   const widget = el('div', 'fixed bottom-4 right-4 z-50',
     el('div', 'flex flex-col items-end', panel, toggleButton))
-  return { el: widget, open: () => setPanelOpen(true) }
+  return { el: widget }
 }

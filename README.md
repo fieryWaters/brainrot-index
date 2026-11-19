@@ -52,6 +52,10 @@ without a subscription; `billing.access.account_has_access` decides it. See
 | `POST /api/billing/portal/` | session | a Stripe Customer Portal address |
 | `POST /api/stripe/webhook/` | Stripe signature | subscription and invoice events |
 | `POST /api/feedback/` | session, extension token, or none (20 an hour per address) | a problem report, stamped with the running commit |
+| `POST /api/contact/` | session or none (shares the feedback limit) | `{name, email, subject, message}` from the contact form |
+| `GET /api/inbox/?status=open\|resolved\|all` | the owner (as for `/admin/`) | every inbox item with full context, newest first |
+| `GET /api/inbox/<item id>/` | the owner | one item, such as `feedback-12` or `judgment-34` |
+| `POST /api/inbox/<item id>/resolve/` | the owner | `{commit, note}`; the commit may be blank |
 | `GET /api/onboarding/` | session | `{email_verified, extension_connected, feed_opened}` for the setup checklist |
 | `POST /api/account/change-password/` | session | `{current_password, new_password}`; other sessions end |
 | `POST /api/account/sign-out-everywhere/` | session | ends every session and disconnects every extension |
@@ -60,15 +64,22 @@ without a subscription; `billing.access.account_has_access` decides it. See
 
 ## Working through feedback
 
-Reports from the site's Feedback button and from the extension are `Feedback` rows,
-stamped with the site and extension commits they were written against.
+The inbox holds every `Feedback` row (the Feedback button, extension reports
+and the contact form) and every reader's thumbs up or down on a post
+(`PostJudgment`), newest first. Each item carries the sender, the message, the
+post with its images, video and transcript, what every filter decided (score,
+threshold, reasoning, and each rubric criterion with whether it was met), and
+the site and extension commits it was written against.
 
-1. Read the open ones: `docker compose exec backend python manage.py list_feedback`
-   (`--all` includes resolved ones). The admin at `/admin/` filters on Resolved too.
-2. Fix the problem and commit.
-3. Mark the reports resolved with that commit:
-   `docker compose exec backend python manage.py resolve_feedback 17 20 --commit <hash> --note "what was wrong"`.
-   Reports that are not fixed stay open. Rows are never deleted.
+- The owner reads it at `/inbox` on the site, signed in with Google as
+  `ADMIN_EMAIL`; each alert email links to its item there.
+- An agent on the server reads the same items as JSON:
+  `docker compose exec backend python manage.py list_inbox` (`--status resolved`
+  or `--status all` for the rest).
+- Once fixed and committed, mark items resolved with that commit:
+  `docker compose exec backend python manage.py resolve_inbox feedback-17 judgment-20 --commit <hash> --note "what was wrong"`.
+  `--commit` may be left out when nothing needed fixing. Items are never deleted.
+  A judgment the reader changes after it was resolved is open again.
 
 ## Layout
 

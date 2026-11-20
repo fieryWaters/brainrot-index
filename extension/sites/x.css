@@ -1,18 +1,19 @@
 /* X-specific additions to content/post-decoration.css. */
 
-/* The thumbs at a tweet's top right, just before the "More" menu. Sized like X's icon
-   buttons, which overhang the 20 px name row; their colour is copied from X's icons by sites/x.js. */
-div:has([data-testid="caret"]) > .brainrot-index-judge {
+/* The thumbs at a tweet's top right, just before the "More" menu (placed and marked by sites/x.js).
+   Sized like X's icon buttons, which overhang the 20 px name row; their colour is copied from X's
+   icons by sites/x.js. */
+.brainrot-index-judge[data-x-menu-row] {
   margin-right: 4px;
 }
 
-div:has([data-testid="caret"]) > .brainrot-index-judge .brainrot-index-judge-button {
+.brainrot-index-judge[data-x-menu-row] .brainrot-index-judge-button {
   width: 34px;
   height: 34px;
   margin: -7px 0;
 }
 
-div:has([data-testid="caret"]) > .brainrot-index-judge .brainrot-index-judge-icon {
+.brainrot-index-judge[data-x-menu-row] .brainrot-index-judge-icon {
   width: 18.75px;
   height: 18.75px;
   stroke-width: 1.75;

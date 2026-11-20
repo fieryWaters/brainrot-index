@@ -2025,7 +2025,94 @@ async function testCaptureOfRedditReplyParents(page, classifyCalls) {
     "a nested comment answers the comment above it: " + sent.get("t1_19svscwucg63p")?.parent_post_id);
 }
 
+// Two post pages saved as X showed them to a signed-out browser in its redesigned markup, which has no
+// data-testid attributes (fixtures/x-new-*.html): a quote tweet with its replies, and a reply that
+// continues a thread, under the tweet it answers.
+const X_NEW_QUOTE_URL = "https://x.com/elonmusk/status/2122924448861008163";
+const X_NEW_THREAD_URL = "https://x.com/GoogleAI/status/2123117805570580933";
+
+function xNewFixturePage(fileName) {
+  const main = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", fileName), "utf8");
+  const styles = "svg { width: 20px; height: 20px; } img, video { max-width: 200px; max-height: 200px; }";
+  return `<!doctype html><html><head><meta charset="utf-8"><title>X (saved redesigned page)</title><style>${styles}</style></head><body>${main}</body></html>`;
+}
+
+// Every tweet is either hidden behind the extension's line, or shown with the thumbs just before its
+// "More" menu.
+async function checkRedesignedTweetsTreated(page, tweetCount) {
+  check(await waitUntil(() => page.evaluate((count) => {
+    const tweets = [...document.querySelectorAll("article")].filter((article) => article.parentElement.closest("article") === null);
+    return tweets.length === count && tweets.every((tweet) =>
+      tweet.dataset.brainrotIndexAction === "hide" || tweet.querySelector(".brainrot-index-judge") !== null);
+  }, tweetCount), 60000), "every tweet is hidden or has thumbs: " + JSON.stringify(await page.evaluate(() =>
+    [...document.querySelectorAll("article")].filter((article) => article.parentElement.closest("article") === null)
+      .map((tweet) => (tweet.dataset.brainrotIndexAction ?? "none") + "/" + (tweet.querySelector(".brainrot-index-judge") !== null)))));
+  const placements = await page.evaluate(() => [...document.querySelectorAll("article")]
+    .filter((article) => article.parentElement.closest("article") === null)
+    .map((tweet) => {
+      if (tweet.dataset.brainrotIndexAction === "hide") {
+        return tweet.previousElementSibling?.classList.contains("brainrot-index-notice") ? "hidden under the line" : "hidden without a line";
+      }
+      const control = tweet.querySelector(".brainrot-index-judge");
+      const nextButton = control.nextElementSibling?.matches('button[aria-haspopup="menu"]')
+        ? control.nextElementSibling : control.nextElementSibling?.querySelector('button[aria-haspopup="menu"]');
+      return nextButton?.getAttribute("aria-label") === "More" ? "thumbs before More" : "thumbs elsewhere";
+    }));
+  check(placements.every((placement) => placement === "hidden under the line" || placement === "thumbs before More"),
+    "hidden tweets are under the line and shown tweets have thumbs before More: " + placements.join(", "));
+}
+
+async function testCaptureOfRedesignedQuote(page, classifyCalls) {
+  await page.goto(X_NEW_QUOTE_URL, { waitUntil: "domcontentloaded" });
+  await waitUntil(() => sentPostById(classifyCalls).has("2122925807018663993"), 20000);
+  const sent = sentPostById(classifyCalls);
+  const quote = sent.get("2122924448861008163");
+  check(quote?.kind === "post" && quote.text === "I wrote this 18 months ago", "the open quote tweet is a post with its own text");
+  check(quote?.quoted_post?.url === "https://x.com/elonmusk/status/1895129237478162621"
+    && quote.quoted_post.author === "elonmusk" && quote.quoted_post.text.startsWith("To be clear here"),
+  "it sends the quoted tweet's address, author and text: " + JSON.stringify(quote?.quoted_post).slice(0, 160));
+  const reply = sent.get("2122924690801033450");
+  check(reply?.kind === "reply" && reply.parent_post_id === "2122924448861008163" && reply.text === "What a shocker",
+    "a reply answers the open post");
+  check(reply?.image_urls.length === 1 && reply.image_urls[0].includes("/media/"), "and sends its photo, not avatars");
+  await checkRedesignedTweetsTreated(page, 4);
+}
+
+async function testCaptureOfRedesignedThread(page, classifyCalls) {
+  await page.goto(X_NEW_THREAD_URL, { waitUntil: "domcontentloaded" });
+  await waitUntil(() => sentPostById(classifyCalls).has("2123133681820946590"), 20000);
+  const sent = sentPostById(classifyCalls);
+  const threadPost = sent.get("2123117803775426737");
+  check(threadPost?.kind === "post" && threadPost.video_url === "https://x.com/GoogleAI/status/2123117803775426737",
+    "the tweet the thread starts with is a post, with its video");
+  const open = sent.get("2123117805570580933");
+  check(open?.kind === "reply" && open.parent_post_id === "2123117803775426737",
+    "the open post answers the tweet above it: " + open?.parent_post_id);
+  check(open?.link_preview?.domain === "blog.google" && open.link_preview.text === "Genie 4 is now available",
+    "and sends its link card: " + JSON.stringify(open?.link_preview));
+  check(sent.get("2123133681820946590")?.parent_post_id === "2123117805570580933", "a reply below answers the open post");
+  await checkRedesignedTweetsTreated(page, 5);
+}
+
+// The redesigned pages get a browser of their own: the browser keeps each answer for its session, so
+// a tweet also saved in the other markup would not be sent again.
+async function runRedesignedXTests() {
+  await withBrave(makeFreshProfileDir("capture-redesign"), {}, async ({ context, serviceWorker, extensionId }) => {
+    await serveStandInPages(context, {
+      [X_NEW_QUOTE_URL]: xNewFixturePage("x-new-quote-status.html"),
+      [X_NEW_THREAD_URL]: xNewFixturePage("x-new-thread-status.html"),
+    });
+    await context.route(/^https:\/\/(pbs|video|abs)\.twimg\.com\//, (route) => route.fulfill({ status: 404, body: "" }));
+    const classifyCalls = recordClassifyCalls(context);
+    const page = context.pages()[0] ?? (await context.newPage());
+    await connectExtension(context, serviceWorker, extensionId, "redesigned X profile");
+    await runTest("13d. capture: X's redesigned markup, a quote tweet and its replies", () => testCaptureOfRedesignedQuote(page, classifyCalls));
+    await runTest("13e. capture: X's redesigned markup, a reply continuing a thread", () => testCaptureOfRedesignedThread(page, classifyCalls));
+  });
+}
+
 async function runCaptureGroup() {
+  await runRedesignedXTests();
   await withBrave(makeFreshProfileDir("capture"), {}, async ({ context, serviceWorker, extensionId }) => {
     await serveStandInPages(context, {
       [X_FIXTURE_URL]: xFixturePage(),

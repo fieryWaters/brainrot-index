@@ -32,7 +32,8 @@ OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 INFERENCE_SOURCE_OPENROUTER = 'openrouter'
 INFERENCE_SOURCE_LOCAL = 'local'
 
-MAX_IMAGES_PER_POST = 4
+# Every image the reader sees, up to a full Reddit gallery (20 pages).
+MAX_IMAGES_PER_POST = 20
 MAX_TEXT_CHARACTERS = 6000
 MAX_PARENT_TEXT_CHARACTERS = 1000
 # The opening of a video's transcript is enough to judge it and keeps each call cheap.
@@ -90,7 +91,8 @@ def describe_shown_content(text, quoted_post, link_preview):
             lines.append(f"Link preview, from {link_preview['domain']}:")
         else:
             lines.append("Link preview:")
-        lines.append(link_preview['text'][:MAX_TEXT_CHARACTERS] or "(no text)")
+        # A preview showing no text, as a Reddit link post's, is described by its address.
+        lines.append(link_preview['text'][:MAX_TEXT_CHARACTERS] or link_preview['url'])
     return lines
 
 

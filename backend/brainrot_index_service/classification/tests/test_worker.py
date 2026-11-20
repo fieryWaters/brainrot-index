@@ -186,7 +186,7 @@ class WorkerTests(TestCase):
         ):
             self.assertTrue(classify_next_pending())
 
-        self.assertEqual(fetch.call_args.args[0], 'https://pbs.twimg.com/media/garden?format=png&name=small')
+        self.assertEqual(fetch.call_args.args[0], 'https://pbs.twimg.com/media/garden?format=png&name=medium')
         sent_image_url = model_call.call_args.kwargs['json']['messages'][1]['content'][1]['image_url']['url']
         self.assertTrue(sent_image_url.startswith('data:image/jpeg;base64,'))
         classification.refresh_from_db()
@@ -197,6 +197,22 @@ class WorkerTests(TestCase):
             self.assertTrue(download_next_pending_image())
         self.assertEqual(fetch.call_args.args[0], x_photo_url)
         self.assertEqual(PostImage.objects.get(post=classification.post).status, IMAGE_DOWNLOADED)
+
+    def test_every_screenshot_of_a_gallery_is_sent_readable(self):
+        # As the owner's seven-screenshot post: a phone screenshot is tall and narrow.
+        gallery_urls = [f'https://i.redd.it/screenshot{page}.jpeg' for page in range(7)]
+        self.queue(seen_post('p1', image_urls=gallery_urls))
+
+        with (
+            patch('classification.inference.requests.post', side_effect=fake_model_scoring(10)) as model_call,
+            patch('classification.images.requests.get', return_value=image_download_response(png_bytes(1080, 2400))),
+        ):
+            self.assertTrue(classify_next_pending())
+
+        sent_images = model_call.call_args.kwargs['json']['messages'][1]['content'][1:]
+        self.assertEqual(len(sent_images), 7)
+        first_image = Image.open(io.BytesIO(base64.b64decode(sent_images[0]['image_url']['url'].split(',', 1)[1])))
+        self.assertEqual(first_image.size, (768, 1707))
 
     def test_archived_images_are_sent_downscaled(self):
         classification = self.queue(seen_post('p1', image_urls=['https://i.redd.it/garden.png']))
@@ -214,7 +230,7 @@ class WorkerTests(TestCase):
         sent_image_url = model_call.call_args.kwargs['json']['messages'][1]['content'][1]['image_url']['url']
         self.assertTrue(sent_image_url.startswith('data:image/jpeg;base64,'))
         sent_image = Image.open(io.BytesIO(base64.b64decode(sent_image_url.split(',', 1)[1])))
-        self.assertEqual(sent_image.size, (768, 384))
+        self.assertEqual(sent_image.size, (1536, 768))
 
         classification.refresh_from_db()
         stored_image_part = classification.prompt[1]['content'][1]

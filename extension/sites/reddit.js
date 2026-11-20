@@ -5,9 +5,11 @@
 
 const POST_OR_COMMENT_SELECTOR = "shreddit-post, shreddit-comment";
 
-// Media inside a post, excluding avatars, community icons and emoji.
+// Media inside a post, excluding avatars, community icons and emoji. A text post can carry images in
+// its body.
 const POST_MEDIA_IMAGE_SELECTOR = [
   '[slot="post-media-container"] img',
+  '[slot="text-body"] img',
   '[slot^="page-"] img',
   '[slot="poster"] img',
   '[slot="thumbnail"] img',
@@ -38,6 +40,9 @@ function postImageUrls(postElement) {
   if (postElement.getAttribute("post-type") === "image") {
     return [postElement.getAttribute("content-href")];
   }
+  if (postElement.getAttribute("post-type") === "gallery") {
+    return galleryImageUrls(postElement);
+  }
   const imageUrls = new Set();
   for (const image of postElement.querySelectorAll(POST_MEDIA_IMAGE_SELECTOR)) {
     const url = bestImageUrl(image);
@@ -55,12 +60,41 @@ function ownCommentBody(commentElement) {
   return commentElement.querySelector(`[id="${commentId}-comment-rtjson-content"]`);
 }
 
-// The address of a video post's HLS playlist, which its player carries; "" for any other post.
+// One image per page of a gallery, at its original size. Each page holds the picture three times: a
+// blurred background, a resized copy, and the upload itself on i.redd.it.
+function galleryImageUrls(postElement) {
+  const imageUrls = [];
+  for (const page of postElement.querySelectorAll('[slot^="page-"]')) {
+    const images = [...page.querySelectorAll("img")];
+    const original = images.find((image) => image.src.startsWith("https://i.redd.it/")) ?? images.at(-1);
+    if (original !== undefined && bestImageUrl(original) !== "") {
+      imageUrls.push(bestImageUrl(original));
+    }
+  }
+  return imageUrls;
+}
+
+// Where the post's player plays from: a video post's HLS playlist, or the MP4 copy Reddit plays for
+// an animated GIF. "" for any other post.
 function postVideoUrl(postElement) {
-  if (postElement.getAttribute("post-type") !== "video") {
+  const postType = postElement.getAttribute("post-type");
+  if (postType !== "video" && postType !== "gif") {
     return "";
   }
   return postElement.querySelector("shreddit-player")?.getAttribute("src") ?? "";
+}
+
+// The page a link post links to. The post's title is its headline; the feed shows the domain and,
+// shortened, the address.
+function linkPreview(postElement) {
+  if (postElement.getAttribute("post-type") !== "link") {
+    return null;
+  }
+  return {
+    url: postElement.getAttribute("content-href") ?? "",
+    domain: postElement.getAttribute("domain") ?? "",
+    text: "",
+  };
 }
 
 function extractFeedPost(postElement) {
@@ -84,6 +118,8 @@ function extractFeedPost(postElement) {
     text: text,
     image_urls: postImageUrls(postElement),
     video_url: postVideoUrl(postElement),
+    quoted_post: null,
+    link_preview: linkPreview(postElement),
   };
 }
 

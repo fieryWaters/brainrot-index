@@ -8,8 +8,9 @@ OpenRouter it is watched whole, so longer ones are skipped.
 Reddit and X: the provider fetches only YouTube URLs, so the worker downloads
 the opening VIDEO_WATCH_SECONDS of the video once, keeps that clip, and sends
 it to the model inline. ffmpeg reads only as much of the stream as the clip
-needs. A Reddit post's page carries its video's HLS playlist; X lists a
-video's files through the public endpoint its embedded posts use.
+needs. A Reddit post's page carries its video's HLS playlist, or for an
+animated GIF an MP4 copy; X lists a video's files through the public endpoint
+its embedded posts use.
 
 The sites must never see a flood from the server's address: each video is
 downloaded once whatever the number of readers, only while a reader's video
@@ -35,9 +36,11 @@ from .models import PLATFORM_REDDIT, PLATFORM_X, VIDEO_MISSING, VIDEO_READY
 
 logger = logging.getLogger(__name__)
 
-# Only Reddit's video host, so a post cannot make the server fetch arbitrary URLs.
-# X's video files come from its own endpoint, never from the page.
+# Only Reddit's video host, and the host of the MP4 copies Reddit plays for animated
+# GIFs, so a post cannot make the server fetch arbitrary URLs. X's video files come
+# from its own endpoint, never from the page.
 ALLOWED_REDDIT_VIDEO_HOST_SUFFIX = 'v.redd.it'
+REDDIT_GIF_HOST = 'preview.redd.it'
 ALLOWED_X_VIDEO_HOST = 'video.twimg.com'
 X_EMBED_ENDPOINT = 'https://cdn.syndication.twimg.com/tweet-result'
 DOWNLOADED_PLATFORMS = [PLATFORM_REDDIT, PLATFORM_X]
@@ -70,6 +73,8 @@ def reddit_video_url_is_allowed(url):
     host = (parsed_url.hostname or '').lower()
     if parsed_url.scheme != 'https':
         return False
+    if host == REDDIT_GIF_HOST:
+        return True
     return host == ALLOWED_REDDIT_VIDEO_HOST_SUFFIX or host.endswith('.' + ALLOWED_REDDIT_VIDEO_HOST_SUFFIX)
 
 
@@ -141,6 +146,14 @@ def hls_stream_urls(master_url):
         if not reddit_video_url_is_allowed(stream_url):
             raise VideoUnavailable('The playlist points off Reddit')
     return stream_urls
+
+
+def reddit_stream_urls(source_url):
+    """What ffmpeg reads for a Reddit post: a video post's playlist leads to its
+    streams, and a GIF's MP4 copy is read as it is."""
+    if urlparse(source_url).hostname == REDDIT_GIF_HOST:
+        return [source_url]
+    return hls_stream_urls(source_url)
 
 
 def base_36(number):
@@ -236,7 +249,7 @@ def download_video(post_video):
     post = post_video.post
     try:
         if post.platform == PLATFORM_REDDIT:
-            stream_urls = hls_stream_urls(post_video.source_url)
+            stream_urls = reddit_stream_urls(post_video.source_url)
         else:
             video_file_url, post_video.duration_seconds = x_video_file(post.post_id)
             stream_urls = [video_file_url]

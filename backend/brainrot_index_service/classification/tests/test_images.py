@@ -35,10 +35,10 @@ class ImageHostAllowlistTests(TestCase):
 
 
 class ModelRenditionTests(TestCase):
-    def test_x_photos_are_fetched_at_small_size(self):
+    def test_x_photos_are_fetched_at_medium_size(self):
         self.assertEqual(
             model_rendition_url('https://pbs.twimg.com/media/ABC?format=jpg&name=orig'),
-            'https://pbs.twimg.com/media/ABC?format=jpg&name=small',
+            'https://pbs.twimg.com/media/ABC?format=jpg&name=medium',
         )
 
     def test_other_urls_are_used_as_sent(self):

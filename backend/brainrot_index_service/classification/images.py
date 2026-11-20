@@ -22,7 +22,10 @@ MAX_IMAGE_BYTES = 20 * 1024 * 1024
 DOWNLOAD_CHUNK_BYTES = 256 * 1024
 DOWNLOAD_HEADERS = {'User-Agent': 'Mozilla/5.0 (compatible; BrainrotIndex/1.0)'}
 
-MODEL_IMAGE_MAX_SIDE = 768
+# Small enough to keep model calls cheap, large enough that the text in a phone
+# screenshot stays readable: the shorter side at most 768 pixels, the longer at most 2048.
+MODEL_IMAGE_SHORT_SIDE = 768
+MODEL_IMAGE_LONG_SIDE = 2048
 MODEL_IMAGE_JPEG_QUALITY = 85
 
 
@@ -92,14 +95,14 @@ def download_image(post_image):
 def model_rendition_url(url):
     """A URL of the image small enough for the model. X photos come in sizes
     chosen by the "name" parameter, and the extension asks for "orig", often
-    several megabytes, so the model gets "small" instead. Other URLs are used
+    several megabytes, so the model gets "medium" (at most 1200 pixels) instead. Other URLs are used
     as sent: Reddit's resized copies are signed URLs that cannot be derived
     from the original."""
     parsed_url = urlparse(url)
     if parsed_url.hostname != 'pbs.twimg.com' or not parsed_url.path.startswith('/media/'):
         return url
     query = dict(parse_qsl(parsed_url.query))
-    query['name'] = 'small'
+    query['name'] = 'medium'
     return urlunparse(parsed_url._replace(query=urlencode(query)))
 
 
@@ -122,8 +125,8 @@ def model_image_data_url(post_image):
 
 
 def stored_image_data_url(post_image):
-    """The stored original as a JPEG data URL whose longest side is at most 768
-    pixels, or None when the stored bytes are not an image Pillow can read."""
+    """The stored original as a JPEG data URL of the model's size, or None when
+    the stored bytes are not an image Pillow can read."""
     try:
         with post_image.file.open('rb') as image_file:
             return image_file_data_url(image_file)
@@ -133,12 +136,15 @@ def stored_image_data_url(post_image):
 
 
 def image_file_data_url(image_file):
-    """An image file (a path or an open binary file) as a JPEG data URL whose
-    longest side is at most 768 pixels. Raises OSError when the bytes are not
-    an image Pillow can read."""
+    """An image file (a path or an open binary file) as a JPEG data URL,
+    shrunk to MODEL_IMAGE_SHORT_SIDE and MODEL_IMAGE_LONG_SIDE. Raises OSError
+    when the bytes are not an image Pillow can read."""
     with Image.open(image_file) as picture:
         small_picture = picture.convert('RGB')
-        small_picture.thumbnail((MODEL_IMAGE_MAX_SIDE, MODEL_IMAGE_MAX_SIDE))
+        short_side = min(small_picture.size)
+        long_side = max(small_picture.size)
+        scale = min(1, MODEL_IMAGE_SHORT_SIDE / short_side, MODEL_IMAGE_LONG_SIDE / long_side)
+        small_picture.thumbnail((round(small_picture.width * scale), round(small_picture.height * scale)))
         jpeg_buffer = io.BytesIO()
         small_picture.save(jpeg_buffer, format='JPEG', quality=MODEL_IMAGE_JPEG_QUALITY)
 

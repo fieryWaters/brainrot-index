@@ -19,7 +19,7 @@ Chrome ignores `--load-extension`.
     npm test -- transcripts  # the extension asks YouTube for no captions, on a stand-in for youtube.com (no real YouTube)
     npm test -- judgments    # thumbs and details box, on stand-ins for X, Reddit and YouTube (no real site)
     npm test -- consent      # consent screen: nothing sent before agreeing, Not now, Agree, Disconnect (no real site)
-    npm test -- capture      # what is sent for tweets saved from x.com: quotes, link cards, GIFs, videos (no real site)
+    npm test -- capture      # what is sent for tweets and Reddit posts saved from the real sites (no real site)
 
 The connect group opens https://brainrot.jacob-waters.com without signing in, even with the mock
 server, because the extension's default address is the only one it adds its listener to on install.

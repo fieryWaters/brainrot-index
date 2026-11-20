@@ -1987,14 +1987,51 @@ async function testCaptureOfSavedTweets(page, classifyCalls) {
   check(sent.get("2123109385757204821")?.image_urls.length === 3, "every photo of a tweet with three is sent");
 }
 
+// One Reddit post of each kind, saved from www.reddit.com (fixtures/reddit-posts.html, see
+// save-reddit-snapshots.mjs).
+const REDDIT_FIXTURE_URL = "https://www.reddit.com/r/popular/";
+
+function redditFixturePage() {
+  const posts = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", "reddit-posts.html"), "utf8");
+  const styles = "svg { width: 20px; height: 20px; } img, video { max-width: 200px; max-height: 200px; }";
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Reddit (saved posts)</title><style>${styles}</style></head><body><main>${posts}</main></body></html>`;
+}
+
+async function testCaptureOfSavedRedditPosts(page, classifyCalls) {
+  await page.goto(REDDIT_FIXTURE_URL, { waitUntil: "domcontentloaded" });
+  await scrollDown(page, 8);
+  await waitUntil(() => sentPostById(classifyCalls).has("t3_1y0kkyz"), 20000);
+  const sent = sentPostById(classifyCalls);
+
+  const gallery = sent.get("t3_1y0wbm2");
+  check(JSON.stringify(gallery?.image_urls) === JSON.stringify(["https://i.redd.it/gn5tajdqop2i1.jpeg", "https://i.redd.it/npt1pb0rop2i1.jpeg"]),
+    "a gallery sends each page once, at its original size: " + JSON.stringify(gallery?.image_urls));
+
+  const link = sent.get("t3_1y0kkyz");
+  check(link?.link_preview?.domain === "wlwt.com"
+    && link.link_preview.url === "https://www.wlwt.com/article/fiona-the-hippo-dead-cincinnati-zoo/74481391",
+  "a link post sends the page it links to: " + JSON.stringify(link?.link_preview));
+  check(link?.image_urls.length === 1, "and its thumbnail");
+
+  const video = sent.get("t3_1y0wb4x");
+  check(video?.video_url.startsWith("https://v.redd.it/hf26ajrinp2i1/HLSPlaylist.m3u8"), "a video post sends its playlist");
+  check(video?.link_preview === null && video?.image_urls.length === 1, "and its poster, without a link preview");
+
+  check(JSON.stringify(sent.get("t3_1y0r2gs")?.image_urls) === JSON.stringify(["https://i.redd.it/er56h7ygao2i1.jpeg"]),
+    "an image post sends its upload");
+  check(sent.get("t3_1y0dls4")?.text.includes("Link: https://finance.yahoo.com/"), "a text post with media sends its body");
+}
+
 async function runCaptureGroup() {
   await withBrave(makeFreshProfileDir("capture"), {}, async ({ context, serviceWorker, extensionId }) => {
-    await serveStandInPages(context, { [X_FIXTURE_URL]: xFixturePage() });
+    await serveStandInPages(context, { [X_FIXTURE_URL]: xFixturePage(), [REDDIT_FIXTURE_URL]: redditFixturePage() });
     await context.route(/^https:\/\/(pbs|video|abs)\.twimg\.com\//, (route) => route.fulfill({ status: 404, body: "" }));
+    await context.route(/^https:\/\/([a-z-]+\.)*(redd\.it|redditmedia\.com|redditstatic\.com)\//, (route) => route.fulfill({ status: 404, body: "" }));
     const classifyCalls = recordClassifyCalls(context);
     const page = context.pages()[0] ?? (await context.newPage());
     await connectExtension(context, serviceWorker, extensionId, "saved tweets profile");
     await runTest("13a. capture: saved X tweets are sent whole", () => testCaptureOfSavedTweets(page, classifyCalls));
+    await runTest("13b. capture: saved Reddit posts are sent whole", () => testCaptureOfSavedRedditPosts(page, classifyCalls));
   });
 }
 

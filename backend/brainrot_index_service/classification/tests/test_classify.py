@@ -65,6 +65,10 @@ class ClassifyEndpointTests(TestCase):
             seen_post(
                 '2123143850210533408', text='Happy WedNEsday!', platform='x', community='',
                 video_url='https://x.com/sundarpichai/status/2123143850210533408'),
+            seen_post(
+                't3_1xzprsd', text='Kids as young as 5 already expect girls to give up their own fun to help the group.',
+                link_preview={'url': 'https://www.nyu.edu/about/news-publications/news/2026/november/whom-do-we-expect.html',
+                              'domain': 'nyu.edu', 'text': ''}),
         ])
         with patch('classification.inference.requests.post', side_effect=fake_model_scoring(10)) as model_call:
             run_worker_until_idle()
@@ -75,6 +79,9 @@ class ClassifyEndpointTests(TestCase):
             'Text:\nI wrote this 18 months ago\nQuoted post, by elonmusk:\nTo be clear here, the Verizon communication system',
             '\n\n'.join(described_posts))
         self.assertIn('Video: yes (its thumbnail is among the images)\nText:\nHappy WedNEsday!', '\n\n'.join(described_posts))
+        self.assertIn(
+            'Link preview, from nyu.edu:\nhttps://www.nyu.edu/about/news-publications/news/2026/november/whom-do-we-expect.html',
+            '\n\n'.join(described_posts))
         stored = Post.objects.get(post_id='2123117805570580933')
         self.assertEqual(stored.link_preview['domain'], 'blog.google')
         self.assertEqual(stored.quoted_post, {})

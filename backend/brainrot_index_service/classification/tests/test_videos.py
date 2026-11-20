@@ -261,6 +261,18 @@ class VideoFilterTests(TestCase):
         described_post = model_call.call_args.kwargs['json']['messages'][1]['content'][1]['text']
         self.assertIn('Quoted post, by MarioNawfal:\nNvidia confirms Huang will NOT return as CEO!', described_post)
 
+    def test_a_reddit_gif_is_watched_from_its_mp4_copy(self):
+        gif_copy = 'https://preview.redd.it/bs84o9vpbf2i1.gif?width=400&format=mp4&s=1d5a5be00826bda'
+        self.classify([seen_reddit_video('p1', video_url=gif_copy)])
+        with (
+            patch('classification.video_sources.requests.get') as site,
+            patch('classification.video_sources.subprocess.run', side_effect=ffmpeg_writing_a_clip) as ffmpeg,
+        ):
+            self.assertTrue(download_next_pending_video())
+        site.assert_not_called()
+        self.assertIn(gif_copy, ffmpeg.call_args_list[0].args[0])
+        self.assertEqual(PostVideo.objects.get(post__post_id='p1').status, VIDEO_READY)
+
     def test_a_short_youtube_video_is_watched_by_url_without_any_download(self):
         self.classify([seen_youtube_video('vid00000001', 95)])
         self.assertEqual(PostVideo.objects.get(post__post_id='vid00000001').status, VIDEO_READY)

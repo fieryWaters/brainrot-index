@@ -269,7 +269,7 @@ def login_view(request):
 
     sign_in(request, authed, SIGN_IN_PASSWORD)
     logger.info("login: user=%s ip=%s", authed.id, ip)
-    return Response(build_session_payload(authed), status=200)
+    return Response(build_session_payload(request), status=200)
 
 
 @api_view(['POST'])
@@ -402,4 +402,4 @@ def password_reset_confirm(request):
 
     sign_in(request, user, SIGN_IN_PASSWORD)
     logger.info("password_reset_confirm: user=%s", user.id)
-    return Response(build_session_payload(user), status=200)
+    return Response(build_session_payload(request), status=200)

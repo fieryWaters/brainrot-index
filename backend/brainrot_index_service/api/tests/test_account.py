@@ -13,6 +13,7 @@ from classification.models import (
     ExtensionToken,
     Plugin,
     Post,
+    PostJudgment,
     PostSubmission,
     UserPlugin,
     UserSettings,
@@ -190,6 +191,32 @@ class DeleteAccountTests(TestCase):
         self.assertTrue(Classification.objects.filter(post__post_id='t3_shared').exists())
         self.assertEqual(Client().get(reverse('extension_config'), **bearer(self.token)).status_code, 401)
         self.assertIn(self.client.get(reverse('current_session')).status_code, (401, 403))
+
+    def test_feedback_and_thumbs_on_posts_stay_without_who_sent_them(self):
+        feedback = Feedback.objects.create(
+            user=self.user, source='contact', name='Reader', reply_email='reader@home.example', subject='Hi',
+            text='The slider is confusing.', site_commit='abc1234')
+        post = Post.objects.create(platform='x', post_id='185', kind='post', url='https://x.com/a/status/185', text='LOUD')
+        filter_results = [{'plugin': 'shouting', 'version': 1, 'score': 60, 'threshold': 50, 'flagged': True}]
+        judgment = PostJudgment.objects.create(
+            user=self.user, post=post, verdict='wrong', shown_action='hide', details='Fine, just loud.',
+            filter_results=filter_results)
+
+        response = self.client.post(reverse('account_delete'), {'email': 'reader@example.com'},
+                                    content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        feedback.refresh_from_db()
+        self.assertIsNone(feedback.user)
+        self.assertEqual(feedback.name, '')
+        self.assertEqual(feedback.reply_email, '')
+        self.assertEqual(feedback.text, 'The slider is confusing.')
+        judgment.refresh_from_db()
+        self.assertIsNone(judgment.user)
+        self.assertEqual(judgment.verdict, 'wrong')
+        self.assertEqual(judgment.details, 'Fine, just loud.')
+        self.assertEqual(judgment.post, post)
+        self.assertEqual(judgment.filter_results, filter_results)
 
     def test_a_published_plugin_stays_without_its_author(self):
         plugin = Plugin.objects.create(slug='my-filter', name='My filter', description='Mine.', author=self.user)

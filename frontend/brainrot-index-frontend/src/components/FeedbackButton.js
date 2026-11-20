@@ -1,8 +1,8 @@
 // A small fixed "Feedback" button on every page, for everyone, signed in or not.
-// It opens a thumbs up and a thumbs down; picking one shows an optional text
-// box, and Send posts the rating and note, with the current page address, to
+// It opens a thumbs up, a thumbs down and an optional text box together, and
+// Send posts the rating and note, with the current page address, to
 // /api/feedback/. Someone not signed in may add an email address for a reply.
-// The server stamps each report with the site's commit and emails it to the owner.
+// The server stamps each report with the site's commit; the owner reads it in the inbox.
 // Longer messages go through the contact form at /contact.
 
 import { apiFetch } from '../lib/api.js'
@@ -10,6 +10,7 @@ import { getState } from '../lib/auth.js'
 import { el } from '../lib/dom.js'
 import { createIcon } from './Icons.js'
 
+const TEXT_PLACEHOLDER = 'What works, what went wrong, or what should change? (optional)'
 const TEXT_PLACEHOLDERS = {
   up: 'What do you like? (optional)',
   down: 'What went wrong, or what should change? (optional)',
@@ -51,6 +52,7 @@ export function createFeedbackButton() {
   const textBox = el('textarea',
     'w-full h-24 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-white/30 focus:border-glow-400 focus:outline-none')
   textBox.setAttribute('aria-label', 'Feedback note')
+  textBox.placeholder = TEXT_PLACEHOLDER
 
   const replyEmailBox = el('input',
     'w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-white/30 focus:border-glow-400 focus:outline-none')
@@ -65,7 +67,7 @@ export function createFeedbackButton() {
     'Send')
   sendButton.type = 'button'
 
-  const details = el('div', 'hidden flex-col gap-2',
+  const details = el('div', 'flex flex-col gap-2',
     textBox,
     replyEmailBox,
     el('p', 'text-xs text-white/40', `Sent with this page's address and site version ${GIT_COMMIT}.`),
@@ -92,12 +94,7 @@ export function createFeedbackButton() {
       button.setAttribute('aria-pressed', String(chosen))
     }
     textBox.placeholder = TEXT_PLACEHOLDERS[value]
-    // A signed-in sender is answered at their account's address.
-    replyEmailBox.classList.toggle('hidden', getState().isAuthenticated)
-    details.classList.remove('hidden')
-    details.classList.add('flex')
     status.textContent = ''
-    textBox.focus()
   }
 
   function clearRating() {
@@ -106,8 +103,7 @@ export function createFeedbackButton() {
       button.className = `${RATING_BUTTON_CLASS} ${RATING_IDLE_CLASS}`
       button.setAttribute('aria-pressed', 'false')
     }
-    details.classList.add('hidden')
-    details.classList.remove('flex')
+    textBox.placeholder = TEXT_PLACEHOLDER
   }
 
   const panel = el('div', 'hidden mb-2 w-80 max-w-[calc(100vw-2rem)] p-4 rounded-xl bg-navy-900 border border-white/10 shadow-2xl shadow-black/50 flex-col gap-3',
@@ -121,12 +117,18 @@ export function createFeedbackButton() {
     panel.classList.toggle('flex', open)
     toggleButton.setAttribute('aria-expanded', String(open))
     status.textContent = ''
+    // A signed-in sender is answered at their account's address.
+    replyEmailBox.classList.toggle('hidden', getState().isAuthenticated)
     if (open) ratingButtons.up.focus()
   }
 
   toggleButton.addEventListener('click', () => setPanelOpen(panel.classList.contains('hidden')))
 
   sendButton.addEventListener('click', async () => {
+    if (!rating && !textBox.value.trim()) {
+      status.textContent = 'Pick a thumb or write a note first.'
+      return
+    }
     sendButton.disabled = true
     status.textContent = 'Sending...'
     const body = { source: 'site', rating, text: textBox.value.trim(), page_url: window.location.href }

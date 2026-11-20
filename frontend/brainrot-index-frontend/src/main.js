@@ -21,6 +21,7 @@ import { mountPrivacyPage } from './pages/PrivacyPage.js'
 import { mountTermsPage } from './pages/TermsPage.js'
 import { mountContactPage } from './pages/ContactPage.js'
 import { mountInboxPage } from './pages/InboxPage.js'
+import { mountThumbsPage } from './pages/ThumbsPage.js'
 import { mountNotFoundPage } from './pages/NotFoundPage.js'
 
 // Build the persistent shell and mount it into #root
@@ -54,6 +55,7 @@ register('/family', mountFamilyPage, { requiresAuth: true, title: 'Family' })
 register('/family/join', mountJoinFamilyPage, { title: 'Join a family' })
 // The owner's inbox; the server refuses everyone else.
 register('/inbox', mountInboxPage, { requiresAuth: true, title: 'Inbox' })
+register('/inbox/thumbs', mountThumbsPage, { requiresAuth: true, title: 'Post thumbs' })
 register('/inbox/:itemId', mountInboxPage, { requiresAuth: true, title: 'Inbox' })
 
 // Centralized auth gate: protected routes redirect to '/' when there's no

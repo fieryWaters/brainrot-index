@@ -26,7 +26,7 @@ export function createLayout() {
   let dropdownOpen = false
 
   const avatarBtn = el('button', 'w-9 h-9 rounded-full bg-gradient-to-br from-shield-400 to-shield-600 flex items-center justify-center text-white hover:ring-2 hover:ring-glow-400/50 transition-all',
-    createIcon('person', 'w-5 h-5'))
+    createIcon('menu', 'w-5 h-5'))
   avatarBtn.type = 'button'
   avatarBtn.setAttribute('aria-label', 'Account menu')
   avatarBtn.setAttribute('aria-expanded', 'false')
@@ -42,6 +42,9 @@ export function createLayout() {
   familyLink.href = '/family'
   const accountLink = el('a', dropdownLinkClass, 'Account settings')
   accountLink.href = '/account'
+  // Only the site owner can open the inbox.
+  const inboxLink = el('a', dropdownLinkClass, 'Inbox')
+  inboxLink.href = '/inbox'
 
   const signOutBtn = el('button', 'w-full text-left px-3 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-colors', 'Sign Out')
   signOutBtn.addEventListener('click', async () => {
@@ -54,7 +57,7 @@ export function createLayout() {
 
   const dropdown = el('div', 'absolute right-0 mt-2 w-72 bg-navy-900 border border-white/10 rounded-xl shadow-2xl shadow-black/50 overflow-hidden z-50 hidden',
     el('div', 'px-4 py-3 border-b border-white/10', emailP),
-    el('div', 'p-1', dashboardLink, storeLink, familyLink, accountLink, signOutBtn))
+    el('div', 'p-1', dashboardLink, storeLink, familyLink, accountLink, inboxLink, signOutBtn))
 
   const dropdownWrapper = el('div', 'relative', avatarBtn, dropdown)
 
@@ -88,10 +91,11 @@ export function createLayout() {
   const feedbackButton = createFeedbackButton()
 
   function renderNav() {
-    const { isAuthenticated, email } = getState()
+    const { isAuthenticated, email, canOpenInbox } = getState()
 
     if (isAuthenticated) {
       emailP.textContent = email || ''
+      inboxLink.classList.toggle('hidden', !canOpenInbox)
 
       rightSlot.replaceChildren(navStoreLink, dropdownWrapper)
     } else {

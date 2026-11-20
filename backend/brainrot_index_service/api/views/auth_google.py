@@ -111,7 +111,7 @@ def authenticate_with_google(request):
         application_user.id, not was_existing, profile.auth_provider,
     )
 
-    session_payload = build_session_payload(application_user)
+    session_payload = build_session_payload(request)
     session_payload["is_new_user"] = not was_existing
     return Response(session_payload, status=status.HTTP_200_OK)
 
@@ -119,4 +119,4 @@ def authenticate_with_google(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def current_session(request):
-    return Response(build_session_payload(request.user), status=status.HTTP_200_OK)
+    return Response(build_session_payload(request), status=status.HTTP_200_OK)

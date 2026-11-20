@@ -78,8 +78,48 @@ describe('FeedbackButton when not signed in', () => {
   it('hides the reply address from someone signed in', () => {
     renderElement(createFeedbackButton().el)
     openPanel()
-    fireEvent.click(screen.getByRole('button', { name: 'Thumbs up' }))
     expect(screen.getByLabelText('Reply email').classList.contains('hidden')).toBe(true)
+  })
+})
+
+describe('FeedbackButton opening', () => {
+  it('shows both thumbs and the text box as soon as it opens', () => {
+    renderElement(createFeedbackButton().el)
+    openPanel()
+
+    // Nothing is inside a hidden element, so the stylesheet shows it all at once.
+    expect(screen.getByRole('button', { name: 'Thumbs up' }).closest('.hidden')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Thumbs down' }).closest('.hidden')).toBeNull()
+    expect(screen.getByLabelText('Feedback note').closest('.hidden')).toBeNull()
+    expect(screen.getByText('Send').closest('.hidden')).toBeNull()
+  })
+
+  it('sends a note without a thumb', async () => {
+    document.cookie = 'csrftoken=test-csrf'
+    const fetchMock = vi.fn(async () => new Response('{"id": 1}', { status: 201, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    renderElement(createFeedbackButton().el)
+
+    openPanel()
+    fireEvent.input(screen.getByLabelText('Feedback note'), { target: { value: 'Nice site' } })
+    fireEvent.click(screen.getByText('Send'))
+
+    expect(await screen.findByText('Thanks, sent.')).toBeInTheDocument()
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      source: 'site', rating: '', text: 'Nice site', page_url: window.location.href,
+    })
+  })
+
+  it('asks for a thumb or a note before sending nothing', () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    renderElement(createFeedbackButton().el)
+
+    openPanel()
+    fireEvent.click(screen.getByText('Send'))
+
+    expect(screen.getByText('Pick a thumb or write a note first.')).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 

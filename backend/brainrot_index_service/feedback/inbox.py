@@ -1,10 +1,15 @@
-"""The owner's inbox: every Feedback row (Feedback button, extension reports,
-contact form) and every reader's thumbs up or down on a post (PostJudgment),
-newest first, as plain dictionaries. The inbox page reads them through the
-API and agents read them through `manage.py list_inbox`, so both see the
-same fields.
+"""The owner's inbox: notes from people, newest first, as plain dictionaries.
+A note is a Feedback row (Feedback button, extension reports, contact form)
+or a reader's thumbs up or down on a post (PostJudgment) that carries a
+written note. The inbox page reads them through the API and agents read them
+through `manage.py list_inbox`, so both see the same fields.
 
-Items are named by kind and id: "feedback-12", "judgment-34"."""
+Every thumbs on a post, with a note or not, is also listed on its own, one
+compact row each, for reviewing the labeled examples filters are measured
+against.
+
+Items are named by kind and id: "feedback-12", "judgment-34". A sender whose
+account was deleted is gone from the item; what they said stays."""
 
 from django.db.models import F, Q
 
@@ -29,7 +34,8 @@ class UnknownItem(Exception):
 
 def inbox_items(status):
     feedback_rows = Feedback.objects.select_related('user')
-    judgments = PostJudgment.objects.select_related('user', 'post', 'plugin', 'resolution')
+    # A thumbs without a note says nothing to answer; it is listed with the thumbs.
+    judgments = PostJudgment.objects.select_related('user', 'post', 'plugin', 'resolution').exclude(details='')
     # A judgment updated after it was resolved is open again.
     judgment_is_resolved = Q(resolution__isnull=False) & Q(resolution__resolved_at__gte=F('updated_at'))
     if status == STATUS_OPEN:
@@ -119,22 +125,33 @@ def feedback_item(feedback):
     }
 
 
+def judgment_sender(judgment):
+    # Judgments come only from accounts; no user means the account was deleted.
+    if judgment.user is not None:
+        return {'email': judgment.user.email, 'signed_in': True, 'name': ''}
+    else:
+        return {'email': '', 'signed_in': False, 'name': ''}
+
+
+def judgment_plugin_slug(judgment):
+    if judgment.plugin is not None:
+        return judgment.plugin.slug
+    else:
+        return ''
+
+
 def judgment_item(judgment):
     resolution = getattr(judgment, 'resolution', None)
     resolved = resolution is not None and resolution.covers_current_judgment()
-    if judgment.plugin is not None:
-        plugin_slug = judgment.plugin.slug
-    else:
-        plugin_slug = ''
 
     return {
         'id': f"{KIND_JUDGMENT}-{judgment.id}",
         'kind': KIND_JUDGMENT,
         'received_at': judgment.updated_at.isoformat(),
-        'sender': {'email': judgment.user.email, 'signed_in': True, 'name': ''},
+        'sender': judgment_sender(judgment),
         'verdict': judgment.verdict,
         'shown_action': judgment.shown_action,
-        'plugin': plugin_slug,
+        'plugin': judgment_plugin_slug(judgment),
         'severity': judgment.severity,
         'details': judgment.details,
         'extension_commit': judgment.extension_commit,
@@ -145,6 +162,33 @@ def judgment_item(judgment):
         'resolved_commit': resolution.resolved_commit if resolution is not None else '',
         'resolved_note': resolution.resolved_note if resolution is not None else '',
     }
+
+
+def thumb_rows():
+    """Every thumbs on a post, newest first, one compact row each: the verdict,
+    the post's text, and what each filter decided when the reader judged it."""
+    judgments = PostJudgment.objects.select_related('user', 'post', 'plugin').order_by('-updated_at')
+    rows = []
+    for judgment in judgments:
+        rows.append({
+            'id': f"{KIND_JUDGMENT}-{judgment.id}",
+            'received_at': judgment.updated_at.isoformat(),
+            'sender': judgment_sender(judgment),
+            'verdict': judgment.verdict,
+            'shown_action': judgment.shown_action,
+            'plugin': judgment_plugin_slug(judgment),
+            'severity': judgment.severity,
+            'details': judgment.details,
+            'post': {
+                'platform': judgment.post.platform,
+                'post_id': judgment.post.post_id,
+                'kind': judgment.post.kind,
+                'url': judgment.post.url,
+                'text': judgment.post.text,
+            },
+            'filters': judgment.filter_results,
+        })
+    return rows
 
 
 def post_as_dict(post):

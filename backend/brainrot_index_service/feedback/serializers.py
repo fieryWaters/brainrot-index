@@ -27,7 +27,8 @@ class ContactSerializer(serializers.Serializer):
 
 
 class ResolveSerializer(serializers.Serializer):
-    """What fixed an inbox item. Some items need no fix, so the commit may be blank."""
+    """What fixed an inbox item. Some items need no fix and some need no
+    explanation, so the commit and the note may be blank."""
 
     commit = serializers.CharField(max_length=64, allow_blank=True, default='')
-    note = serializers.CharField()
+    note = serializers.CharField(allow_blank=True, default='')

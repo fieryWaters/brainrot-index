@@ -1,10 +1,11 @@
 import json
+from collections import Counter
 from pathlib import Path
 
 from django.core.management.base import BaseCommand
 
 from classification.evaluation import DIFFICULTY_BORDERLINE, DIFFICULTY_CLEAR, example_from_post
-from classification.models import ACTION_ALLOW, SEVERITY_LOW, VERDICT_RIGHT, PostJudgment
+from classification.models import ACTION_ALLOW, SEVERITY_LOW, VERDICT_RIGHT, VERDICT_WRONG, PostJudgment
 
 
 def expected_answers(judgment):
@@ -41,9 +42,35 @@ def expected_answers(judgment):
     return expected
 
 
+def filter_count_lines(examples):
+    """How many test cases each filter has, split by the reader's verdict and
+    by the expected answer."""
+    counts = {}
+    for example in examples:
+        verdict = example['judgment']['verdict']
+        for slug, answer in example['expected'].items():
+            if slug not in counts:
+                counts[slug] = Counter()
+            counts[slug]['cases'] += 1
+            counts[slug][verdict] += 1
+            if answer['flag']:
+                counts[slug]['should flag'] += 1
+            else:
+                counts[slug]['should not flag'] += 1
+
+    lines = ['Test cases by filter:']
+    for slug in sorted(counts):
+        count = counts[slug]
+        lines.append(f"  {slug}: {count['cases']} cases; "
+                     f"{count[VERDICT_RIGHT]} thumbs up, {count[VERDICT_WRONG]} thumbs down; "
+                     f"{count['should flag']} should flag, {count['should not flag']} should not flag")
+    return lines
+
+
 class Command(BaseCommand):
     help = ("Writes readers' thumbs up and down on posts to an evaluation dataset (eval/judgments.jsonl), "
-            "as source 'judgment' examples, so evaluate_plugins can score a new rubric version against them. "
+            "as source 'judgment' examples, so evaluate_plugins can score a new rubric version against them, "
+            "and prints how many test cases each filter has. "
             "The file is rewritten each time, so a judgment the reader changed is up to date.")
 
     def add_arguments(self, parser):
@@ -77,3 +104,4 @@ class Command(BaseCommand):
                 output_file.write(json.dumps(example) + '\n')
         self.stdout.write(f"Wrote {len(examples)} examples to {output_path}; "
                           f"skipped {without_answers} thumbs down on shown posts that name no filter.")
+        self.stdout.write('\n'.join(filter_count_lines(examples)))

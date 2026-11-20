@@ -153,6 +153,31 @@ class ExportJudgmentExamplesTests(TestCase):
                          {'low-effort': True})
         self.assertEqual(examples['missed']['source'], 'judgment')
 
+    def test_prints_each_filters_test_cases_by_verdict_and_expected_answer(self):
+        user, _ = create_user_with_token('reader@example.com')
+        both_on = [filter_result('rude-or-toxic', True), filter_result('low-effort', False)]
+        none_flagged = [filter_result('rude-or-toxic', False), filter_result('low-effort', False)]
+        self.judge(user, 'rightly-hidden', 'right', 'hide', both_on)
+        self.judge(user, 'wrongly-hidden', 'wrong', 'hide', both_on)
+        self.judge(user, 'rightly-shown', 'right', 'allow', none_flagged)
+        self.judge(user, 'missed', 'wrong', 'allow', none_flagged, plugin=Plugin.objects.get(slug='low-effort'))
+
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            call_command('export_judgment_examples', output=str(Path(directory) / 'judgments.jsonl'), stdout=output)
+
+        self.assertIn('  low-effort: 2 cases; 1 thumbs up, 1 thumbs down; 1 should flag, 1 should not flag',
+                      output.getvalue())
+        self.assertIn('  rude-or-toxic: 3 cases; 2 thumbs up, 1 thumbs down; 1 should flag, 2 should not flag',
+                      output.getvalue())
+
+    def test_a_thumbs_from_a_deleted_account_is_still_a_test_case(self):
+        user, _ = create_user_with_token('reader@example.com')
+        self.judge(user, 'rightly-hidden', 'right', 'hide', [filter_result('rude-or-toxic', True)])
+        user.delete()
+
+        self.assertEqual(set(self.export()), {'rightly-hidden'})
+
 
 @override_settings(OPENROUTER_API_KEY='test-key')
 class CriteriaEvaluationTests(TestCase):

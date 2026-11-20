@@ -104,6 +104,33 @@ describe('InboxPage', () => {
     expect(JSON.parse(options.body)).toEqual({ commit: 'def5678', note: 'Replied' })
   })
 
+  it('marks an item resolved without a commit or a note', async () => {
+    document.cookie = 'csrftoken=test-csrf'
+    const fetchMock = vi.fn(async (url) => {
+      if (String(url).includes('/resolve/')) {
+        return jsonResponse({ ...CONTACT, resolved: true })
+      }
+      return jsonResponse({ items: [CONTACT] })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderElement(mountInboxPage().el)
+
+    await screen.findByText('Contact: Press question')
+    fireEvent.submit(screen.getByText('Mark resolved').closest('form'))
+
+    await waitFor(() => expect(screen.queryByText('Contact: Press question')).not.toBeInTheDocument())
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ commit: '', note: '' })
+  })
+
+  it('names a thumbs from a deleted account as such', async () => {
+    const fromDeletedAccount = { ...JUDGMENT, sender: { email: '', signed_in: false, name: '' } }
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [fromDeletedAccount] })))
+    renderElement(mountInboxPage().el)
+
+    expect(await screen.findByText('Deleted account')).toBeInTheDocument()
+    expect(screen.getByText('Post thumbs').getAttribute('href')).toBe('/inbox/thumbs')
+  })
+
   it('opens one item by its id, as the emailed link does', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ...CONTACT, resolved: true, resolved_commit: '', resolved_note: 'Replied' }))
     vi.stubGlobal('fetch', fetchMock)

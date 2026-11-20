@@ -4,9 +4,10 @@
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 
 const ICON_PATHS = {
-  person: [
-    'M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2',
-    'M12 3a4 4 0 1 0 0 8a4 4 0 1 0 0-8Z',
+  menu: [
+    'M4 6h16',
+    'M4 12h16',
+    'M4 18h16',
   ],
   thumbsUp: [
     'M7 10v12',

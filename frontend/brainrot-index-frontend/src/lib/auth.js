@@ -9,6 +9,7 @@ let _state = {
   email: '',
   emailVerified: false,
   authProvider: '',
+  canOpenInbox: false,
   authError: '',
   isAuthenticated: false,
   serverUnavailable: false,
@@ -30,6 +31,7 @@ function applySession(data) {
     email: data.email || '',
     emailVerified: Boolean(data.email_verified),
     authProvider: data.auth_provider || '',
+    canOpenInbox: Boolean(data.can_open_inbox),
     authError: '',
     isAuthenticated: true,
   })
@@ -40,6 +42,7 @@ function clearState() {
     email: '',
     emailVerified: false,
     authProvider: '',
+    canOpenInbox: false,
     isAuthenticated: LOCAL_AUTH_MODE,
   })
 }
@@ -54,6 +57,7 @@ export function _resetForTesting() {
     email: '',
     emailVerified: false,
     authProvider: '',
+    canOpenInbox: false,
     authError: '',
     isAuthenticated: LOCAL_AUTH_MODE,
     serverUnavailable: false,

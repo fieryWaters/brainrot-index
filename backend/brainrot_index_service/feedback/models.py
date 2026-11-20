@@ -30,8 +30,9 @@ class Feedback(models.Model):
     """A problem report written while using the product, stamped with the code
     versions it was written against so fixed reports can be told apart."""
 
-    # Empty for a report sent from the website by someone not signed in.
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='feedback', null=True, blank=True)
+    # Empty for a report sent from the website by someone not signed in, and
+    # once the sender's account is deleted: the report stays, without its sender.
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='feedback', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     source = models.CharField(max_length=16, choices=SOURCE_CHOICES)
     # A thumbs up or down from the website's feedback button; the text is optional with it.
@@ -74,7 +75,7 @@ class JudgmentResolution(models.Model):
 
     judgment = models.OneToOneField(PostJudgment, on_delete=models.CASCADE, related_name='resolution')
     resolved_commit = models.CharField(max_length=64, blank=True, default='')
-    resolved_note = models.TextField()
+    resolved_note = models.TextField(blank=True, default='')
     resolved_at = models.DateTimeField(auto_now=True)
 
     def covers_current_judgment(self):

@@ -16,7 +16,7 @@ from rest_framework.response import Response
 
 from billing.access import PAYING_STATUSES, subscription_for_user
 from billing.stripe_sync import stripe_client
-from classification.models import ExtensionToken, Plugin, PostSubmission, UserPlugin, UserSettings
+from classification.models import ExtensionToken, Plugin, PostJudgment, PostSubmission, UserPlugin, UserSettings
 from families.models import ROLE_ADMIN, FamilyMember
 from families.views import LAST_ADMIN_MESSAGE
 from feedback.models import Feedback
@@ -218,7 +218,8 @@ def export_account_data(request):
 @permission_classes([IsAuthenticated])
 @throttle_classes([AccountChangeThrottle])
 def delete_account(request):
-    """Deletes the account and every row that belongs to it. The confirmation
+    """Deletes the account and every row that belongs to it, except feedback
+    and thumbs on posts, which stay without their sender. The confirmation
     is the account's email address, typed by the person."""
     user = request.user
     typed_email = str(request.data.get('email', '')).strip().lower()
@@ -244,6 +245,10 @@ def delete_account(request):
 
     # A plugin the person published stays for the people who installed it, without an author.
     Plugin.objects.filter(author=user).update(author=None, author_name='')
+    # Feedback and thumbs on posts stay, without who sent them: the thumbs are
+    # the test set for filters. The name and address typed for a reply go too.
+    Feedback.objects.filter(user=user).update(user=None, name='', reply_email='')
+    PostJudgment.objects.filter(user=user).update(user=None)
 
     user_id = user.id
     _delete_sessions_for_user(user_id, exclude_key=request.session.session_key)

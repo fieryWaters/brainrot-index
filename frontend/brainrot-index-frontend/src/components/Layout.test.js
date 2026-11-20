@@ -45,6 +45,28 @@ describe('Layout', () => {
     expect(outlet.id).toBe('page-outlet')
   })
 
+  it('shows the Inbox link in the menu only to the site owner', async () => {
+    for (const canOpenInbox of [true, false]) {
+      _resetForTesting()
+      vi.stubGlobal('fetch', vi.fn(async (url) => {
+        if (String(url).includes('/auth/login/')) {
+          return new Response(JSON.stringify({ email: 'owner@example.com', email_verified: true, can_open_inbox: canOpenInbox }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } })
+        }
+        return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }))
+      await loginWithPassword('owner@example.com', 'password')
+      const layout = createLayout()
+      renderElement(layout.el)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+      const inboxLink = screen.getByText('Inbox', { selector: 'a' })
+      expect(inboxLink.getAttribute('href')).toBe('/inbox')
+      expect(inboxLink.classList.contains('hidden')).toBe(!canOpenInbox)
+      document.body.innerHTML = ''
+    }
+  })
+
   it('returns the user home after signing out', async () => {
     // csrf + login + logout endpoints. /auth/me/ isn't called here because the
     // login response applies the session synchronously.

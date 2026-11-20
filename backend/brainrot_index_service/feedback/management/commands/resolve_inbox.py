@@ -9,7 +9,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('item_ids', nargs='+', help="Inbox item ids, as list_inbox prints them.")
         parser.add_argument('--commit', default='', help="The commit that fixed the problem, if one did.")
-        parser.add_argument('--note', required=True, help="What was wrong and what changed.")
+        parser.add_argument('--note', default='', help="What was wrong and what changed, if worth saying.")
 
     def handle(self, *args, **options):
         # Every id is checked before any is resolved, so a typo changes nothing.

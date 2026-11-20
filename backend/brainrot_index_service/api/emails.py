@@ -85,8 +85,8 @@ def send_password_reset(user, raw_token):
 
 
 def send_feedback_alert(feedback):
-    """Tells the admin a feedback report or contact message arrived; the site
-    has no support mailbox. Replying to the email answers the sender."""
+    """Tells the admin a contact message arrived; the site has no support
+    mailbox. Replying to the email answers the sender."""
     if not settings.ADMIN_EMAIL:
         logger.warning("ADMIN_EMAIL is not set - skipping alert for feedback %s", feedback.id)
         return

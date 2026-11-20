@@ -9,7 +9,7 @@ from api.emails import send_feedback_alert
 from api.throttling import AnonRateThrottle
 from classification.authentication import ExtensionTokenAuthentication
 
-from .inbox import STATUS_OPEN, STATUSES, UnknownItem, find_item, inbox_items, item_as_dict, resolve_item
+from .inbox import STATUS_OPEN, STATUSES, UnknownItem, find_item, inbox_items, item_as_dict, resolve_item, thumb_rows
 from .models import SOURCE_CONTACT, Feedback
 from .serializers import ContactSerializer, FeedbackSerializer, ResolveSerializer
 
@@ -22,7 +22,8 @@ class AnonymousFeedbackThrottle(AnonRateThrottle):
 # The extension sends a bearer token (no CSRF); the website sends its session
 # cookie, and SessionAuthentication then enforces CSRF. Someone not signed in
 # may send feedback from the website; it is stored without a user, with the
-# reply address they typed, if any. Each report is emailed to the admin.
+# reply address they typed, if any. Reports are not emailed; the owner reads
+# them in the inbox.
 @api_view(['POST'])
 @authentication_classes([ExtensionTokenAuthentication, SessionAuthentication])
 @permission_classes([AllowAny])
@@ -35,7 +36,6 @@ def create_feedback(request):
     else:
         user = None
     feedback = serializer.save(user=user, site_commit=settings.GIT_COMMIT)
-    send_feedback_alert(feedback)
     return Response({'id': feedback.id}, status=status.HTTP_201_CREATED)
 
 
@@ -83,6 +83,14 @@ def list_inbox(request):
     if item_status not in STATUSES:
         return Response({'error': f"status must be one of {', '.join(STATUSES)}"}, status=status.HTTP_400_BAD_REQUEST)
     return Response({'items': inbox_items(item_status)})
+
+
+@api_view(['GET'])
+@authentication_classes([SessionAuthentication])
+@permission_classes([CanOpenInbox])
+@throttle_classes([])
+def list_thumbs(request):
+    return Response({'thumbs': thumb_rows()})
 
 
 @api_view(['GET'])

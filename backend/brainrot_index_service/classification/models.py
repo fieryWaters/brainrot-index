@@ -427,9 +427,11 @@ class PostJudgment(models.Model):
     """A reader's verdict on how the extension treated one post: a labeled
     example of the reader's real judgment, for evaluating and tuning filters.
     A thumbs down on a post that was shown means a filter should have caught
-    it. One per account and post; judging the post again replaces it."""
+    it. One per account and post; judging the post again replaces it. When
+    the account is deleted the judgment stays, without its user, since the
+    judgments are the test set for filters."""
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='post_judgments')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='post_judgments')
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='judgments')
     verdict = models.CharField(max_length=16, choices=VERDICT_CHOICES)
     # What the reader saw. A hidden post on screen is blurred instead, so this

@@ -1,9 +1,11 @@
-// The owner's inbox: feedback reports, contact messages and readers' thumbs
-// on posts, newest first. Each item shows who sent it, what they said, the
-// post it is about with what every filter decided, and a form to mark it
-// resolved with the fixing commit and a note. /inbox/<item id> shows one item,
-// which is where the emailed alerts link. The server refuses everyone but the
-// owner (the account the admin lets in).
+// The owner's inbox: notes from people, newest first: feedback reports,
+// contact messages and readers' thumbs on posts that carry a written note.
+// Each item shows who sent it, what they said, the post it is about with what
+// every filter decided, and a form to mark it resolved with the fixing commit
+// and a note, both optional. /inbox/<item id> shows one item, which is where
+// the emailed alerts link. Every thumbs on a post, noted or not, is listed at
+// /inbox/thumbs. The server refuses everyone but the owner (the account the
+// admin lets in).
 
 import { apiFetch, errorMessageFrom } from '../lib/api.js'
 import { el } from '../lib/dom.js'
@@ -42,8 +44,12 @@ function itemTitle(item) {
   return SOURCE_TITLES[item.source]
 }
 
-function senderText(item) {
+export function senderText(item) {
   const sender = item.sender
+  // Thumbs on posts come only from accounts, so one without a sender is from a deleted account.
+  if (item.kind === 'judgment' && !sender.email) {
+    return 'Deleted account'
+  }
   let text = sender.email || 'no address'
   if (sender.name) {
     text = `${sender.name} <${text}>`
@@ -136,7 +142,7 @@ function createResolveForm(item, onResolved) {
   commitInput.placeholder = 'Commit (optional)'
   commitInput.setAttribute('aria-label', 'Fixing commit')
   const noteInput = el('input', INPUT_CLASS)
-  noteInput.placeholder = 'What was wrong and what changed'
+  noteInput.placeholder = 'What was wrong and what changed (optional)'
   noteInput.setAttribute('aria-label', 'Resolution note')
   const resolveButton = el('button', `${ACCENT_BUTTON_CLASS} whitespace-nowrap`, 'Mark resolved')
   resolveButton.type = 'submit'
@@ -147,10 +153,6 @@ function createResolveForm(item, onResolved) {
     status)
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
-    if (!noteInput.value.trim()) {
-      status.textContent = 'Write a note first.'
-      return
-    }
     resolveButton.disabled = true
     const { response, data } = await apiFetch(`/inbox/${item.id}/resolve/`, {
       method: 'POST',
@@ -191,7 +193,8 @@ function createItemCard(item, onResolved) {
 
   if (item.resolved) {
     const commitText = item.resolved_commit ? ` in ${item.resolved_commit}` : ''
-    card.appendChild(el('p', 'mt-4 text-sm text-glow-300', `Resolved${commitText}: ${item.resolved_note}`))
+    const noteText = item.resolved_note ? `: ${item.resolved_note}` : ''
+    card.appendChild(el('p', 'mt-4 text-sm text-glow-300', `Resolved${commitText}${noteText}`))
   } else {
     card.appendChild(createResolveForm(item, onResolved))
   }
@@ -201,8 +204,11 @@ function createItemCard(item, onResolved) {
 export function mountInboxPage({ itemId } = {}) {
   const content = el('div', '', el('p', 'text-sm text-white/50', 'Loading...'))
   const tabs = el('div', 'flex gap-1 mb-6')
+  const thumbsLink = el('a', QUIET_BUTTON_CLASS, 'Post thumbs')
+  thumbsLink.href = '/inbox/thumbs'
+  const headerLinks = el('div', 'flex gap-2', thumbsLink)
   const header = el('div', 'flex flex-wrap items-center justify-between gap-4 mb-6',
-    el('h1', 'text-3xl font-bold text-white', 'Inbox'))
+    el('h1', 'text-3xl font-bold text-white', 'Inbox'), headerLinks)
   const container = el('div', 'max-w-4xl mx-auto px-4 py-12', header, content)
 
   function showRefusal(response, data) {
@@ -216,7 +222,7 @@ export function mountInboxPage({ itemId } = {}) {
   async function showOneItem() {
     const allLink = el('a', QUIET_BUTTON_CLASS, 'All open items')
     allLink.href = '/inbox'
-    header.appendChild(allLink)
+    headerLinks.prepend(allLink)
     const { response, data } = await apiFetch(`/inbox/${itemId}/`)
     if (!response.ok) {
       showRefusal(response, data)

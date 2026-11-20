@@ -79,6 +79,7 @@ class InboxTests(TestCase):
         for client in refused_clients:
             self.assertEqual(client.get(reverse('list_inbox')).status_code, 403)
             self.assertEqual(client.get(reverse('inbox_item', args=[f'feedback-{self.feedback.id}'])).status_code, 403)
+            self.assertEqual(client.get(reverse('list_thumbs')).status_code, 403)
             response = client.post(
                 reverse('resolve_inbox_item', args=[f'feedback-{self.feedback.id}']), {'note': 'x'},
                 content_type='application/json')
@@ -144,11 +145,58 @@ class InboxTests(TestCase):
         self.feedback.refresh_from_db()
         self.assertEqual(self.feedback.resolved_commit, 'def5678')
 
-    def test_resolving_needs_a_note(self):
-        response = self.owner_client.post(
-            reverse('resolve_inbox_item', args=[f'feedback-{self.feedback.id}']), {'commit': 'def5678'},
-            content_type='application/json')
-        self.assertEqual(response.status_code, 400)
+    def test_resolving_needs_no_note(self):
+        for item_id in [f'feedback-{self.feedback.id}', f'judgment-{self.judgment.id}']:
+            response = self.owner_client.post(
+                reverse('resolve_inbox_item', args=[item_id]), {}, content_type='application/json')
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.json()['resolved'])
+            self.assertEqual(response.json()['resolved_note'], '')
+        self.assertEqual(self.items_by_id(self.owner_client), {})
+
+    def test_a_thumbs_without_a_note_is_listed_with_the_thumbs_not_in_the_inbox(self):
+        quiet_post = Post.objects.create(platform='x', post_id='186', kind='post', url='https://x.com/someone/status/186',
+                                         author='someone', text='quiet post')
+        quiet_judgment = PostJudgment.objects.create(
+            user=self.reader, post=quiet_post, verdict='right', shown_action='allow',
+            filter_results=[{
+                'plugin': 'shouting', 'version': 1, 'threshold': 50, 'flagged_action': 'hide',
+                'classification_id': None, 'status': 'done', 'score': 10, 'label': '', 'flagged': False,
+            }])
+
+        self.assertNotIn(f'judgment-{quiet_judgment.id}', self.items_by_id(self.owner_client, 'all'))
+        response = self.owner_client.get(reverse('list_thumbs'))
+        self.assertEqual(response.status_code, 200)
+        thumbs = response.json()['thumbs']
+        self.assertEqual([row['id'] for row in thumbs], [f'judgment-{quiet_judgment.id}', f'judgment-{self.judgment.id}'])
+        self.assertEqual(thumbs[0]['verdict'], 'right')
+        self.assertEqual(thumbs[0]['post']['text'], 'quiet post')
+        self.assertEqual(thumbs[0]['filters'][0]['score'], 10)
+        self.assertEqual(thumbs[1]['plugin'], 'shouting')
+        self.assertEqual(thumbs[1]['details'], 'This is fine, just loud.')
+
+    def test_items_from_a_deleted_account_stay_without_their_sender(self):
+        self.reader.delete()
+
+        items = self.items_by_id(self.owner_client)
+        judgment_item = items[f'judgment-{self.judgment.id}']
+        self.assertEqual(judgment_item['sender'], {'email': '', 'signed_in': False, 'name': ''})
+        self.assertEqual(judgment_item['details'], 'This is fine, just loud.')
+        self.assertEqual(judgment_item['filters'][0]['score'], 60)
+        feedback_item = items[f'feedback-{self.feedback.id}']
+        self.assertEqual(feedback_item['sender'], {'email': '', 'signed_in': False, 'name': ''})
+        self.assertEqual(feedback_item['text'], 'Missed this one')
+        thumbs = self.owner_client.get(reverse('list_thumbs')).json()['thumbs']
+        self.assertEqual(thumbs[0]['sender'], {'email': '', 'signed_in': False, 'name': ''})
+        listed = json.loads(self.run_command('list_inbox'))['items']
+        self.assertEqual({item['id'] for item in listed}, set(items))
+
+    def test_the_session_says_whether_the_inbox_opens(self):
+        self.assertTrue(self.owner_client.get(reverse('current_session')).json()['can_open_inbox'])
+        password_owner = signed_in_client(self.owner, SIGN_IN_PASSWORD)
+        self.assertFalse(password_owner.get(reverse('current_session')).json()['can_open_inbox'])
+        reader_client = signed_in_client(self.reader, SIGN_IN_GOOGLE)
+        self.assertFalse(reader_client.get(reverse('current_session')).json()['can_open_inbox'])
 
     def test_a_judgment_the_reader_changes_after_it_was_resolved_is_open_again(self):
         self.owner_client.post(
@@ -176,6 +224,12 @@ class InboxTests(TestCase):
         self.assertEqual(json.loads(self.run_command('list_inbox'))['items'], [])
         everything = json.loads(self.run_command('list_inbox', '--status', 'all'))['items']
         self.assertEqual({item['resolved_note'] for item in everything}, {'Rubric v2'})
+
+    def test_resolve_inbox_needs_no_note(self):
+        self.run_command('resolve_inbox', f'feedback-{self.feedback.id}')
+        self.feedback.refresh_from_db()
+        self.assertTrue(self.feedback.resolved)
+        self.assertEqual(self.feedback.resolved_note, '')
 
     def test_resolve_inbox_changes_nothing_when_an_id_is_unknown(self):
         with self.assertRaises(CommandError):
@@ -235,3 +289,12 @@ class ContactFormTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Feedback.objects.get(id=response.json()['id']).user, user)
         self.assertEqual(mail.outbox[0].reply_to, ['other@example.com'])
+
+    def test_a_failed_alert_is_logged_and_the_message_is_still_stored(self):
+        with patch('api.emails.EmailMultiAlternatives.send', side_effect=RuntimeError('domain not verified')), \
+                self.assertLogs('api.emails', level='ERROR') as logs:
+            response = self.send({'email': 'sam@example.com', 'subject': 'Hi', 'message': 'Hello'})
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Feedback.objects.count(), 1)
+        self.assertIn('feedback alert', logs.output[0])

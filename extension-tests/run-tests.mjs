@@ -5,7 +5,7 @@
 //     Runs the named groups (all when none are named) against the mock server, which it starts.
 //   BRAINROT_SERVER=https://brainrot.jacob-waters.com BRAINROT_TOKEN=<token> node run-tests.mjs
 //     Runs against a real server. The connect test is skipped (the real site needs a login), and the
-//     checks that depend on the mock's fixed rules (pending first, at least one blur and one hide)
+//     checks that depend on the mock's fixed rules (pending first, at least one post hidden by each mock filter)
 //     are reported instead of asserted. For each surface it prints what the server decided.
 //   Adding BRAINROT_SESSION_COOKIE=<sessionid> BRAINROT_CSRF_TOKEN=<csrftoken> (a logged-in website
 //     session for the same account) also runs the real "Connect extension" button on the dashboard,
@@ -22,7 +22,7 @@ import { makeFreshProfileDir, withBrave, launchBraveWithoutExtension, loadExtens
 import { startMockServer, MOCK_TOKEN, MOCK_CONFIG } from "./mock-server.mjs";
 import {
   SAMPLE_REDDIT_COMMENTS, SAMPLE_REDDIT_POSTS, SAMPLE_X_TWEETS, SAMPLE_YOUTUBE_VIDEOS, STAND_IN_URLS,
-  samplePages, serveStandInPages,
+  samplePages, serveStandInPages, xHomePage,
 } from "./stand-in-pages.mjs";
 
 const X_TEST_PROFILE_DIR = "/Users/jacob/git-repos/brainrot-test-profile";
@@ -293,20 +293,20 @@ async function testThresholdTakesEffect(page, serviceWorker, classifyCalls, feed
   console.log("    info: compare the filtered shares above; the feed's posts differ between loads");
 }
 
-// Child mode: pending posts are blurred and blurred posts cannot be revealed.
+// Child mode: pending posts are hidden behind a "Checking" line and hidden posts cannot be revealed.
 async function testChildMode(page, serviceWorker, classifyCalls, feedUrl) {
   await callWebsiteApi("PATCH", "/api/settings/", { mode: "child" });
   try {
     await serviceWorker.evaluate(() => chrome.storage.session.clear());
     const status = await serviceWorker.evaluate(() => getStatus());
     console.log("    config in child mode: " + JSON.stringify(status.config));
-    check(status.config.pending_action === "blur" && status.config.allow_reveal === false, "the server config says blur while pending and no reveal");
+    check(status.config.pending_action === "hide" && status.config.allow_reveal === false, "the server config says hide while pending and no reveal");
     const callsBefore = classifyCalls.length;
     await page.goto(feedUrl, { waitUntil: "domcontentloaded" });
     const sawPending = await waitUntil(async () => (await page.locator('[data-brainrot-index-action="pending"]').count()) > 0, 10000);
     const serverSaidPending = classifyCalls.slice(callsBefore).some((call) => call.results.some((result) => result.status === "pending"));
     if (serverSaidPending) {
-      check(sawPending, "posts are blurred while pending");
+      check(sawPending, "posts are hidden while pending");
     } else {
       console.log("    info: the server answered every post at once (already classified), so nothing was pending");
     }
@@ -315,14 +315,6 @@ async function testChildMode(page, serviceWorker, classifyCalls, feedUrl) {
     await waitForAnswersToSettle(page, classifyCalls);
     console.log(`    labels in child mode: ${await page.locator(".brainrot-index-notice").count()}`);
     check(await page.locator(".brainrot-index-reveal").count() === 0, "no label offers Show");
-    const blurredPost = page.locator('[data-brainrot-index-action="blur"]').first();
-    if (await blurredPost.count() === 1) {
-      await blurredPost.click({ position: { x: 40, y: 60 } });
-      await page.waitForTimeout(500);
-      check(await blurredPost.getAttribute("data-brainrot-index-action") === "blur", "clicking a blurred post does not reveal it");
-    } else {
-      console.log("    info: no blurred post to click");
-    }
   } finally {
     await callWebsiteApi("PATCH", "/api/settings/", { mode: "adult" });
   }
@@ -349,6 +341,16 @@ async function connectExtension(context, serviceWorker, extensionId, groupName) 
   } else {
     await configureExtension(serviceWorker);
   }
+}
+
+// BRAINROT_SCREENSHOTS_DIR=<folder> saves a picture of the page as it is.
+async function saveScreenshot(page, fileName) {
+  const screenshotsDir = process.env.BRAINROT_SCREENSHOTS_DIR;
+  if (screenshotsDir === undefined) {
+    return;
+  }
+  fs.mkdirSync(screenshotsDir, { recursive: true });
+  await page.screenshot({ path: path.join(screenshotsDir, fileName) });
 }
 
 // BRAINROT_SCREENSHOTS_DIR=<folder> saves a picture of each surface centred on a filtered post.
@@ -494,7 +496,7 @@ function reportMissingTreatment(action) {
   console.log(`    info: no ${action} post offering Show on the page, so this case was not checked`);
 }
 
-// Runs in the page: whether the post is drawn, its top, and its blur.
+// Runs in the page: whether the post is drawn, its top, and its filter (none: never blurred).
 function readPostLook(postElement) {
   return {
     drawn: postElement.getClientRects().length > 0,
@@ -509,46 +511,6 @@ function noticeOf(postLocator) {
   return postLocator.locator("xpath=preceding-sibling::*[1]");
 }
 
-// Show on a blurred post's label reveals it where it is, and Blur again blurs it again.
-async function testRevealBlurredPost(page) {
-  const post = await findPostToReveal(page, "blur");
-  if (post === null) {
-    reportMissingTreatment("blur");
-    return;
-  }
-  const notice = noticeOf(post);
-  const summary = await notice.locator(".brainrot-index-summary").textContent();
-  console.log("    label: " + summary);
-  check(/^Blurred · .+$/.test(summary), "the label names what was done and the plugin");
-  check(await notice.locator(".brainrot-index-reveal").isHidden(), "the label's buttons are hidden until hovered");
-  check((await notice.boundingBox()).height <= 30, "the label is one line");
-  await notice.hover();
-  check(/^.+ · \d+\/100$/.test(await notice.locator(".brainrot-index-detail").textContent()), "hovered, the label adds the plugin's label and score");
-  await notice.locator(".brainrot-index-reveal").hover();
-  const before = await post.evaluate(readPostLook);
-  await notice.locator(".brainrot-index-reveal").click();
-  const shown = await post.evaluate(readPostLook);
-  check(shown.revealed && shown.filter === "none", "Show reveals the post at once");
-  check(Math.abs(shown.top - before.top) <= 2, `the revealed post did not move (${before.top} to ${shown.top})`);
-  const blurAgainButton = noticeOf(post).locator(".brainrot-index-reveal");
-  check(await blurAgainButton.textContent() === "Blur again", "the label offers Blur again");
-  // The line above the revealed post can sit under a site's sticky header, where Playwright would
-  // scroll before clicking; the post is brought to the middle of the screen first.
-  await post.evaluate((element) => element.scrollIntoView({ block: "center" }));
-  await page.waitForTimeout(500);
-  const beforeBlurAgain = await post.evaluate(readPostLook);
-  await noticeOf(post).hover();
-  await blurAgainButton.click();
-  const blurredAgain = await post.evaluate(readPostLook);
-  check(!blurredAgain.revealed && blurredAgain.filter.includes("blur"), "Blur again blurs it");
-  // Near the top of the page there is no room to scroll up by the height of the removed line.
-  if (beforeBlurAgain.scrollY >= 40) {
-    check(Math.abs(blurredAgain.top - beforeBlurAgain.top) <= 2, `the post did not move when blurred again (${beforeBlurAgain.top} to ${blurredAgain.top})`);
-  } else {
-    console.log("    info: the page is at its top, so the post moves up by the removed line");
-  }
-}
-
 // Show on a hidden post's line expands it, and Hide again collapses it. The keyboard reaches Show.
 async function testRevealHiddenPost(page) {
   const post = await findPostToReveal(page, "hide");
@@ -558,34 +520,20 @@ async function testRevealHiddenPost(page) {
   }
   check(!(await post.evaluate(readPostLook)).drawn, "the hidden post is collapsed");
   const notice = noticeOf(post);
-  check(/^Hidden · .+$/.test(await notice.locator(".brainrot-index-summary").textContent()), "the hidden line names the plugin");
+  check(await notice.locator(".brainrot-index-summary").textContent() === "Hidden", "the line says only Hidden");
+  await notice.hover();
+  check(/^.+ · .+ · \d+\/100$/.test(await notice.locator(".brainrot-index-detail").textContent()), "hovered, it adds the plugin, its label and score");
   const noticeTopBefore = (await notice.boundingBox()).y;
   await notice.locator(".brainrot-index-reveal").focus();
   await page.keyboard.press("Enter");
   const shown = await post.evaluate(readPostLook);
-  check(shown.drawn && shown.revealed, "Show (pressed with the keyboard) expands the hidden post");
+  check(shown.drawn && shown.revealed && shown.filter === "none", "Show (pressed with the keyboard) expands the hidden post, unblurred");
   check(Math.abs((await noticeOf(post).boundingBox()).y - noticeTopBefore) <= 2, "the line stayed where it was");
   const hideAgainButton = noticeOf(post).locator(".brainrot-index-reveal");
   check(await hideAgainButton.textContent() === "Hide again", "the line offers Hide again");
   await noticeOf(post).hover();
   await hideAgainButton.click();
   check(!(await post.evaluate(readPostLook)).drawn, "Hide again collapses it");
-}
-
-// A click anywhere on a blurred post, also on the site's own link over it, reveals it and does not
-// open the post.
-async function testClickOnBlurredPost(page) {
-  const post = await findPostToReveal(page, "blur");
-  if (post === null) {
-    reportMissingTreatment("blur");
-    return;
-  }
-  const urlBefore = page.url();
-  const box = await post.boundingBox();
-  await page.mouse.click(box.x + box.width / 2, box.y + Math.min(box.height / 2, 300));
-  await page.waitForTimeout(1500);
-  check(page.url() === urlBefore, "the click did not open the post");
-  check((await post.evaluate(readPostLook)).revealed, "the click revealed the post");
 }
 
 // Runs in the page: the element the extension treats for the post with this id, or null.
@@ -609,9 +557,9 @@ function findTreatedElementInPage(postId) {
 // A revealed post is still revealed after it scrolls far away and back, even when the site draws
 // it again with a new element.
 async function testRevealSurvivesScrolling(page, platform) {
-  const post = await findPostToReveal(page, "blur");
+  const post = await findPostToReveal(page, "hide");
   if (post === null) {
-    reportMissingTreatment("blur");
+    reportMissingTreatment("hide");
     return;
   }
   const postId = await post.evaluate((element, [platform, readPostIdSource]) => {
@@ -621,8 +569,8 @@ async function testRevealSurvivesScrolling(page, platform) {
     }
     return readPostId(element, platform);
   }, [platform, readPostIdInPage.toString()]);
-  await noticeOf(post).hover();
-  await noticeOf(post).locator(".brainrot-index-reveal").click();
+  await noticeOf(post).locator(".brainrot-index-reveal").focus();
+  await page.keyboard.press("Enter");
   check((await post.evaluate(readPostLook)).revealed, "the post is revealed");
   const scrollYBefore = await page.evaluate(() => window.scrollY);
   await scrollDown(page, 8);
@@ -635,29 +583,21 @@ async function testRevealSurvivesScrolling(page, platform) {
   check(revealedState === "true", `the post is still revealed after scrolling away and back (${revealedState})`);
 }
 
-// With allow_reveal off (child mode on the real server), no label offers Show and a click on a
-// blurred post leaves it blurred. Mock server only; the real server's case is test 7b.
+// With allow_reveal off (child mode on the real server), no label offers Show. Mock server only; the
+// real server's case is test 7b.
 async function testNoRevealWhenNotAllowed(page, classifyCalls, feedUrl) {
   MOCK_CONFIG.allow_reveal = false;
   try {
     await page.goto(feedUrl, { waitUntil: "domcontentloaded" });
     await waitForAnswersToSettle(page, classifyCalls);
-    const blurredPost = page.locator('[data-brainrot-index-action="blur"]').first();
     check(await page.locator(".brainrot-index-notice").count() > 0, "filtered posts have labels");
     check(await page.locator(".brainrot-index-reveal").count() === 0, "no label offers Show");
-    if (await blurredPost.count() === 1) {
-      const urlBefore = page.url();
-      await blurredPost.scrollIntoViewIfNeeded();
-      await blurredPost.click({ position: { x: 40, y: 60 } });
-      await page.waitForTimeout(1000);
-      check(!(await blurredPost.evaluate(readPostLook)).revealed && page.url() === urlBefore, "a click on a blurred post neither reveals nor opens it");
-    }
   } finally {
     MOCK_CONFIG.allow_reveal = true;
   }
 }
 
-// Thumbs down on a blurred or hidden post's label saves a judgment at once and opens the details box;
+// Thumbs down on a hidden post's line saves a judgment at once and opens the details box;
 // a severity and details typed there are saved too. The label keeps the post where it was.
 async function testJudgeFilteredPost(page, judgmentCalls, platform) {
   const notice = page.locator(".brainrot-index-notice:has(.brainrot-index-judge)").first();
@@ -714,7 +654,7 @@ async function testMissedPostMenuItem(page, serviceWorker, feedbackCalls, platfo
   const form = page.locator(".brainrot-index-report-form").last();
   await form.waitFor({ timeout: 3000 });
   check(await form.locator('.brainrot-index-choice[aria-pressed="true"]').textContent() === "Hidden", "the form opens with Hidden chosen");
-  await form.locator(".brainrot-index-choice", { hasText: "Blurred" }).click();
+  check(await form.locator(".brainrot-index-choice").count() === 1, "and offers no other choice (no Blurred)");
   await form.locator(".brainrot-index-reason").fill("automated test: new kind of bait");
   const callsBefore = feedbackCalls.length;
   await form.locator(".brainrot-index-send").click();
@@ -723,7 +663,7 @@ async function testMissedPostMenuItem(page, serviceWorker, feedbackCalls, platfo
     platform: platform,
     post_id: postId,
     shown_action: "allow",
-    expected_action: "blur",
+    expected_action: "hide",
     text: "automated test: new kind of bait",
   });
   await waitUntil(async () => (await form.count()) === 0, 4000);
@@ -819,7 +759,7 @@ async function checkPageMatchesAnswers(page, serviceWorker, platform) {
   const treatments = await page.evaluate(readTreatmentsInPage, platform);
   let answeredCount = 0;
   const mismatches = [];
-  const actionCounts = { allow: 0, blur: 0, hide: 0, pending: 0 };
+  const actionCounts = { allow: 0, hide: 0, pending: 0 };
   for (const treatment of treatments) {
     actionCounts[treatment.action] = actionCounts[treatment.action] + 1;
     const answer = answerById.get(treatment.id);
@@ -827,9 +767,7 @@ async function checkPageMatchesAnswers(page, serviceWorker, platform) {
       continue;
     }
     answeredCount = answeredCount + 1;
-    // A post answered "hide" while above the viewport is blurred instead, so nothing visible moves.
-    const blurredInsteadOfHidden = answer.action === "hide" && treatment.action === "blur";
-    if (answer.action !== treatment.action && !blurredInsteadOfHidden) {
+    if (answer.action !== treatment.action) {
       mismatches.push(`${treatment.id}: answer ${answer.action}, page shows ${treatment.action}`);
     }
   }
@@ -919,10 +857,9 @@ function checkNoResends(classifyCalls) {
 
 function checkActedOn(actionCounts, what) {
   if (usingMockServer) {
-    check(actionCounts.blur > 0, `at least one ${what} is blurred`);
     check(actionCounts.hide > 0, `at least one ${what} is hidden`);
   } else {
-    console.log(`    info: ${actionCounts.blur} blurred, ${actionCounts.hide} hidden`);
+    console.log(`    info: ${actionCounts.hide} hidden`);
   }
 }
 
@@ -971,10 +908,7 @@ async function checkFeed(page, serviceWorker, classifyCalls, platform, feedUrl) 
   checkPendingThenDone(classifyCalls);
   checkReasksDoNotOverlap(classifyCalls);
   const afterScroll = await checkPageMatchesAnswers(page, serviceWorker, platform);
-  checkActedOn({
-    blur: beforeScroll.actionCounts.blur + afterScroll.actionCounts.blur,
-    hide: beforeScroll.actionCounts.hide + afterScroll.actionCounts.hide,
-  }, "post");
+  checkActedOn({ hide: beforeScroll.actionCounts.hide + afterScroll.actionCounts.hide }, "post");
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(6000);
@@ -1237,9 +1171,7 @@ async function runRedditGroup() {
     await runTest("6a. feedback: thumbs on a filtered post", () => testJudgeFilteredPost(page, judgmentCalls, "reddit"));
     await runTest("6b. feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "reddit"));
     await runTest("6c. feedback: popup text box", () => testPopupFeedbackBox(context, extensionId, feedbackCalls));
-    await runTest("8a. reveal: Show and Blur again on a blurred Reddit post", () => testRevealBlurredPost(page));
     await runTest("8b. reveal: Show and Hide again on a hidden Reddit post", () => testRevealHiddenPost(page));
-    await runTest("8c. reveal: a click on a blurred Reddit post reveals it without opening it", () => testClickOnBlurredPost(page));
     await runTest("8d. reveal: a revealed Reddit post stays revealed after scrolling away and back", () => testRevealSurvivesScrolling(page, "reddit"));
     if (usingMockServer) {
       await runTest("8e. reveal: no Show when the server does not allow it", () =>
@@ -1256,7 +1188,6 @@ async function runRedditGroup() {
       });
       await checkReplies(page, serviceWorker, classifyCalls, "reddit", "https://www.reddit.com" + threadPath);
     }, page);
-    await runTest("8f. reveal: Show and Blur again in a Reddit comment thread", () => testRevealBlurredPost(page));
     await runTest("8g. reveal: Show and Hide again in a Reddit comment thread", () => testRevealHiddenPost(page));
     await runTest("3c. Reddit scroll stability", () =>
       testScrollStability(context, page, serviceWorker, "reddit", "https://www.reddit.com/r/popular/"));
@@ -1264,7 +1195,7 @@ async function runRedditGroup() {
     if (!usingMockServer && sessionCookie !== undefined) {
       await runTest("7a. a plugin threshold change is applied at once from stored scores", () =>
         testThresholdTakesEffect(page, serviceWorker, classifyCalls, "https://www.reddit.com/r/popular/"));
-      await runTest("7b. child mode blurs pending posts and removes reveal", () =>
+      await runTest("7b. child mode hides pending posts and removes reveal", () =>
         testChildMode(page, serviceWorker, classifyCalls, "https://www.reddit.com/r/popular/"));
     }
   });
@@ -1300,11 +1231,7 @@ async function testXRecycledTweets(page, serviceWorker, classifyCalls) {
   const recreatedAnswered = recreated.filter((tweet) => answerById.has(tweet.id));
   console.log(`    recreated tweet elements: ${recreated.length}, of which answered before: ${recreatedAnswered.length}`);
   check(recreatedAnswered.length > 0, "some answered tweets were removed and created again by X");
-  // A tweet answered "hide" while above the viewport is blurred instead.
-  const wrong = recreatedAnswered.filter((tweet) => {
-    const answeredAction = answerById.get(tweet.id).action;
-    return answeredAction !== tweet.action && !(answeredAction === "hide" && tweet.action === "blur");
-  });
+  const wrong = recreatedAnswered.filter((tweet) => answerById.get(tweet.id).action !== tweet.action);
   check(wrong.length === 0, "every recreated tweet shows its answer again " + JSON.stringify(wrong.slice(0, 3)));
   const resent = allSentPosts(classifyCalls.slice(callsBefore)).filter((post) => answeredBeforeScroll.has(post.post_id));
   check(resent.length === 0, "no answered tweet was sent again while scrolling back");
@@ -1398,9 +1325,7 @@ async function runXGroup() {
     await runSurfaceTest("4a. X home feed", classifyCalls, () =>
       checkFeed(page, serviceWorker, classifyCalls, "x", "https://x.com/home"), page);
     await runTest("4c. X recycled tweets", () => testXRecycledTweets(page, serviceWorker, classifyCalls));
-    await runTest("4i. X reveal: Show and Blur again on a blurred tweet", () => testRevealBlurredPost(page));
     await runTest("4j. X reveal: Show and Hide again on a hidden tweet", () => testRevealHiddenPost(page));
-    await runTest("4k. X reveal: a click on a blurred tweet reveals it without opening it", () => testClickOnBlurredPost(page));
     await runTest("4l. X reveal: a revealed tweet stays revealed after X redraws it", () => testRevealSurvivesScrolling(page, "x"));
     await runTest("4d. X feedback: thumbs on a filtered post", () => testJudgeFilteredPost(page, judgmentCalls, "x"));
     await runTest("4e. X feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "x"));
@@ -1423,7 +1348,6 @@ async function runXGroup() {
       });
       await checkReplies(page, serviceWorker, classifyCalls, "x", "https://x.com" + statusPath);
     }, page);
-    await runTest("4m. X reveal: Show and Blur again among replies", () => testRevealBlurredPost(page));
     await runTest("4g. X Discover more posts are not replies", () => testXDiscoverMore(page, classifyCalls));
     await runTest("4h. X scroll stability", () => testScrollStability(context, page, serviceWorker, "x", "https://x.com/home"));
     await runTest("4f. scroll performance on X", () =>
@@ -1458,7 +1382,7 @@ async function playFirstVideoForHalfAMinute(page) {
 }
 
 // Added to every page of the YouTube profile: for each video id, when a tile showing it first came
-// on screen, and when the extension first blurred or hid it (labelAt). Times are milliseconds since
+// on screen, and when the extension first hid it (labelAt). Times are milliseconds since
 // the epoch, so they compare with the classify calls' times. A tile that has been on screen is marked
 // data-test-seen-on-screen.
 function recordTileTimesInPage() {
@@ -1489,7 +1413,7 @@ function recordTileTimesInPage() {
       if (mutation.type === "attributes") {
         const action = mutation.target.dataset.brainrotIndexAction;
         const times = timesByVideoId[videoIdOf(mutation.target)];
-        if ((action === "blur" || action === "hide") && times !== undefined && times.labelAt === null) {
+        if (action === "hide" && times !== undefined && times.labelAt === null) {
           times.labelAt = Date.now();
         }
         continue;
@@ -1562,7 +1486,7 @@ async function checkYouTubeSurface(page, serviceWorker, classifyCalls, url, scro
   console.log("    sample record: " + JSON.stringify(videos[0]).slice(0, 400));
   checkBatches(classifyCalls.slice(callsBefore));
   const { actionCounts } = await checkPageMatchesAnswers(page, serviceWorker, "youtube");
-  const counts = { blur: actionCounts.blur, hide: actionCounts.hide };
+  const counts = { hide: actionCounts.hide };
 
   if (scrollTimes > 0) {
     const sentBeforeScroll = new Set(allSentPosts(classifyCalls).map((post) => post.post_id));
@@ -1571,7 +1495,6 @@ async function checkYouTubeSurface(page, serviceWorker, classifyCalls, url, scro
     const newlySent = allSentPosts(classifyCalls).filter((post) => !sentBeforeScroll.has(post.post_id));
     check(newlySent.length > 0, `scrolling sent new videos (${newlySent.length})`);
     const afterScroll = await checkPageMatchesAnswers(page, serviceWorker, "youtube");
-    counts.blur = counts.blur + afterScroll.actionCounts.blur;
     counts.hide = counts.hide + afterScroll.actionCounts.hide;
   }
   checkPendingThenDone(classifyCalls.slice(callsBefore));
@@ -1616,27 +1539,6 @@ async function testYouTubeNavigation(page, serviceWorker, classifyCalls) {
   await checkPageMatchesAnswers(page, serviceWorker, "youtube");
 }
 
-// Hovering a tile plays a preview over it; over a blurred tile the preview must not be shown.
-async function testNoPreviewOverBlurredTile(page) {
-  await page.goto("https://www.youtube.com/", { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(8000);
-  const blurredTile = page.locator('ytd-rich-item-renderer yt-lockup-view-model[data-brainrot-index-action="blur"]:not([data-brainrot-index-revealed])').first();
-  if (await blurredTile.count() === 0) {
-    reportMissingTreatment("blur");
-    return;
-  }
-  await blurredTile.evaluate((tile) => tile.scrollIntoView({ block: "center" }));
-  await page.waitForTimeout(800);
-  const box = await blurredTile.boundingBox();
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
-  await page.waitForTimeout(4000);
-  const shownPreviews = await page.evaluate(() => [...document.querySelectorAll("ytd-video-preview")]
-    .filter((preview) => preview.getBoundingClientRect().width > 0)
-    .map((preview) => [...document.querySelectorAll(":hover")].slice(-3).map((element) => element.tagName).join(" > ")));
-  await page.mouse.move(5, 5);
-  check(shownPreviews.length === 0, "no video preview is shown over a blurred tile " + JSON.stringify(shownPreviews));
-}
-
 // Runs in the page: the relative luminance (0 dark to 1 light) of an element's text colour.
 function readTextLuminance(element) {
   const [red, green, blue] = getComputedStyle(element).color.match(/\d+/g).map(Number);
@@ -1654,8 +1556,7 @@ async function setYouTubeTheme(context, themeValue) {
   return pref;
 }
 
-// The labels read on YouTube's dark theme: a line of its own takes light text, the label over a
-// blurred tile keeps its own light-on-dark colours.
+// The lines read on YouTube's dark theme: a hidden tile's line takes light text.
 async function testYouTubeDarkTheme(context, page, classifyCalls) {
   const prefBefore = await setYouTubeTheme(context, "400");
   try {
@@ -1663,11 +1564,7 @@ async function testYouTubeDarkTheme(context, page, classifyCalls) {
     await waitForAnswersToSettle(page, classifyCalls);
     await scrollDown(page, 2);
     check(await page.evaluate(() => document.documentElement.hasAttribute("dark")), "YouTube shows its dark theme");
-    const overLabel = page.locator(".brainrot-index-notice-over-post").first();
-    if (await overLabel.count() === 1) {
-      check(await overLabel.evaluate(readTextLuminance) > 0.8, "the label over a blurred tile has light text");
-    }
-    const ownLine = page.locator("ytd-page-manager > :not([hidden]) .brainrot-index-notice:not(.brainrot-index-notice-over-post)").first();
+    const ownLine = page.locator("ytd-page-manager > :not([hidden]) .brainrot-index-notice").first();
     if (await ownLine.count() === 0) {
       reportMissingTreatment("hide");
       return;
@@ -1699,12 +1596,9 @@ async function runYouTubeGroup() {
       checkYouTubeSurface(page, serviceWorker, classifyCalls, YOUTUBE_FIRST_VIDEO_URL, 0), page);
     await runSurfaceTest("9b. YouTube home feed", classifyCalls, () =>
       checkYouTubeSurface(page, serviceWorker, classifyCalls, "https://www.youtube.com/", 2), page);
-    await runTest("9c. YouTube reveal: Show and Blur again on a blurred tile", () => testRevealBlurredPost(page));
     await runTest("9d. YouTube reveal: Show and Hide again on a hidden tile", () => testRevealHiddenPost(page));
-    await runTest("9e. YouTube reveal: a click on a blurred tile reveals it without opening the video", () => testClickOnBlurredPost(page));
     await runTest("9f. YouTube feedback: thumbs on a filtered post", () => testJudgeFilteredPost(page, judgmentCalls, "youtube"));
     await runTest("9g. YouTube feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "youtube"));
-    await runTest("9i. YouTube: no video preview over a blurred tile", () => testNoPreviewOverBlurredTile(page));
     await runSurfaceTest("9j. YouTube search results", classifyCalls, () =>
       checkYouTubeSurface(page, serviceWorker, classifyCalls, "https://www.youtube.com/results?search_query=minecraft", 2), page);
     await runTest("9k. YouTube: answers follow the video through in-app navigation", () =>
@@ -1833,6 +1727,7 @@ async function testThumbsInXActionRow(page, judgmentCalls) {
   await tweet.hover({ position: { x: 300, y: 20 } });
   await page.waitForTimeout(300);
   check(await opacityOf(control) === 1, "hovering the tweet shows them");
+  check(!(await control.locator(".brainrot-index-judge-mark").isVisible()), "on X they carry no shield");
   await judgeShownPostAsMissed(page, judgmentCalls, control, "x", shownTweet.id);
   check(await control.locator('[data-verdict="wrong"]').getAttribute("aria-pressed") === "true", "thumbs down stays pressed");
 }
@@ -1843,13 +1738,15 @@ async function testThumbsOnHiddenXLine(page, judgmentCalls) {
   const notice = page.locator(`.brainrot-index-notice:has(+ article [href="/${hiddenTweet.handle}/status/${hiddenTweet.id}"])`);
   check(await waitUntil(async () => (await notice.count()) === 1, 5000), "after a redraw the hidden tweet is one line");
   await page.mouse.move(0, 0);
-  check(await notice.locator(".brainrot-index-summary").textContent() === "Hidden · Engagement bait", "the line says what was done and by which filter");
+  check(await notice.locator(".brainrot-index-summary").textContent() === "Hidden", "the line says only Hidden");
+  check(await opacityOf(notice.locator(".brainrot-index-detail")) === 0, "which filter and why stay hidden while the pointer is elsewhere");
   check((await notice.boundingBox()).height <= 36, "the line is one quiet row");
   check(await opacityOf(notice.locator(".brainrot-index-actions")) === 0, "its buttons are hidden while the pointer is elsewhere");
   await notice.hover();
   await page.waitForTimeout(300);
   check(await opacityOf(notice.locator(".brainrot-index-actions")) === 1, "hovering the line shows Show and the thumbs");
-  check(await notice.locator(".brainrot-index-detail").textContent() === "Asks for engagement · 90/100", "and the filter's label and score");
+  check(await opacityOf(notice.locator(".brainrot-index-detail")) > 0, "and which filter hid it and why");
+  check(await notice.locator(".brainrot-index-detail").textContent() === "Engagement bait · Asks for engagement · 90/100", "the filter, its label and score");
   const callsBefore = judgmentCalls.length;
   await notice.locator('.brainrot-index-judge-button[data-verdict="right"]').click();
   await waitUntil(() => judgmentCalls.length > callsBefore, 5000);
@@ -1859,6 +1756,86 @@ async function testThumbsOnHiddenXLine(page, judgmentCalls) {
   await page.mouse.move(0, 0);
   check(await waitUntil(async () => (await detailsBox.count()) === 0, 6000), "the box leaves by itself when the reader does not touch it");
   check(judgmentCalls.length === callsBefore + 1, "and nothing more was sent");
+}
+
+// Clicking the pressed thumb again takes the verdict back: the judgment is deleted on the server and
+// the thumb is no longer pressed. Follows 11a, which left the shown tweet's thumbs down pressed.
+async function testUndoThumb(page, judgmentCalls) {
+  const shownTweet = SAMPLE_X_TWEETS[0];
+  const tweet = page.locator(`article:has(a[href="/${shownTweet.handle}/status/${shownTweet.id}"])`);
+  const thumbDown = tweet.locator('.brainrot-index-judge [data-verdict="wrong"]');
+  check(await thumbDown.getAttribute("aria-pressed") === "true", "thumbs down is pressed before the undo");
+  await tweet.hover({ position: { x: 300, y: 20 } });
+  const callsBefore = judgmentCalls.length;
+  await thumbDown.click();
+  await waitUntil(() => judgmentCalls.length > callsBefore, 5000);
+  const removeCall = judgmentCalls[callsBefore];
+  check(removeCall?.method === "DELETE" && /\/api\/judgments\/\d+\/$/.test(removeCall.url) && removeCall.status === 204,
+    "a second click deletes the saved judgment " + JSON.stringify(removeCall));
+  check(await thumbDown.getAttribute("aria-pressed") === "false", "the thumb is no longer pressed");
+  const status = page.locator(".brainrot-index-details .brainrot-index-details-status");
+  check(await waitUntil(async () => (await status.textContent()) === "Should have been filtered · removed", 3000), "the box says it was removed");
+  check(await tweet.locator('.brainrot-index-judge [aria-pressed="true"]').count() === 0, "neither thumb is pressed");
+  await saveScreenshot(page, "11f-thumb-removed.png");
+  await page.keyboard.press("Escape");
+  await thumbDown.click();
+  await waitUntil(() => judgmentCalls.length > callsBefore + 1, 5000);
+  checkJudgmentCall(judgmentCalls[callsBefore + 1], { post_id: shownTweet.id, verdict: "wrong" });
+  check(await thumbDown.getAttribute("aria-pressed") === "true", "a third click judges it again");
+  await page.keyboard.press("Escape");
+}
+
+// A post answered while on screen is hidden at once, never blurred: the ragebait tweet is on screen
+// when its answer arrives. The line reads only "Hidden" until hovered.
+async function testOnScreenPostIsHiddenNotBlurred(page) {
+  await openStandInPage(page, STAND_IN_URLS.x, 2);
+  const ragebaitTweet = SAMPLE_X_TWEETS[2];
+  const tweet = page.locator(`article:has(a[href="/${ragebaitTweet.handle}/status/${ragebaitTweet.id}"])`);
+  const look = await tweet.evaluate(readPostLook);
+  check(await tweet.getAttribute("data-brainrot-index-action") === "hide" && !look.drawn, "the tweet on screen is hidden");
+  check(await page.evaluate(() => [...document.querySelectorAll("*")].every((element) => !getComputedStyle(element).filter.includes("blur"))),
+    "nothing on the page is blurred");
+  const notice = noticeOf(tweet);
+  check(await notice.locator(".brainrot-index-summary").textContent() === "Hidden", "its line says only Hidden");
+  check(await opacityOf(notice.locator(".brainrot-index-detail")) === 0, "the reason is not shown until hovered");
+  await saveScreenshot(page, "11g-hidden-posts.png");
+  await notice.hover();
+  await page.waitForTimeout(300);
+  check(await notice.locator(".brainrot-index-detail").textContent() === "Ragebait · Written to anger · 75/100", "hovered, it names the filter and why");
+  await saveScreenshot(page, "11g-hidden-post-hovered.png");
+  await page.mouse.move(0, 0);
+}
+
+// A post's own page on the X stand-in: the same tweets, so those newer than the first are its replies.
+const X_POST_PAGE_URL = `https://x.com/${SAMPLE_X_TWEETS[0].handle}/status/${SAMPLE_X_TWEETS[0].id}`;
+
+// Replies get thumbs as posts do, also a reply the site draws before its More menu.
+async function testThumbsOnXReplies(page) {
+  await openStandInPage(page, X_POST_PAGE_URL, 2);
+  const replyTweet = SAMPLE_X_TWEETS[4];
+  const reply = page.locator(`article:has(a[href="/${replyTweet.handle}/status/${replyTweet.id}"])`);
+  const control = reply.locator(".brainrot-index-judge");
+  check(await control.count() === 1, "a reply on a post's page has thumbs");
+  await reply.hover({ position: { x: 300, y: 20 } });
+  await page.waitForTimeout(300);
+  check(await opacityOf(control) === 1, "hovering the reply shows them");
+  await page.mouse.move(0, 0);
+  // The reply is drawn again without its More menu, which is added half a second later.
+  await page.evaluate(([handle, id]) => {
+    const article = [...document.querySelectorAll("article")].find((element) => element.querySelector(`a[href="/${handle}/status/${id}"]`) !== null);
+    const copy = article.cloneNode(true);
+    copy.querySelector(".brainrot-index-judge").remove();
+    copy.removeAttribute("data-brainrot-index-judge-root");
+    const moreButton = copy.querySelector('[data-testid="caret"]');
+    const moreButtonParent = moreButton.parentElement;
+    moreButton.remove();
+    article.replaceWith(copy);
+    setTimeout(() => moreButtonParent.append(moreButton), 500);
+  }, [replyTweet.handle, replyTweet.id]);
+  check(await waitUntil(async () => (await control.count()) === 1, 3000),
+    "a reply drawn before its More menu gets its thumbs once the menu appears");
+  check(await control.evaluate((element) => element.nextElementSibling.querySelector('[data-testid="caret"]') !== null),
+    "just before the More menu");
 }
 
 async function testThumbsInRedditActionRows(page, judgmentCalls) {
@@ -1871,6 +1848,10 @@ async function testThumbsInRedditActionRows(page, judgmentCalls) {
   const commentControl = comment.locator(":scope > [slot='actionRow'] > shreddit-comment-action-row > .brainrot-index-judge");
   const replyControl = reply.locator(":scope > [slot='actionRow'] > shreddit-comment-action-row > .brainrot-index-judge");
   check(await commentControl.evaluate((element) => element.assignedSlot?.name) === "comment-insight", "a comment's thumbs are between Share and its menu");
+  await shownPost.hover({ position: { x: 300, y: 20 } });
+  await page.waitForTimeout(300);
+  check(await postControl.locator(".brainrot-index-judge-mark").isVisible(), "a post's thumbs carry the shield, apart from Reddit's votes");
+  await page.mouse.move(0, 0);
   await reply.locator('[slot="comment"]').hover();
   await page.waitForTimeout(300);
   check(await opacityOf(replyControl) === 1 && await opacityOf(commentControl) === 0, "hovering a reply shows its thumbs only, not its parent's");
@@ -1916,15 +1897,18 @@ async function testThumbsInYouTubeTile(page, judgmentCalls) {
 
 async function runJudgmentsGroup() {
   await withBrave(makeFreshProfileDir("judgments"), {}, async ({ context, serviceWorker, extensionId }) => {
-    await serveStandInPages(context, samplePages());
+    await serveStandInPages(context, { ...samplePages(), [X_POST_PAGE_URL]: xHomePage(SAMPLE_X_TWEETS) });
     const judgmentCalls = recordJudgmentCalls(context);
     const page = context.pages()[0] ?? (await context.newPage());
     await connectExtension(context, serviceWorker, extensionId, "stand-in sites profile");
     await runTest("11a. judgments: thumbs by an X tweet's More menu", () => testThumbsInXActionRow(page, judgmentCalls));
+    await runTest("11f. judgments: clicking the pressed thumb again takes it back", () => testUndoThumb(page, judgmentCalls));
     await runTest("11b. judgments: thumbs on a hidden tweet's line", () => testThumbsOnHiddenXLine(page, judgmentCalls));
     await runTest("11c. judgments: thumbs in Reddit's post and comment rows", () => testThumbsInRedditActionRows(page, judgmentCalls));
     await runTest("11d. judgments: the details box keeps key presses", () => testDetailsBoxKeepsKeyPresses(page, judgmentCalls));
     await runTest("11e. judgments: thumbs in a YouTube tile", () => testThumbsInYouTubeTile(page, judgmentCalls));
+    await runTest("11g. judgments: a post answered on screen is hidden, not blurred", () => testOnScreenPostIsHiddenNotBlurred(page));
+    await runTest("11h. judgments: thumbs on X replies", () => testThumbsOnXReplies(page));
   });
 }
 

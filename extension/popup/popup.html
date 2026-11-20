@@ -6,23 +6,43 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <h1><img src="../icons/icon48.png" width="22" height="22" alt="">BrainRot Index</h1>
-  <p id="account-status">Checking account...</p>
-  <p id="subscribe-row" hidden><a id="subscribe-link" class="subscribe-button" target="_blank">Subscribe</a></p>
-  <p id="consent-row" hidden><button type="button" id="consent-button" class="subscribe-button">Review and agree</button></p>
-  <label class="switch-row">
-    <input type="checkbox" id="enabled-switch">
-    Filtering on
-  </label>
-  <p>Checked this session: <span id="checked-count">0</span></p>
-  <p>Blurred or hidden: <span id="acted-on-count">0</span></p>
-  <p><a id="site-link" target="_blank">Open BrainRot Index</a></p>
-  <p id="disconnect-row" hidden><button type="button" id="disconnect-button" class="link-button">Disconnect and stop sending posts</button></p>
-  <form id="feedback-form">
+  <header class="brand">
+    <img src="../icons/icon48.png" width="28" height="28" alt="">
+    <span class="brand-name">BrainRot Index</span>
+  </header>
+
+  <section class="card">
+    <p id="account-status">Checking account...</p>
+    <p id="subscribe-row" hidden><a id="subscribe-link" class="primary-button" target="_blank">Subscribe</a></p>
+    <p id="consent-row" hidden><button type="button" id="consent-button" class="primary-button">Review and agree</button></p>
+    <label class="switch-row">
+      <span>Filtering on</span>
+      <input type="checkbox" id="enabled-switch" class="switch">
+    </label>
+  </section>
+
+  <section class="card counts">
+    <div class="count">
+      <span class="count-number" id="checked-count">0</span>
+      <span class="count-label">Checked this session</span>
+    </div>
+    <div class="count">
+      <span class="count-number" id="acted-on-count">0</span>
+      <span class="count-label">Hidden</span>
+    </div>
+  </section>
+
+  <form id="feedback-form" class="card">
+    <label class="field-label" for="feedback-text">Feedback</label>
     <textarea id="feedback-text" rows="3" placeholder="Something wrong? Tell us." required></textarea>
-    <button type="submit">Send</button>
-    <span id="feedback-status"></span>
+    <div class="form-row">
+      <span id="feedback-status"></span>
+      <button type="submit" class="accent-button">Send</button>
+    </div>
   </form>
+
+  <p><a id="site-link" class="site-link" target="_blank">Open BrainRot Index</a></p>
+  <p id="disconnect-row" hidden><button type="button" id="disconnect-button" class="quiet-button">Disconnect and stop sending posts</button></p>
   <p class="commit-line">Version <span id="extension-commit"></span></p>
   <script src="../extension-api.js"></script>
   <script src="popup.js"></script>

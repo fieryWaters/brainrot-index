@@ -88,7 +88,7 @@ made-up posts, which each picture says in a footnote.
     Your feeds are tuned to keep you scrolling. BrainRot Index is tuned by you. It reads your social feeds with AI as you scroll and clears out the ragebait, engagement bait and brainrot before you reach it. You choose what goes.
 
     HOW IT WORKS
-    As posts, replies and videos come onto your screen, the extension sends them to the BrainRot Index service, where AI filters score each one with its text and images. Posts your filters flag are blurred, or folded into a single line that says which filter caught them. One click shows any of them.
+    As posts, replies and videos come onto your screen, the extension sends them to the BrainRot Index service, where AI filters score each one with its text and images. Posts your filters flag are folded into a single line that says they were hidden; hover it to see which filter caught them. One click shows any of them.
 
     FILTERS YOU CONTROL
     Four filters are built in:
@@ -96,7 +96,7 @@ made-up posts, which each picture says in a footnote.
     - Ragebait: posts built to make you angry, such as blaming whole groups of people.
     - Brainrot: attention sinks with nothing inside.
     - AI slop: mass-produced generated content and reply-guy promotion.
-    On your dashboard you turn each filter on or off, set how strict it is, and choose whether flagged posts are blurred or hidden. The plugin store has more filters, written by other people. Child mode keeps posts blurred until they have been checked and does not let filtered posts be revealed.
+    On your dashboard you turn each filter on or off and set how strict it is. The plugin store has more filters, written by other people. Child mode keeps posts hidden until they have been checked and does not let filtered posts be revealed.
 
     TEACH IT
     Thumbs up or down on any post tells the filters whether they got it right. Right-click a post to report one they missed. The toolbar button turns filtering off and on and shows how many posts were checked.
@@ -131,12 +131,13 @@ made-up posts, which each picture says in a footnote.
 
 What each screenshot shows:
 
-1. "The algorithm that works for you": a dark feed with a hidden post's line (reason, Show, thumbs)
-   and a blurred post.
-2. "Every post and reply, checked as you scroll": a light thread with a blurred post, a hidden post
-   and a hidden reply.
-3. "Videos too": a dark video grid with one hidden and one blurred video.
-4. "You choose what goes": the dashboard's My plugins card with strictness sliders and Blur or Hide.
+1. "The algorithm that works for you": a dark feed with a hidden post's line (reason, Show, thumbs).
+2. "Every post and reply, checked as you scroll": a light thread with a hidden post and a hidden reply.
+3. "Videos too": a dark video grid with hidden videos.
+4. "You choose what goes": the dashboard's My plugins card with strictness sliders.
+
+The images made before blurring was removed still show blurred posts and the Blur or Hide choice;
+they need to be made again before the next upload.
 5. "Tell it when it is wrong": the thumbs-down details box, and the toolbar popup (with its Disconnect
    link).
 
@@ -148,7 +149,7 @@ instructions, step 1).
 
 **Single purpose**
 
-    BrainRot Index filters unwanted posts out of social media feeds: it sends the posts shown on supported sites to the BrainRot Index service, which classifies them with the user's filters, and blurs or hides the ones flagged.
+    BrainRot Index filters unwanted posts out of social media feeds: it sends the posts shown on supported sites to the BrainRot Index service, which classifies them with the user's filters, and hides the ones flagged.
 
 **Permission justifications** (one box per permission; the dashboard also asks about host access)
 
@@ -159,7 +160,7 @@ instructions, step 1).
 | `activeTab` | Attaches the current tab's address to feedback the user sends from the toolbar popup. |
 | `scripting` | After install, adds the connect script to brainrotindex.com tabs that are already open. |
 | Host permission `https://brainrotindex.com/*` | The extension's own service: sends posts to be classified, reads the user's filter settings, sends feedback and connects the account. |
-| Content scripts on `https://x.com/*`, `https://www.reddit.com/*`, `https://www.youtube.com/*` | Read the posts shown in the feed and blur or hide the ones flagged. |
+| Content scripts on `https://x.com/*`, `https://www.reddit.com/*`, `https://www.youtube.com/*` | Read the posts shown in the feed and hide the ones flagged. |
 
 **Remote code**: "No, I am not using remote code." All JavaScript is in the package; the service only
 returns JSON data.
@@ -198,7 +199,7 @@ those sites, so the reviewer needs no account there; X does need one, so it is n
     Account has permanent free access; no payment.
     1. Install. A BrainRot Index tab opens: press "Agree and continue". Nothing is sent before that.
     2. Sign in at https://brainrotindex.com/login, open /dashboard, press "Connect extension".
-    3. Open https://www.reddit.com/r/popular/ or https://www.youtube.com/ (no sign-in to those sites needed). Flagged posts show "Blurred" or "Hidden" with the filter's name; "Show" reveals one.
+    3. Open https://www.reddit.com/r/popular/ or https://www.youtube.com/ (no sign-in to those sites needed). Flagged posts are replaced by a line reading "Hidden"; hovering it names the filter, and "Show" reveals the post.
     4. Toolbar button: "Disconnect" withdraws the agreement.
 
 ## Things a reviewer may question

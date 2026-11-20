@@ -19,7 +19,7 @@ div:has([data-testid="caret"]) > .brainrot-index-judge .brainrot-index-judge-ico
 }
 
 /* The grey of X's secondary text, which reads on its light, dim and dark themes. */
-.brainrot-index-notice:not(.brainrot-index-notice-over-post) {
+.brainrot-index-notice {
   color: rgb(113, 118, 123);
   font-family: TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;

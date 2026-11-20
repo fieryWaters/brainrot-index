@@ -28,8 +28,9 @@ worker (`VideoTranscript`) before the video is classified, and the model reads
 its first 2000 words; a video without one is classified on its title and
 thumbnail. The `worker` service takes pending rows from Postgres
 and calls the model; the endpoint waits up to 1.5 s so most posts come back
-done on the first call. Each user's threshold and blur/hide choice per plugin
-decide the action. An account may send `DAILY_NEW_POST_QUOTA` posts a day that
+done on the first call. Each user's threshold per plugin decides whether a
+post is flagged, and a flagged post is hidden (blurring was removed; a plugin
+still set to blur hides). An account may send `DAILY_NEW_POST_QUOTA` posts a day that
 are not in the cache yet; past that, such posts come back `allow` with
 `"notice": "daily_limit_reached"` and are not stored, while cached posts are
 still answered.
@@ -41,7 +42,7 @@ without a subscription; `billing.access.account_has_access` decides it. See
 | Endpoint | Auth | Purpose |
 | --- | --- | --- |
 | `GET /api/extension/config/` | extension token, verified email | master switch, mode, pending action |
-| `POST /api/classify/` | extension token, verified email | up to 25 posts in, allow/blur/hide out |
+| `POST /api/classify/` | extension token, verified email | up to 25 posts in, allow/hide out |
 | `POST /api/extension/token/` | session, verified email | new extension token, returned once |
 | `GET, PATCH /api/settings/` | session | `{enabled, mode, allow_reveal}` |
 | `GET /api/plugins/` | session | `{plugins: [{slug, name, description, enabled, threshold, flagged_action}]}` |

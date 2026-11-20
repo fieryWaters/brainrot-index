@@ -1,18 +1,13 @@
 /* Treatments drawn by post-decoration.js. !important where site styles are often very specific. */
 
 [data-brainrot-index-action="pending"],
-[data-brainrot-index-action="blur"]:not([data-brainrot-index-revealed]) {
-  filter: blur(14px) !important;
-  cursor: pointer;
-}
-
 [data-brainrot-index-action="hide"]:not([data-brainrot-index-revealed]) {
   display: none !important;
 }
 
-/* The line in place of a hidden post, or above a revealed one: the logo's shield, what was done and
-   by which filter, in the site's own text colour, faded. Hovering it brings up the filter's label and
-   score and the buttons, on the same line, so nothing moves. */
+/* The line in place of a hidden post, or above a revealed one: the logo's shield and "Hidden", in the
+   site's own text colour, faded. Hovering it brings up which filter hid the post and why, and the
+   buttons, on the same line, so nothing moves. */
 .brainrot-index-notice {
   display: flex !important;
   align-items: center;
@@ -83,48 +78,6 @@
   pointer-events: auto;
 }
 
-/* The label over a blurred post: a small dark pill at its top left corner. No top or left: an
-   absolute box with automatic offsets sits where it would have been in the flow, which is the top
-   left corner of the post that follows it, and it takes no space. Dark and solid, because what is
-   under it is a blur of anything. Hovering the post opens the pill up as hovering the line does. */
-.brainrot-index-notice-over-post {
-  position: absolute;
-  z-index: 2;
-  max-width: min(560px, calc(100% - 20px));
-  min-height: 28px;
-  margin: 10px;
-  padding: 3px 6px 3px 10px;
-  border-radius: 999px;
-  background: rgba(24, 24, 27, 0.78);
-  color: #f4f4f5;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-}
-
-.brainrot-index-notice-over-post:hover {
-  background: rgba(24, 24, 27, 0.9);
-}
-
-.brainrot-index-notice-over-post .brainrot-index-summary {
-  opacity: 0.9;
-}
-
-/* The pill keeps to its summary until hovered, then grows rightwards over the blur. */
-.brainrot-index-notice-over-post .brainrot-index-detail,
-.brainrot-index-notice-over-post .brainrot-index-actions {
-  display: none;
-}
-
-.brainrot-index-notice-over-post:is(:hover, :focus-within, :has(+ :hover), :has([data-open])) .brainrot-index-detail {
-  display: block;
-  opacity: 0.6;
-}
-
-.brainrot-index-notice-over-post:is(:hover, :focus-within, :has(+ :hover), :has([data-open])) .brainrot-index-actions {
-  display: flex;
-  opacity: 1;
-  pointer-events: auto;
-}
-
 .brainrot-index-notice button {
   flex: none;
   box-sizing: border-box;
@@ -178,6 +131,12 @@
   pointer-events: auto;
 }
 
+/* The shield beside the thumbs, shown only where the site's own buttons look like them
+   (sites/reddit.css). */
+.brainrot-index-judge-mark {
+  display: none;
+}
+
 .brainrot-index-judge .brainrot-index-judge-button {
   display: inline-flex;
   align-items: center;
@@ -220,7 +179,7 @@
   fill: rgba(55, 150, 209, 0.25);
 }
 
-/* The box under the thumbs after a click: dark, like the label over a blurred post, on every site. */
+/* The box under the thumbs after a click: dark, on every site. */
 .brainrot-index-details {
   position: absolute;
   z-index: 2147483646;

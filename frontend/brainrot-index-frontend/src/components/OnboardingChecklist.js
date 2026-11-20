@@ -75,7 +75,7 @@ export function createOnboardingChecklist() {
           ? 'Press Connect extension in the Browser extension card below.'
           : 'Once it is installed, press Connect extension in the Browser extension card below.')),
       stepRow(status.feed_opened, 'Open your feed',
-        el('p', '', 'Open a supported site in this browser and scroll. Posts your filters flag are blurred or hidden as you go. ',
+        el('p', '', 'Open a supported site in this browser and scroll. Posts your filters flag are hidden as you go. ',
           link('Which sites?', '/#faq'))),
     ]
     const doneCount = steps.filter((row) => row.dataset.done === 'true').length

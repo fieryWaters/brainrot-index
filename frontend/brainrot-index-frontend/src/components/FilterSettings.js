@@ -83,7 +83,7 @@ export function createFilterSettingsCard({ basePath = '', canChange }) {
         el('span', '',
           el('span', 'block', 'Mode'),
           el('span', 'block text-white/50',
-            'Child mode blurs posts until they are checked and never lets them be revealed.')),
+            'Child mode hides posts until they are checked and never lets them be revealed.')),
         modeSelect),
       el('label', 'flex items-center justify-between gap-4',
         el('span', '',
@@ -147,9 +147,6 @@ export function createInstalledPluginsCard({ basePath = '', title = 'My plugins'
     })
     thresholdSlider.addEventListener('change', () => save(plugin, { threshold: Number(thresholdSlider.value) }))
 
-    const actionSelect = createSelect([['hide', 'Hide'], ['blur', 'Blur']], plugin.flagged_action, `${plugin.name} action`, locked)
-    actionSelect.addEventListener('change', () => save(plugin, { flagged_action: actionSelect.value }))
-
     const nameLink = el('a', 'font-semibold text-white hover:text-glow-300', plugin.name)
     nameLink.href = `/store/${plugin.slug}`
 
@@ -180,11 +177,7 @@ export function createInstalledPluginsCard({ basePath = '', title = 'My plugins'
           el('span', '', 'More lenient')),
         el('p', 'text-xs text-white/40',
           'The model scores every post from 0 to 100. Slide left to filter more posts, including borderline ones; slide right to filter only clear cases.')),
-      el('div', 'flex items-center justify-between gap-4',
-        el('label', 'flex items-center gap-3',
-          el('span', '', 'Filtered posts'),
-          actionSelect),
-        canChange ? uninstallButton : ''))
+      canChange ? el('div', 'flex justify-end', uninstallButton) : '')
   }
 
   async function createAddPluginRow() {

@@ -21,6 +21,10 @@ Chrome ignores `--load-extension`.
     npm test -- consent      # consent screen: nothing sent before agreeing, Not now, Agree, Disconnect (no real site)
     npm test -- capture      # what is sent for tweets and Reddit posts saved from the real sites (no real site)
 
+`BRAINROT_BROWSER=<path to a Chromium build>` runs the tests in that browser instead of Brave, for
+example Playwright's own Chromium under `xvfb-run` on a Linux machine. Only the groups on stand-in
+pages (transcripts, judgments, consent) are meant for that.
+
 The connect group opens https://brainrot.jacob-waters.com without signing in, even with the mock
 server, because the extension's default address is the only one it adds its listener to on install.
 

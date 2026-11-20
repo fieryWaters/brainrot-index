@@ -14,7 +14,7 @@ account was deleted is gone from the item; what they said stays."""
 from django.db.models import F, Q
 
 from classification.inference import stored_parent_text
-from classification.models import IMAGE_DOWNLOADED, POST_KIND_REPLY, Classification, Post, PostJudgment
+from classification.models import ACTION_BLUR, ACTION_HIDE, IMAGE_DOWNLOADED, POST_KIND_REPLY, Classification, Post, PostJudgment
 from classification.views import filter_results_for
 
 from .models import Feedback, JudgmentResolution
@@ -30,6 +30,19 @@ STATUSES = [STATUS_OPEN, STATUS_RESOLVED, STATUS_ALL]
 
 class UnknownItem(Exception):
     pass
+
+
+def shown_as(action):
+    """An action as the reader sees it now. Blurring was removed and every
+    blurred post is hidden, so a stored blur reads as hide."""
+    if action == ACTION_BLUR:
+        return ACTION_HIDE
+    else:
+        return action
+
+
+def filter_results_shown_as(filter_results):
+    return [{**result, 'flagged_action': shown_as(result['flagged_action'])} for result in filter_results]
 
 
 def inbox_items(status):
@@ -113,8 +126,8 @@ def feedback_item(feedback):
         'reply_email': feedback.reply_email,
         'platform': feedback.platform,
         'post_id': feedback.post_id,
-        'shown_action': feedback.shown_action,
-        'expected_action': feedback.expected_action,
+        'shown_action': shown_as(feedback.shown_action),
+        'expected_action': shown_as(feedback.expected_action),
         'site_commit': feedback.site_commit,
         'extension_commit': feedback.extension_commit,
         'post': post_as_dict(post),
@@ -150,14 +163,14 @@ def judgment_item(judgment):
         'received_at': judgment.updated_at.isoformat(),
         'sender': judgment_sender(judgment),
         'verdict': judgment.verdict,
-        'shown_action': judgment.shown_action,
+        'shown_action': shown_as(judgment.shown_action),
         'plugin': judgment_plugin_slug(judgment),
         'severity': judgment.severity,
         'details': judgment.details,
         'extension_commit': judgment.extension_commit,
         'post': post_as_dict(judgment.post),
         # What every filter the reader had on decided when they judged the post.
-        'filters': filters_with_criteria(judgment.filter_results),
+        'filters': filters_with_criteria(filter_results_shown_as(judgment.filter_results)),
         'resolved': resolved,
         'resolved_commit': resolution.resolved_commit if resolution is not None else '',
         'resolved_note': resolution.resolved_note if resolution is not None else '',
@@ -175,7 +188,7 @@ def thumb_rows():
             'received_at': judgment.updated_at.isoformat(),
             'sender': judgment_sender(judgment),
             'verdict': judgment.verdict,
-            'shown_action': judgment.shown_action,
+            'shown_action': shown_as(judgment.shown_action),
             'plugin': judgment_plugin_slug(judgment),
             'severity': judgment.severity,
             'details': judgment.details,
@@ -186,7 +199,7 @@ def thumb_rows():
                 'url': judgment.post.url,
                 'text': judgment.post.text,
             },
-            'filters': judgment.filter_results,
+            'filters': filter_results_shown_as(judgment.filter_results),
         })
     return rows
 

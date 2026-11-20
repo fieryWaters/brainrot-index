@@ -15,6 +15,17 @@
   background: var(--color-button-secondary-background, rgba(128, 128, 128, 0.15));
 }
 
+/* Reddit's own up and down votes sit in the same row and look much like the thumbs, so the thumbs
+   carry the logo's shield to say they are BrainRot Index's. */
+.brainrot-index-judge[slot] .brainrot-index-judge-mark {
+  display: block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin: 0 2px 0 10px;
+  fill: #3796d1;
+}
+
 .brainrot-index-judge[slot] .brainrot-index-judge-button {
   width: 32px;
   height: 32px;
@@ -25,6 +36,6 @@
   height: 16px;
 }
 
-.brainrot-index-notice:not(.brainrot-index-notice-over-post) {
+.brainrot-index-notice {
   color: var(--color-neutral-content-weak, inherit);
 }

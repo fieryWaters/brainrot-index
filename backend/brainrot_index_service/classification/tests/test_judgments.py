@@ -98,6 +98,22 @@ class JudgmentTests(TestCase):
             content_type='application/json', **bearer(other_token))
         self.assertEqual(response.status_code, 404)
 
+    def test_clicking_the_thumb_again_removes_the_judgment(self):
+        judgment_id = self.judge('right').json()['id']
+
+        response = self.client.delete(reverse('judgment_details', args=[judgment_id]), **bearer(self.token))
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(PostJudgment.objects.filter(id=judgment_id).exists())
+        self.assertEqual(self.judge('wrong').status_code, 201)
+
+    def test_judgment_of_another_account_cannot_be_removed(self):
+        judgment_id = self.judge('right').json()['id']
+        _, other_token = create_user_with_token('other@example.com')
+        response = self.client.delete(reverse('judgment_details', args=[judgment_id]), **bearer(other_token))
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(PostJudgment.objects.filter(id=judgment_id).exists())
+
     def test_unknown_severity_is_rejected(self):
         judgment_id = self.judge('right').json()['id']
         self.assertEqual(self.add_details(judgment_id, {'severity': 'extreme'}).status_code, 400)

@@ -127,18 +127,16 @@ class ClassifyEndpointTests(TestCase):
         self.classify([seen_post('p1')])
         for slug in ['engagement-bait', 'brainrot', 'rude-or-toxic', 'low-effort']:
             self.set_score('p1', slug, 60)
-        UserPlugin.objects.filter(user=self.user).update(flagged_action='blur')
 
         result = self.classify([seen_post('p1')]).json()['results'][0]
-        self.assertEqual(result['action'], 'blur')
+        self.assertEqual(result['action'], 'hide')
         self.assertEqual(len(result['reasons']), 4)
 
-    def test_hide_wins_over_blur(self):
+    def test_a_filter_still_set_to_blur_hides(self):
         self.classify([seen_post('p1')])
         for slug in ['engagement-bait', 'brainrot', 'rude-or-toxic', 'low-effort']:
             self.set_score('p1', slug, 90)
         UserPlugin.objects.filter(user=self.user).update(flagged_action='blur')
-        UserPlugin.objects.filter(user=self.user, plugin__slug='brainrot').update(flagged_action='hide')
 
         result = self.classify([seen_post('p1')]).json()['results'][0]
         self.assertEqual(result['action'], 'hide')

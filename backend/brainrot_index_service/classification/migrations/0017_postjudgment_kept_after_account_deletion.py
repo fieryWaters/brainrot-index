@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('classification', '0015_unlist_body_pressure'),
+        ('classification', '0016_post_quoted_link_and_video'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

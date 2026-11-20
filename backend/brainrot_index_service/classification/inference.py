@@ -36,6 +36,8 @@ INFERENCE_SOURCE_LOCAL = 'local'
 MAX_IMAGES_PER_POST = 20
 MAX_TEXT_CHARACTERS = 6000
 MAX_PARENT_TEXT_CHARACTERS = 1000
+# How many replies up a thread is followed to find its post.
+MAX_THREAD_DEPTH = 50
 # The opening of a video's transcript is enough to judge it and keeps each call cheap.
 MAX_TRANSCRIPT_WORDS = 2000
 REQUEST_TIMEOUT_SECONDS = 60
@@ -97,9 +99,11 @@ def describe_shown_content(text, quoted_post, link_preview):
 
 
 def describe_post(platform, community, kind, text, parent_text, image_count, transcript=None,
-                  quoted_post=None, link_preview=None, has_video=False):
-    """The post as the model reads it. parent_text is None when a reply's
-    parent post is unknown. transcript is None for a post that is not a video.
+                  quoted_post=None, link_preview=None, has_video=False, parent_is_reply=False, thread_text=None):
+    """The post as the model reads it. parent_text is the text of what a reply
+    answers, None when that was never seen; parent_is_reply says it is another
+    reply, whose thread starts with the post of thread_text (None when unseen).
+    transcript is None for a post that is not a video.
     has_video says the post shows a video or GIF, which this model cannot
     watch; the images include its thumbnail."""
     lines = [f"Platform: {PLATFORM_NAMES[platform]}"]
@@ -108,7 +112,11 @@ def describe_post(platform, community, kind, text, parent_text, image_count, tra
 
     if kind == POST_KIND_REPLY:
         lines.append("Kind: reply")
-        if parent_text is not None:
+        if thread_text is not None:
+            lines.append(f"In the thread of this post: {thread_text[:MAX_PARENT_TEXT_CHARACTERS]}")
+        if parent_text is not None and parent_is_reply:
+            lines.append(f"Replying to this reply: {parent_text[:MAX_PARENT_TEXT_CHARACTERS]}")
+        elif parent_text is not None:
             lines.append(f"Replying to this post: {parent_text[:MAX_PARENT_TEXT_CHARACTERS]}")
     else:
         lines.append("Kind: post")
@@ -203,11 +211,30 @@ def ask_model(messages, plugin_version, inference_source, model):
 
 
 def stored_parent_text(post):
-    """The text of a reply's parent post, or None when it was never seen."""
+    """The text of what a reply answers, a post or another reply, or None when it was never seen."""
     parent_post = Post.objects.filter(platform=post.platform, post_id=post.parent_post_id).first()
     if parent_post is None:
         return None
     return parent_post.text
+
+
+def stored_reply_context(post):
+    """(parent_text, parent_is_reply, thread_text) of a reply, as describe_post
+    takes them. A reply's parent is what it answers, a post or another reply;
+    the parents of replies lead up to the thread's post."""
+    parent_post = Post.objects.filter(platform=post.platform, post_id=post.parent_post_id).first()
+    if parent_post is None:
+        return None, False, None
+    if parent_post.kind != POST_KIND_REPLY:
+        return parent_post.text, False, None
+    ancestor = parent_post
+    for _ in range(MAX_THREAD_DEPTH):
+        ancestor = Post.objects.filter(platform=post.platform, post_id=ancestor.parent_post_id).first()
+        if ancestor is None:
+            return parent_post.text, True, None
+        if ancestor.kind != POST_KIND_REPLY:
+            return parent_post.text, True, ancestor.text
+    return parent_post.text, True, None
 
 
 def run_classification(classification):
@@ -221,12 +248,13 @@ def run_classification(classification):
         if data_url is not None:
             images_with_data.append((post_image, data_url))
 
-    parent_text = None
+    parent_text, parent_is_reply, thread_text = None, False, None
     if post.kind == POST_KIND_REPLY:
-        parent_text = stored_parent_text(post)
+        parent_text, parent_is_reply, thread_text = stored_reply_context(post)
     post_description = describe_post(
         post.platform, post.community, post.kind, post.text, parent_text, len(images_with_data),
-        transcript_for_model(post), post.quoted_post, post.link_preview, post.video_url != '')
+        transcript_for_model(post), post.quoted_post, post.link_preview, post.video_url != '',
+        parent_is_reply, thread_text)
 
     messages_to_send = build_messages(
         plugin_version, post_description, [data_url for _, data_url in images_with_data])

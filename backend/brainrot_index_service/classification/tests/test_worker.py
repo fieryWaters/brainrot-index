@@ -248,6 +248,23 @@ class WorkerTests(TestCase):
         self.assertIn('Kind: reply', post_description)
         self.assertIn('We just shipped version 2', post_description)
 
+    def test_a_nested_reply_is_read_with_the_reply_it_answers_and_the_thread_post(self):
+        store_post(seen_post('t3_post', text='AAA wants me to return the company car 70 miles away on my last day.'))
+        store_post(seen_post('t1_question', kind='reply', parent_post_id='t3_post',
+                             text='Will you be paid for the drive back?'))
+        classification = self.queue(seen_post('t1_answer', kind='reply', parent_post_id='t1_question', text='yes we will.'))
+
+        with patch('classification.inference.requests.post', side_effect=fake_model_scoring(10)):
+            classify_next_pending()
+
+        classification.refresh_from_db()
+        post_description = classification.prompt[1]['content'][0]['text']
+        self.assertIn(
+            'Kind: reply\n'
+            'In the thread of this post: AAA wants me to return the company car 70 miles away on my last day.\n'
+            'Replying to this reply: Will you be paid for the drive back?',
+            post_description)
+
     def test_model_http_error_counts_as_an_invalid_answer(self):
         classification = self.queue(seen_post('p1'))
         with patch('classification.inference.requests.post', side_effect=requests.ConnectionError('down')):

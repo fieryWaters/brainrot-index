@@ -10,7 +10,7 @@ import statistics
 from pathlib import Path
 
 from .images import image_file_data_url
-from .inference import ask_model, build_messages, describe_post, stored_parent_text
+from .inference import ask_model, build_messages, describe_post, stored_reply_context
 from .models import IMAGE_DOWNLOADED, POST_KIND_REPLY
 
 # The threshold a new user starts with (UserPlugin.threshold).
@@ -69,9 +69,13 @@ def example_from_post(example_id, source, post, images_dir):
     if post.video_url:
         example['has_video'] = True
     if post.kind == POST_KIND_REPLY:
-        parent_text = stored_parent_text(post)
+        parent_text, parent_is_reply, thread_text = stored_reply_context(post)
         if parent_text is not None:
             example['parent_text'] = parent_text
+        if parent_is_reply:
+            example['parent_is_reply'] = True
+        if thread_text is not None:
+            example['thread_text'] = thread_text
 
     post_image = post.images.filter(status=IMAGE_DOWNLOADED).order_by('id').first()
     if post_image is not None:
@@ -106,6 +110,8 @@ def example_messages(example, plugin_version, images_dir):
         quoted_post=example.get('quoted_post'),
         link_preview=example.get('link_preview'),
         has_video=example.get('has_video', False),
+        parent_is_reply=example.get('parent_is_reply', False),
+        thread_text=example.get('thread_text'),
     )
     return build_messages(plugin_version, post_description, image_urls)
 

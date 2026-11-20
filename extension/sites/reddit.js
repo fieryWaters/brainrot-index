@@ -140,7 +140,8 @@ function extractComment(commentElement) {
     platform: "reddit",
     kind: "reply",
     post_id: commentElement.getAttribute("thingid"),
-    parent_post_id: commentElement.getAttribute("postid"),
+    // What the comment answers: the comment it replies to, or for a top-level comment the post.
+    parent_post_id: commentElement.getAttribute("parentid") ?? commentElement.getAttribute("postid"),
     url: new URL(permalink, location.origin).href,
     author: commentElement.getAttribute("author") ?? "",
     community: permalink.split("/").slice(1, 3).join("/"), // "/r/name/comments/..." gives "r/name"

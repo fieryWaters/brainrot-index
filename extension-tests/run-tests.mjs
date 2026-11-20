@@ -2022,9 +2022,32 @@ async function testCaptureOfSavedRedditPosts(page, classifyCalls) {
   check(sent.get("t3_1y0dls4")?.text.includes("Link: https://finance.yahoo.com/"), "a text post with media sends its body");
 }
 
+// A Reddit thread with nested comments, saved from www.reddit.com (fixtures/reddit-thread.html).
+const REDDIT_THREAD_FIXTURE_URL = "https://www.reddit.com/r/jobs/comments/1y0ffya/";
+
+function redditThreadFixturePage() {
+  const thread = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", "reddit-thread.html"), "utf8");
+  const styles = "svg { width: 20px; height: 20px; } img, video { max-width: 200px; max-height: 200px; }";
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Reddit (saved thread)</title><style>${styles}</style></head><body><main>${thread}</main></body></html>`;
+}
+
+async function testCaptureOfRedditReplyParents(page, classifyCalls) {
+  await page.goto(REDDIT_THREAD_FIXTURE_URL, { waitUntil: "domcontentloaded" });
+  await scrollDown(page, 6);
+  await waitUntil(() => sentPostById(classifyCalls).has("t1_19svuj1ue7n4w"), 20000);
+  const sent = sentPostById(classifyCalls);
+  check(sent.get("t1_19svrog4m9ntt")?.parent_post_id === "t3_1y0ffya", "a top-level comment answers the post");
+  check(sent.get("t1_19svscwucg63p")?.parent_post_id === "t1_19svrog4m9ntt",
+    "a nested comment answers the comment above it: " + sent.get("t1_19svscwucg63p")?.parent_post_id);
+}
+
 async function runCaptureGroup() {
   await withBrave(makeFreshProfileDir("capture"), {}, async ({ context, serviceWorker, extensionId }) => {
-    await serveStandInPages(context, { [X_FIXTURE_URL]: xFixturePage(), [REDDIT_FIXTURE_URL]: redditFixturePage() });
+    await serveStandInPages(context, {
+      [X_FIXTURE_URL]: xFixturePage(),
+      [REDDIT_FIXTURE_URL]: redditFixturePage(),
+      [REDDIT_THREAD_FIXTURE_URL]: redditThreadFixturePage(),
+    });
     await context.route(/^https:\/\/(pbs|video|abs)\.twimg\.com\//, (route) => route.fulfill({ status: 404, body: "" }));
     await context.route(/^https:\/\/([a-z-]+\.)*(redd\.it|redditmedia\.com|redditstatic\.com)\//, (route) => route.fulfill({ status: 404, body: "" }));
     const classifyCalls = recordClassifyCalls(context);
@@ -2032,6 +2055,7 @@ async function runCaptureGroup() {
     await connectExtension(context, serviceWorker, extensionId, "saved tweets profile");
     await runTest("13a. capture: saved X tweets are sent whole", () => testCaptureOfSavedTweets(page, classifyCalls));
     await runTest("13b. capture: saved Reddit posts are sent whole", () => testCaptureOfSavedRedditPosts(page, classifyCalls));
+    await runTest("13c. capture: a Reddit reply is sent with the comment it answers", () => testCaptureOfRedditReplyParents(page, classifyCalls));
   });
 }
 

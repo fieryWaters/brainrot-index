@@ -59,12 +59,12 @@ class UserSettingsTests(TestCase):
         self.user, self.token = create_user_with_token('reader@example.com')
         self.client.force_login(self.user)
 
-    def test_child_mode_blurs_pending_posts_and_forbids_reveal(self):
+    def test_child_mode_hides_pending_posts_and_forbids_reveal(self):
         response = self.client.patch(reverse('user_settings'), {'mode': 'child'}, content_type='application/json')
         self.assertEqual(response.json(), {'enabled': True, 'mode': 'child', 'allow_reveal': True})
 
         config = self.client.get(reverse('extension_config'), **bearer(self.token)).json()
-        self.assertEqual(config['pending_action'], 'blur')
+        self.assertEqual(config['pending_action'], 'hide')
         self.assertFalse(config['allow_reveal'])
 
     def test_master_switch(self):

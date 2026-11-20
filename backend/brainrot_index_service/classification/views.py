@@ -24,7 +24,6 @@ from .authentication import ExtensionTokenAuthentication
 from .images import image_url_is_allowed
 from .models import (
     ACTION_ALLOW,
-    ACTION_BLUR,
     ACTION_HIDE,
     CLASSIFICATION_DONE,
     CLASSIFICATION_NOT_APPLICABLE,
@@ -70,12 +69,6 @@ ENABLED_PLUGIN_LIMIT_MESSAGE = (
     f"At most {MAX_ENABLED_PLUGINS} plugins can be on at once, because each one checks every post. "
     "Turn one off first."
 )
-
-ACTION_SEVERITY = {
-    ACTION_ALLOW: 0,
-    ACTION_BLUR: 1,
-    ACTION_HIDE: 2,
-}
 
 # Marks the answer for a post that was not classified because the account
 # used up its daily quota of new posts.
@@ -244,6 +237,8 @@ def build_results(posts, plugins_to_apply):
             continue
 
         # A failed classification counts as finished and never flags the post.
+        # A flagged post is hidden, also by a filter still set to blur from
+        # before blurring was removed.
         action = ACTION_ALLOW
         reasons = []
         for (user_plugin, _), classification in zip(plugins_to_apply, post_classifications):
@@ -256,8 +251,7 @@ def build_results(posts, plugins_to_apply):
                 'label': classification.label,
                 'score': classification.score,
             })
-            if ACTION_SEVERITY[user_plugin.flagged_action] > ACTION_SEVERITY[action]:
-                action = user_plugin.flagged_action
+            action = ACTION_HIDE
 
         # The extension shows the first reason, so the strongest comes first.
         reasons.sort(key=lambda reason: reason['score'], reverse=True)
@@ -331,7 +325,7 @@ def extension_config(request):
     user_settings = settings_for_user(request.user)
     child_mode = user_settings.mode == MODE_CHILD
     if child_mode:
-        pending_action = ACTION_BLUR
+        pending_action = ACTION_HIDE
     else:
         pending_action = ACTION_ALLOW
     return Response({
@@ -479,12 +473,17 @@ def create_judgment(request):
     return Response({'id': judgment.id}, status=response_status)
 
 
-@api_view(['PATCH'])
+# PATCH adds the reader's details to a judgment; DELETE takes the thumb back,
+# when the reader clicks it again.
+@api_view(['PATCH', 'DELETE'])
 @authentication_classes([ExtensionTokenAuthentication])
 @permission_classes([IsAuthenticated, HasVerifiedEmail, HasAccess])
 @throttle_classes([JudgmentThrottle])
 def judgment_details(request, judgment_id):
     judgment = get_object_or_404(PostJudgment, id=judgment_id, user=request.user)
+    if request.method == 'DELETE':
+        judgment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
     serializer = JudgmentDetailsSerializer(judgment, data=request.data, partial=True)
     serializer.is_valid(raise_exception=True)
     serializer.save()

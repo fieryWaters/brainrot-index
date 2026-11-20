@@ -18,7 +18,7 @@ let config = null;  // server config while watching; null while stopped
 
 const answerByPostId = new Map();          // answers received in this page
 const requestedPostIds = new Set();        // posts sent to the server, answered or not
-const revealedPostIds = new Set();         // blurred or hidden posts the reader chose to see
+const revealedPostIds = new Set();         // hidden posts the reader chose to see
 const judgmentByPostId = new Map();        // the reader's thumbs in this page: post_id -> { verdict, id }
 const waitingElementsByPostId = new Map(); // elements showing a post whose answer has not arrived
 const postIdByElement = new WeakMap();     // the post each element showed when last seen
@@ -68,6 +68,21 @@ function judgmentFor(postId, answer, shownAction) {
       }
       return reply;
     },
+    // A thumb whose save failed left nothing on the server to remove.
+    onRemove: async () => {
+      const savedJudgment = judgmentByPostId.get(postId);
+      if (savedJudgment === undefined) {
+        return { sent: true };
+      }
+      const reply = await extensionApi.runtime.sendMessage({
+        type: "remove-judgment",
+        judgmentId: savedJudgment.id,
+      });
+      if (reply.sent) {
+        judgmentByPostId.delete(postId);
+      }
+      return reply;
+    },
     onAddDetails: (details) => extensionApi.runtime.sendMessage({
       type: "add-judgment-details",
       judgmentId: judgmentByPostId.get(postId).id,
@@ -76,9 +91,9 @@ function judgmentFor(postId, answer, shownAction) {
   };
 }
 
-// shownAction is normally answer.action; receiveAnswer passes "blur" for a hidden post on or above
-// the screen. A revealed post stays revealed in this page, also when the site draws it again.
-function showAnswer(postElement, postId, answer, shownAction = answer.action) {
+// A revealed post stays revealed in this page, also when the site draws it again.
+function showAnswer(postElement, postId, answer) {
+  const shownAction = answer.action;
   if (shownAction === "allow") {
     siteAdapter.applyAction(postElement, { action: "allow", postId: postId, judgment: judgmentFor(postId, answer, "allow") });
     return;
@@ -95,7 +110,7 @@ function showAnswer(postElement, postId, answer, shownAction = answer.action) {
       } else {
         revealedPostIds.add(postId);
       }
-      showAnswer(postElement, postId, answer, shownAction);
+      showAnswer(postElement, postId, answer);
     },
     judgment: judgmentFor(postId, answer, shownAction),
   });
@@ -109,7 +124,8 @@ function showWaiting(postElement, postId) {
   }
   waitingElements.add(postElement);
 
-  if (config.pending_action === "blur") {
+  // Servers from before blurring was removed say "blur" where they now say "hide".
+  if (config.pending_action !== "allow") {
     siteAdapter.applyAction(postElement, { action: "pending" });
   } else {
     siteAdapter.applyAction(postElement, { action: "allow" });
@@ -289,18 +305,15 @@ async function reaskPendingPosts() {
   scheduleReask();
 }
 
-// Collapsing a post that is on screen or above it would move what the reader is looking at, so such a
-// post is blurred instead (blurring does not change its height). Answers can take many seconds, so this
-// is common. The post is collapsed the next time the site renders it.
+// A flagged post is hidden, also when it is already on screen. Servers from before blurring was
+// removed can still answer "blur", which is shown as "hide".
 function receiveAnswer(postId, answer) {
+  if (answer.action === "blur") {
+    answer = { ...answer, action: "hide" };
+  }
   answerByPostId.set(postId, answer);
   for (const postElement of waitingElementsByPostId.get(postId) ?? []) {
-    if (postIdByElement.get(postElement) !== postId) {
-      continue;
-    }
-    if (answer.action === "hide" && postElement.getBoundingClientRect().top < window.innerHeight) {
-      showAnswer(postElement, postId, answer, "blur");
-    } else {
+    if (postIdByElement.get(postElement) === postId) {
       showAnswer(postElement, postId, answer);
     }
   }

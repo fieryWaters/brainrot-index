@@ -96,6 +96,10 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendJudgment(message.judgment).then(sendResponse);
     return true;
   }
+  if (message.type === "remove-judgment") {
+    removeJudgment(message.judgmentId).then(sendResponse);
+    return true;
+  }
   if (message.type === "add-judgment-details") {
     addJudgmentDetails(message.judgmentId, message.details).then(sendResponse);
     return true;
@@ -320,6 +324,9 @@ async function sendReport(method, path, body) {
   } catch (networkError) {
     return { sent: false, reason: "Cannot reach the server." };
   }
+  if (response.status === 204) {
+    return { sent: true, body: null };
+  }
   if (response.ok) {
     return { sent: true, body: await response.json() };
   }
@@ -345,6 +352,11 @@ async function sendJudgment(judgment) {
 // details holds any of severity, details and plugin (a plugin slug).
 async function addJudgmentDetails(judgmentId, details) {
   return sendReport("PATCH", "/api/judgments/" + judgmentId + "/", details);
+}
+
+// Takes back a thumbs up or down: the reader clicked the same thumb again.
+async function removeJudgment(judgmentId) {
+  return sendReport("DELETE", "/api/judgments/" + judgmentId + "/");
 }
 
 // Opens the report form over the post the reader last right-clicked in that tab. When the right-click

@@ -138,15 +138,3 @@ const siteAdapter = {
     decoratePost(tileElement, treatment, (control) => placeJudgeControl(tileElement, control));
   },
 };
-
-// Hovering a tile plays a preview of the video in a separate element laid over the tile, which the
-// blur does not cover. YouTube is not told about the pointer moving over a blurred tile, so it never
-// starts one there.
-const BLURRED_TILE_SELECTOR = '[data-brainrot-index-action="pending"], [data-brainrot-index-action="blur"]:not([data-brainrot-index-revealed])';
-for (const eventType of ["mouseover", "mouseenter", "mousemove", "pointerover", "pointerenter", "pointermove"]) {
-  window.addEventListener(eventType, (event) => {
-    if (event.target instanceof Element && event.target.closest(BLURRED_TILE_SELECTOR) !== null) {
-      event.stopImmediatePropagation();
-    }
-  }, true);
-}

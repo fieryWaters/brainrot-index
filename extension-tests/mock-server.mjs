@@ -6,7 +6,7 @@
 //   (one whose id's character sum leaves 3 mod 4) stays "pending" for its first 6 requests, which
 //   takes the extension past its fast re-asks into the every-8-seconds phase.
 //   hide  "Engagement bait" when the text contains "AITA" or the post id's character sum leaves 0 mod 3.
-//   blur  "Ragebait"        when the text is longer than 400 characters or that sum leaves 1 mod 3.
+//   hide  "Ragebait"        when the text is longer than 400 characters or that sum leaves 1 mod 3.
 //   allow                   otherwise.
 // The post id rule exists so that any live feed yields about a third of each action.
 //   YouTube: the first "pending" answer for a video carries transcript_wanted, as the real server's
@@ -15,7 +15,8 @@
 //
 // POST /api/feedback/ checks the required fields and answers 201 with a new id.
 // POST /api/judgments/ (a thumbs up or down) checks its fields and answers 201 with a new id;
-// PATCH /api/judgments/<id>/ (its details) answers 200 with what it was sent.
+// PATCH /api/judgments/<id>/ (its details) answers 200 with what it was sent; DELETE (the thumb taken
+// back) answers 204.
 // POST /api/extension/consent/ (the reader agreed on the consent screen) checks its fields and answers
 // 201; DELETE /api/extension/consent/ (the reader disconnected) answers 204.
 //
@@ -28,7 +29,7 @@ export const MOCK_UNSUBSCRIBED_TOKEN = "mock-unsubscribed-token";
 export const MOCK_CONFIG = {
   enabled: true,
   mode: "adult",
-  pending_action: "blur",
+  pending_action: "hide",
   allow_reveal: true,
   platforms: ["reddit", "x", "youtube"],
   plugins: [
@@ -75,7 +76,7 @@ function chooseAnswer(post) {
     return { action: "hide", reasons: [{ plugin: "Engagement bait", label: "Asks for engagement", score: 90 }] };
   }
   if (post.text.length > 400 || postIdGroup === 1) {
-    return { action: "blur", reasons: [{ plugin: "Ragebait", label: "Written to anger", score: 75 }] };
+    return { action: "hide", reasons: [{ plugin: "Ragebait", label: "Written to anger", score: 75 }] };
   }
   return { action: "allow", reasons: [] };
 }
@@ -169,6 +170,11 @@ export function startMockServer(port) {
     }
     if (/^\/api\/judgments\/\d+\/$/.test(path) && request.method === "PATCH") {
       sendJson(response, 200, await readJsonBody(request));
+      return;
+    }
+    if (/^\/api\/judgments\/\d+\/$/.test(path) && request.method === "DELETE") {
+      response.writeHead(204);
+      response.end();
       return;
     }
     if (path === "/api/extension/consent/" && request.method === "POST") {

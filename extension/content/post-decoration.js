@@ -1,29 +1,29 @@
-// Draws the BrainRot Index treatment on a post element: nothing, a blur with a label over its top
-// edge, or a single line in place of the post. Site adapters call decoratePost with the element.
+// Draws the BrainRot Index treatment on a post element: nothing, or a single line in place of the
+// post. Site adapters call decoratePost with the element.
 //
 // treatment = { action, postId, reason, allowReveal, revealed, onToggleReveal, judgment }
-//   action is "allow", "pending" (blurred while the server decides), "blur" or "hide".
-//   reason is the server's strongest reason { plugin, label, score } for a blurred or hidden post.
-//   revealed is true when the reader chose to see a blurred or hidden post; the post is then shown
-//   with a line above it offering to blur or hide it again.
-//   onToggleReveal is called by the Show / Blur again / Hide again button and by a click on a
-//   blurred post.
+//   action is "allow", "pending" (hidden while the server decides, in child mode) or "hide".
+//   reason is the server's strongest reason { plugin, label, score } for a hidden post.
+//   revealed is true when the reader chose to see a hidden post; the post is then shown with a line
+//   above it offering to hide it again.
+//   onToggleReveal is called by the Show / Hide again button.
 //   judgment, present once the server has answered for the post, drives the thumbs up and down:
-//   { verdict, plugins, onJudge(verdict), onAddDetails(details) }. verdict is the reader's earlier
-//   "right" or "wrong", or null. plugins are the reader's filters, [{ slug, name }]. onJudge and
-//   onAddDetails send to the server and return a promise of { sent, reason }.
+//   { verdict, plugins, onJudge(verdict), onRemove(), onAddDetails(details) }. verdict is the
+//   reader's earlier "right" or "wrong", or null. plugins are the reader's filters, [{ slug, name }].
+//   onJudge, onRemove and onAddDetails send to the server and return a promise of { sent, reason }.
 //
-// The label and line show only what was done and by which filter; the rest of it, and the buttons,
-// appear while the pointer is over the post or the label. A post that was left alone gets its thumbs
-// in the site's own row of post actions, placed there by the site adapter, also shown only on hover.
+// The line says only "Hidden": which filter hid the post and why, and the buttons, appear while the
+// pointer is over the line, since a reason in plain sight invites a look. A post that was left alone
+// gets its thumbs in the site's own row of post actions, placed there by the site adapter, also shown
+// only on hover.
 //
-// Nothing here moves what the reader is looking at: a blurred post's label floats over it, and a
-// line added above a post that stays drawn is matched by scrolling the page by the same amount.
+// A line added above a post that stays drawn is matched by scrolling the page by the same amount, so
+// the post stays where the reader saw it.
 
 const NOTICE_CLASS = "brainrot-index-notice";
 const JUDGE_CLASS = "brainrot-index-judge";
 const JUDGE_ROOT_ATTRIBUTE = "data-brainrot-index-judge-root";
-const SHOWN_ACTION_WORDS = { allow: "Shown", blur: "Blurred", hide: "Hidden" };
+const SHOWN_ACTION_WORDS = { allow: "Shown", hide: "Hidden" };
 const SEVERITY_WORDS = { low: "Low", medium: "Medium", high: "High" };
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -37,7 +37,6 @@ const noticeByPost = new WeakMap();
 const treatmentByPost = new WeakMap();
 const judgeControlByPost = new WeakMap();
 const judgeControlByRoot = new WeakMap();
-const postsWithClickListener = new WeakSet();
 
 function treatmentKey(treatment) {
   return [
@@ -46,31 +45,27 @@ function treatmentKey(treatment) {
   ].join("|");
 }
 
-// What was done and by which filter: "Hidden · Engagement bait".
+// What was done, and nothing about why: "Hidden".
 function summaryText(treatment) {
   if (treatment.action === "pending") {
     return "Checking";
   }
-  let doneWord = SHOWN_ACTION_WORDS[treatment.action];
   if (treatment.revealed) {
-    doneWord = "Shown anyway";
+    return "Shown anyway";
   }
-  return doneWord + " · " + treatment.reason.plugin;
+  return SHOWN_ACTION_WORDS[treatment.action];
 }
 
-// The filter's label and score, shown on hover: "Asks for engagement · 90/100".
+// Which filter hid the post and why, shown on hover: "Engagement bait · Asks for engagement · 90/100".
 function detailText(reason) {
-  return reason.label + " · " + reason.score + "/100";
+  return reason.plugin + " · " + reason.label + " · " + reason.score + "/100";
 }
 
 function revealButtonText(treatment) {
   if (!treatment.revealed) {
     return "Show";
   }
-  if (treatment.action === "hide") {
-    return "Hide again";
-  }
-  return "Blur again";
+  return "Hide again";
 }
 
 function makeButton(className, text, onClick) {
@@ -123,6 +118,7 @@ function verdictMeaning(shownAction, verdict) {
 }
 
 // The thumbs up and down for one post. A click saves at once and opens the details box under them.
+// A click on the thumb already pressed takes the reader's verdict back.
 // Each site's stylesheet (sites/*.css) gives the thumbs in its row of actions the site's own look.
 function makeJudgeControl(shownAction, judgment) {
   const control = document.createElement("span");
@@ -131,6 +127,10 @@ function makeJudgeControl(shownAction, judgment) {
   control.setAttribute("aria-label", "BrainRot Index: was this right?");
   keepEventsInside(control);
 
+  control.append(makeIcon(SHIELD_PATH, "brainrot-index-judge-mark"));
+
+  // Taking a verdict back needs the judgment's id, which arrives when its save does.
+  let lastSave = Promise.resolve();
   const buttons = [];
   for (const [verdict, pathData] of [["right", THUMB_UP_PATH], ["wrong", THUMB_DOWN_PATH]]) {
     const button = document.createElement("button");
@@ -145,11 +145,26 @@ function makeJudgeControl(shownAction, judgment) {
     button.addEventListener("click", async (event) => {
       // A tile's link can enclose the control; the click is the control's alone.
       event.preventDefault();
+      if (button.getAttribute("aria-pressed") === "true") {
+        button.setAttribute("aria-pressed", "false");
+        const statusBox = openBox(control, verdictMeaning(shownAction, verdict) + " · removing");
+        await lastSave;
+        const reply = await judgment.onRemove();
+        if (reply.sent) {
+          statusBox.setStatus(verdictMeaning(shownAction, verdict) + " · removed");
+        } else {
+          button.setAttribute("aria-pressed", "true");
+          statusBox.setStatus("Not removed. " + reply.reason);
+        }
+        statusBox.closeLater();
+        return;
+      }
       for (const otherButton of buttons) {
         otherButton.setAttribute("aria-pressed", String(otherButton === button));
       }
       const detailsBox = openDetailsBox(control, shownAction, verdict, judgment);
-      detailsBox.showSaveResult(await judgment.onJudge(verdict));
+      lastSave = judgment.onJudge(verdict);
+      detailsBox.showSaveResult(await lastSave);
     });
     buttons.push(button);
     control.append(button);
@@ -198,9 +213,10 @@ function makeChoiceRow(labelText, choices, onChoose) {
 // How long the box stays after a click when the reader does not touch it, so one click is all it costs.
 const UNTOUCHED_DETAILS_BOX_MS = 4000;
 
-// The small box under the thumbs after a click: that it was saved, and optionally which filter should
-// have caught the post, a severity and details. It is laid over the page, under the control.
-function openDetailsBox(control, shownAction, verdict, judgment) {
+// The small box under the thumbs after a click, laid over the page under the control: the shield
+// and a status line. It closes on Escape, on a click outside it, or a while after closeLater when
+// the reader has not touched it.
+function openBox(control, statusText) {
   closeDetailsBox();
   const box = document.createElement("form");
   box.className = "brainrot-index-details";
@@ -215,9 +231,56 @@ function openDetailsBox(control, shownAction, verdict, judgment) {
   const status = document.createElement("span");
   status.className = "brainrot-index-details-status";
   status.setAttribute("role", "status");
-  status.textContent = verdictMeaning(shownAction, verdict) + " · saving";
+  status.textContent = statusText;
   heading.append(status);
   box.append(heading);
+
+  let closeTimer = null;
+  let touched = false;
+  function closeBox() {
+    clearTimeout(closeTimer);
+    document.removeEventListener("pointerdown", closeOnPointerDownOutside, true);
+    delete control.dataset.open;
+    box.remove();
+    openDetailsBoxElement = null;
+  }
+  function closeOnPointerDownOutside(event) {
+    if (!box.contains(event.target) && !control.contains(event.target)) {
+      closeBox();
+    }
+  }
+  function markTouched() {
+    touched = true;
+    clearTimeout(closeTimer);
+  }
+  box.closeBox = closeBox;
+  box.setStatus = (text) => {
+    status.textContent = text;
+  };
+  box.closeLater = () => {
+    if (!touched) {
+      closeTimer = setTimeout(closeBox, UNTOUCHED_DETAILS_BOX_MS);
+    }
+  };
+  box.addEventListener("pointerenter", markTouched);
+  box.addEventListener("focusin", markTouched);
+  box.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeBox();
+    }
+  });
+  document.addEventListener("pointerdown", closeOnPointerDownOutside, true);
+
+  document.body.append(box);
+  placeDetailsBox(box, control);
+  openDetailsBoxElement = box;
+  return box;
+}
+
+// The box after a thumb: that it was saved, and optionally which filter should have caught the post,
+// a severity and details.
+function openDetailsBox(control, shownAction, verdict, judgment) {
+  const box = openBox(control, verdictMeaning(shownAction, verdict) + " · saving");
 
   const fields = document.createElement("div");
   fields.className = "brainrot-index-details-fields";
@@ -243,34 +306,6 @@ function openDetailsBox(control, shownAction, verdict, judgment) {
   fields.append(detailsRow);
   box.append(fields);
 
-  let closeTimer = null;
-  let touched = false;
-  function closeBox() {
-    clearTimeout(closeTimer);
-    document.removeEventListener("pointerdown", closeOnPointerDownOutside, true);
-    delete control.dataset.open;
-    box.remove();
-    openDetailsBoxElement = null;
-  }
-  function closeOnPointerDownOutside(event) {
-    if (!box.contains(event.target) && !control.contains(event.target)) {
-      closeBox();
-    }
-  }
-  function markTouched() {
-    touched = true;
-    clearTimeout(closeTimer);
-  }
-  box.closeBox = closeBox;
-  box.addEventListener("pointerenter", markTouched);
-  box.addEventListener("focusin", markTouched);
-  box.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      closeBox();
-    }
-  });
-  document.addEventListener("pointerdown", closeOnPointerDownOutside, true);
-
   box.addEventListener("submit", async (event) => {
     event.preventDefault();
     const details = {};
@@ -284,17 +319,17 @@ function openDetailsBox(control, shownAction, verdict, judgment) {
       details.details = detailsInput.value.trim();
     }
     if (Object.keys(details).length === 0) {
-      closeBox();
+      box.closeBox();
       return;
     }
     saveButton.disabled = true;
-    status.textContent = "Saving details";
+    box.setStatus("Saving details");
     const reply = await judgment.onAddDetails(details);
     if (reply.sent) {
-      status.textContent = "Details saved";
-      setTimeout(closeBox, 1000);
+      box.setStatus("Details saved");
+      setTimeout(box.closeBox, 1000);
     } else {
-      status.textContent = "Details not saved. " + reply.reason;
+      box.setStatus("Details not saved. " + reply.reason);
       saveButton.disabled = false;
     }
   });
@@ -305,20 +340,14 @@ function openDetailsBox(control, shownAction, verdict, judgment) {
       return;
     }
     if (!reply.sent) {
-      status.textContent = "Not saved. " + reply.reason;
+      box.setStatus("Not saved. " + reply.reason);
       return;
     }
-    status.textContent = verdictMeaning(shownAction, verdict) + " · saved";
+    box.setStatus(verdictMeaning(shownAction, verdict) + " · saved");
     fields.hidden = false;
     placeDetailsBox(box, control);
-    if (!touched) {
-      closeTimer = setTimeout(closeBox, UNTOUCHED_DETAILS_BOX_MS);
-    }
+    box.closeLater();
   };
-
-  document.body.append(box);
-  placeDetailsBox(box, control);
-  openDetailsBoxElement = box;
   return box;
 }
 
@@ -355,16 +384,18 @@ document.addEventListener("pointerover", (event) => {
 }, true);
 
 // placeJudgeControl(control) puts the thumbs into the site's row of post actions and answers the
-// element whose hover shows them, or null when the post has no such row.
+// element whose hover shows them, or null when the post has no such row. Answers whether the thumbs
+// were placed.
 function addJudgeControlToPost(postElement, treatment, placeJudgeControl) {
   const control = makeJudgeControl("allow", treatment.judgment);
   const root = placeJudgeControl(control);
   if (root === null) {
-    return;
+    return false;
   }
   root.setAttribute(JUDGE_ROOT_ATTRIBUTE, "");
   judgeControlByRoot.set(root, control);
   judgeControlByPost.set(postElement, control);
+  return true;
 }
 
 // -- Decorating a post --
@@ -400,8 +431,11 @@ function decoratePost(postElement, treatment, placeJudgeControl) {
     if (treatment.action !== "allow") {
       addDecoration(postElement, treatment);
     } else if (treatment.judgment !== undefined && placeJudgeControl !== undefined) {
-      addJudgeControlToPost(postElement, treatment, placeJudgeControl);
-      treatmentByPost.set(postElement, treatment);
+      // A post drawn before its row of actions is not marked as done, so the thumbs are placed once
+      // the site adds the row.
+      if (addJudgeControlToPost(postElement, treatment, placeJudgeControl)) {
+        treatmentByPost.set(postElement, treatment);
+      }
     }
   });
 }
@@ -411,11 +445,6 @@ function addDecoration(postElement, treatment) {
   notice.className = NOTICE_CLASS;
   notice.setAttribute("role", "group");
   notice.setAttribute("aria-label", "BrainRot Index");
-  // A blurred post keeps its height: its label floats over the post's top edge instead of taking a
-  // line of its own, so labelling a post never moves the content around it.
-  if (treatment.action === "pending" || (treatment.action === "blur" && !treatment.revealed)) {
-    notice.classList.add("brainrot-index-notice-over-post");
-  }
   keepEventsInside(notice);
 
   notice.append(makeIcon(SHIELD_PATH, "brainrot-index-mark"));
@@ -424,7 +453,7 @@ function addDecoration(postElement, treatment) {
   summary.textContent = summaryText(treatment);
   notice.append(summary);
 
-  if (treatment.action === "blur" || treatment.action === "hide") {
+  if (treatment.action === "hide") {
     const detail = document.createElement("span");
     detail.className = "brainrot-index-detail";
     detail.textContent = detailText(treatment.reason);
@@ -457,12 +486,6 @@ function addDecoration(postElement, treatment) {
   }
   noticeByPost.set(postElement, notice);
   treatmentByPost.set(postElement, treatment);
-
-  // Added once per element and kept: it only acts while the post is blurred.
-  if (!postsWithClickListener.has(postElement)) {
-    postElement.addEventListener("click", onPostClick, true);
-    postsWithClickListener.add(postElement);
-  }
 }
 
 // The report form opened from the right-click menu, on a line of its own above the post: what the
@@ -573,18 +596,4 @@ function removeDecoration(postElement) {
   noticeByPost.delete(postElement);
   treatmentByPost.delete(postElement);
   judgeControlByPost.delete(postElement);
-}
-
-// A click on a blurred post must not open the post or its links; it reveals the post when allowed.
-function onPostClick(event) {
-  const postElement = event.currentTarget;
-  const treatment = treatmentByPost.get(postElement);
-  if (treatment === undefined || treatment.revealed || treatment.action === "hide" || treatment.action === "allow") {
-    return;
-  }
-  event.preventDefault();
-  event.stopPropagation();
-  if (treatment.action === "blur" && treatment.allowReveal) {
-    treatment.onToggleReveal();
-  }
 }

@@ -8,9 +8,10 @@
 // ids that give the treatment a stand-in post asks for.
 //
 // window.redrawFeed() in a stand-in page draws the feed again with new elements, as the sites do when
-// posts scroll far away and back; a post answered "hide" while on screen is then collapsed.
+// posts scroll far away and back.
 
-const TREATMENT_GROUP = { hide: 0, blur: 1, allow: 2 };
+// hide: hidden by Engagement bait; ragebait: hidden by Ragebait; allow: shown.
+const TREATMENT_GROUP = { hide: 0, ragebait: 1, allow: 2 };
 
 function characterSum(text) {
   let sum = 0;
@@ -265,14 +266,14 @@ export async function serveStandInPages(context, pages) {
 
 // -- Sample feeds --
 
-// One feed per site with a post the mock server shows, hides and blurs, and on Reddit a comment
+// One feed per site with posts the mock server shows and hides, and on Reddit a comment
 // thread. The ids are found once, so the tests and the screenshots name the same posts.
 export const SAMPLE_X_TWEETS = [
   { id: postIdFor("1851000000", "allow"), name: "Mara Lin", handle: "maralin", avatar: "#c08457",
     text: "Finally got the sourdough starter to double in six hours. The trick was moving it to the top of the fridge, where it is warm." },
   { id: postIdFor("1852000000", "hide"), name: "Daily Vibes", handle: "dailyvibes", avatar: "#7c3aed",
     text: "Like this if you remember 2009. Repost if you are still here. Most people will scroll past this." },
-  { id: postIdFor("1853000000", "blur"), name: "The Real Story", handle: "realstory", avatar: "#dc2626",
+  { id: postIdFor("1853000000", "ragebait"), name: "The Real Story", handle: "realstory", avatar: "#dc2626",
     text: "Nobody is talking about this and it should make every one of you furious. Read the whole thread before they delete it." },
   { id: "promoted", promoted: true, name: "Deskworks", handle: "deskworks", avatar: "#0891b2",
     text: "Upgrade your workspace with our new standing desk." },
@@ -285,7 +286,7 @@ export const SAMPLE_REDDIT_POSTS = [
     title: "First open crumb after a year of trying", body: "75% hydration, cold retard overnight, baked in a Dutch oven at 250 C. Happy to share the schedule." },
   { id: postIdFor("t3_aita", "allow"), community: "r/AmItheAsshole", author: "throwaway_9921",
     title: "AITA for not inviting my sister to my birthday after she said I always make everything about me?", body: "Upvote if you agree, comment if you don't. You won't believe what she said next." },
-  { id: postIdFor("t3_rant", "blur"), community: "r/rant", author: "fedup_again",
+  { id: postIdFor("t3_rant", "ragebait"), community: "r/rant", author: "fedup_again",
     title: "Everyone in this city is the worst and I am done pretending otherwise", body: "Every single person I met today was rude. This place is broken and so are the people in it." },
 ];
 
@@ -302,7 +303,7 @@ export const SAMPLE_YOUTUBE_VIDEOS = [
   { id: postIdFor("knownbake", "allow"), title: "How to make sourdough bread: the full process, start to finish", channel: "Preppy Kitchen", colors: ["#e7c9a0", "#8a5a2b"] },
   { id: postIdFor("knownshock", "hide"), title: "You WON'T BELIEVE what happens at 0:47 (insane)", channel: "Clip Storm", colors: ["#ff3d00", "#ffd600"] },
   { id: postIdFor("knownlect", "allow"), title: "Lecture 4: Dynamic programming, explained with examples", channel: "Open Course", colors: ["#1e3a8a", "#60a5fa"] },
-  { id: postIdFor("knownrage", "blur"), title: "This city council meeting will make you lose faith in humanity", channel: "Outrage Daily", colors: ["#450a0a", "#ef4444"] },
+  { id: postIdFor("knownrage", "ragebait"), title: "This city council meeting will make you lose faith in humanity", channel: "Outrage Daily", colors: ["#450a0a", "#ef4444"] },
   { id: postIdFor("knownwood", "allow"), title: "Building a walnut side table with hand tools only", channel: "Quiet Workshop", colors: ["#3f2a1d", "#b08968"] },
   { id: postIdFor("knownhike", "allow"), title: "Three days on the Lost Coast Trail", channel: "Trail Notes", colors: ["#14532d", "#86efac"] },
 ];

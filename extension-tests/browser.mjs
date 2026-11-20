@@ -6,7 +6,8 @@ import path from "node:path";
 
 export const TESTS_DIR = path.dirname(new URL(import.meta.url).pathname);
 export const EXTENSION_DIR = path.resolve(TESTS_DIR, "..", "extension");
-const BRAVE_BINARY = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
+// BRAINROT_BROWSER names another Chromium build, such as Playwright's own on a Linux machine.
+const BRAVE_BINARY = process.env.BRAINROT_BROWSER ?? "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
 // No test run takes this long; a browser still open after it was left behind by a stuck run.
 const MAX_BROWSER_LIFETIME_MS = 60 * 60 * 1000;
 

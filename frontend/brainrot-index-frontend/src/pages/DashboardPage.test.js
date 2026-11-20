@@ -50,6 +50,13 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Stricter')).toBeInTheDocument()
   })
 
+  it('offers no choice of blurring: a flagged post is always hidden', async () => {
+    renderElement(mountDashboardPage().el)
+    expect(await screen.findByText('Ragebait')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Ragebait action')).toBeNull()
+    expect(screen.queryByText('Blur')).toBeNull()
+  })
+
   it('saves a threshold change immediately', async () => {
     renderElement(mountDashboardPage().el)
     const slider = await screen.findByLabelText('Ragebait threshold')

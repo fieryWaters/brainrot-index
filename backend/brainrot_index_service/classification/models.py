@@ -79,6 +79,8 @@ PLUGIN_INPUT_CHOICES = [
 ACTION_ALLOW = 'allow'
 ACTION_BLUR = 'blur'
 ACTION_HIDE = 'hide'
+# Blur is no longer offered, and a filter still set to it hides the posts it
+# flags. It stays a stored choice so that no migration is needed.
 FLAGGED_ACTION_CHOICES = [
     (ACTION_BLUR, 'Blur'),
     (ACTION_HIDE, 'Hide'),
@@ -434,8 +436,8 @@ class PostJudgment(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='post_judgments')
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='judgments')
     verdict = models.CharField(max_length=16, choices=VERDICT_CHOICES)
-    # What the reader saw. A hidden post on screen is blurred instead, so this
-    # can be blur where the filters decided hide; filter_results has the decision.
+    # What the reader saw. Judgments made before blurring was removed can say
+    # blur; filter_results has what the filters decided.
     shown_action = models.CharField(max_length=16, choices=SHOWN_ACTION_CHOICES)
     # The filter the verdict is about: the strongest one that flagged the post,
     # or, for a shown post that should have been caught, the one the reader

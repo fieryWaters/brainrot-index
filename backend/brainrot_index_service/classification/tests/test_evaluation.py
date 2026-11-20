@@ -108,7 +108,7 @@ class ExportFeedbackExamplesTests(TestCase):
         self.assertEqual(len(examples), 1)
         self.assertEqual(examples[0]['source'], 'feedback')
         self.assertEqual(examples[0]['text'], 'Our club meets on Tuesday.')
-        self.assertEqual(set(examples[0]['expected']), {'brainrot', 'rude-or-toxic', 'low-effort'})
+        self.assertEqual(set(examples[0]['expected']), {'engagement-bait', 'brainrot', 'rude-or-toxic', 'low-effort'})
         self.assertFalse(examples[0]['expected']['rude-or-toxic']['flag'])
 
 
@@ -201,5 +201,5 @@ class CriteriaEvaluationTests(TestCase):
                 summary = evaluate(write_dataset(directory, examples))
 
         self.assertIn('demeans_people (50): 1 of 1, 0 of 1', summary)
-        self.assertIn('plainly_a_joke (-50): 0 of 1, 0 of 1', summary)
+        self.assertIn('makes_readers_laugh (-50): 0 of 1, 0 of 1', summary)
         self.assertIn('clear cases precision  1.00  recall  1.00', summary)

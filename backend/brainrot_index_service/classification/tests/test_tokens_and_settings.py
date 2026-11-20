@@ -30,6 +30,7 @@ class ExtensionTokenTests(TestCase):
             'allow_reveal': True,
             'platforms': ['reddit', 'x', 'youtube'],
             'plugins': [
+                {'slug': 'engagement-bait', 'name': 'Engagement bait'},
                 {'slug': 'brainrot', 'name': 'Brainrot'},
                 {'slug': 'rude-or-toxic', 'name': 'Rude or Toxic'},
                 {'slug': 'low-effort', 'name': 'Low Effort'},
@@ -72,12 +73,12 @@ class UserSettingsTests(TestCase):
 
     def test_first_use_installs_the_baseline_plugins(self):
         plugins = self.client.get(reverse('installed_plugins')).json()['plugins']
-        self.assertEqual([plugin['slug'] for plugin in plugins], ['brainrot', 'rude-or-toxic', 'low-effort'])
+        self.assertEqual([plugin['slug'] for plugin in plugins], ['engagement-bait', 'brainrot', 'rude-or-toxic', 'low-effort'])
         for plugin in plugins:
             self.assertEqual(plugin['enabled'], True)
             self.assertEqual(plugin['flagged_action'], 'hide')
         thresholds = {plugin['slug']: plugin['threshold'] for plugin in plugins}
-        self.assertEqual(thresholds, {'brainrot': 60, 'rude-or-toxic': 60, 'low-effort': 60})
+        self.assertEqual(thresholds, {'engagement-bait': 60, 'brainrot': 60, 'rude-or-toxic': 60, 'low-effort': 60})
 
     def test_plugin_settings_can_be_changed(self):
         response = self.client.patch(

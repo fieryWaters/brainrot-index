@@ -107,7 +107,7 @@ class WorkerTests(TestCase):
             'demeans_people': True,
             'us_against_them': True,
             'hostile_tone': False,
-            'plainly_a_joke': False,
+            'makes_readers_laugh': False,
         }
 
         with patch('classification.inference.requests.post', return_value=model_response(answer)) as model_call:
@@ -122,7 +122,7 @@ class WorkerTests(TestCase):
         request = model_call.call_args.kwargs['json']
         schema = request['response_format']['json_schema']['schema']
         self.assertEqual(schema['required'], [
-            'reasoning', 'demeans_people', 'us_against_them', 'hostile_tone', 'plainly_a_joke'])
+            'reasoning', 'demeans_people', 'us_against_them', 'hostile_tone', 'makes_readers_laugh'])
         system_prompt = request['messages'][0]['content']
         for criterion in classification.plugin_version.criteria:
             self.assertIn(f"- {criterion['name']}: {criterion['question']}", system_prompt)
@@ -147,7 +147,7 @@ class WorkerTests(TestCase):
             'demeans_people': True,
             'us_against_them': False,
             'hostile_tone': False,
-            'plainly_a_joke': True,
+            'makes_readers_laugh': True,
         }
 
         with patch('classification.inference.requests.post', return_value=model_response(answer)):
@@ -156,7 +156,7 @@ class WorkerTests(TestCase):
         classification.refresh_from_db()
         self.assertEqual(classification.score, 0)
         self.assertEqual(classification.label, 'demeans_people')
-        self.assertEqual(classification.criteria_met, ['demeans_people', 'plainly_a_joke'])
+        self.assertEqual(classification.criteria_met, ['demeans_people', 'makes_readers_laugh'])
 
     def test_no_criterion_met_scores_0_with_label_none(self):
         classification = self.queue(seen_post('p1'), plugin_slug='rude-or-toxic')
@@ -165,7 +165,7 @@ class WorkerTests(TestCase):
             'demeans_people': False,
             'us_against_them': False,
             'hostile_tone': False,
-            'plainly_a_joke': False,
+            'makes_readers_laugh': False,
         }
 
         with patch('classification.inference.requests.post', return_value=model_response(answer)):

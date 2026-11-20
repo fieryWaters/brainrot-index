@@ -131,7 +131,7 @@ class InstallTests(TestCase):
         self.assertNotIn(self.slug, self.installed_slugs())
 
     def test_baseline_plugins_stay_installed_by_default(self):
-        self.assertEqual(self.installed_slugs(), ['brainrot', 'rude-or-toxic', 'low-effort'])
+        self.assertEqual(self.installed_slugs(), ['engagement-bait', 'brainrot', 'rude-or-toxic', 'low-effort'])
 
     @patch('classification.views.PENDING_WAIT_SECONDS', 0)
     def test_an_uninstalled_plugin_does_not_run(self):
@@ -156,8 +156,8 @@ class InstallTests(TestCase):
         extra_slugs = [publish(self.client, name=f'Extra plugin {number}').json()['slug'] for number in range(6)]
         self.client.force_login(self.reader)
 
-        # Three baseline plugins are on; five more reach the cap.
-        for slug in extra_slugs[:MAX_ENABLED_PLUGINS - 3]:
+        # Four baseline plugins are on; four more reach the cap.
+        for slug in extra_slugs[:MAX_ENABLED_PLUGINS - 4]:
             self.assertEqual(self.install(slug).status_code, 201)
         response = self.install(extra_slugs[5])
         self.assertEqual(response.status_code, 400)

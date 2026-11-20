@@ -46,7 +46,7 @@ class JudgmentTests(TestCase):
         # Rude or Toxic scored highest among the filters that flagged it.
         self.assertEqual(judgment.plugin.slug, 'rude-or-toxic')
         results = {result['plugin']: result for result in judgment.filter_results}
-        self.assertEqual(set(results), {'brainrot', 'rude-or-toxic', 'low-effort'})
+        self.assertEqual(set(results), {'engagement-bait', 'brainrot', 'rude-or-toxic', 'low-effort'})
         self.assertEqual(results['rude-or-toxic']['score'], 100)
         self.assertTrue(results['rude-or-toxic']['flagged'])
         self.assertTrue(results['low-effort']['flagged'])  # its threshold is 60
@@ -105,5 +105,5 @@ class JudgmentTests(TestCase):
     def test_config_lists_the_filters_turned_on(self):
         UserPlugin.objects.filter(user=self.user, plugin__slug='low-effort').update(enabled=False)
         config = self.client.get(reverse('extension_config'), **bearer(self.token)).json()
-        self.assertEqual([plugin['slug'] for plugin in config['plugins']], ['brainrot', 'rude-or-toxic'])
-        self.assertEqual(config['plugins'][0]['name'], 'Brainrot')
+        self.assertEqual([plugin['slug'] for plugin in config['plugins']], ['engagement-bait', 'brainrot', 'rude-or-toxic'])
+        self.assertEqual(config['plugins'][0]['name'], 'Engagement bait')

@@ -26,8 +26,8 @@ HEARTBEAT_PATH = Path('/tmp/classification-worker-heartbeat')
 def work_forever():
     while True:
         try:
-            # A video's classifications wait for its transcript, and a video filter's
-            # for the video itself, so those come first. Archiving an original never
+            # A video's classifications wait for its transcript, and those of a plugin
+            # that watches videos for the video itself, so those come first. Archiving an original never
             # delays a post.
             found_work = (
                 settle_next_transcripts()

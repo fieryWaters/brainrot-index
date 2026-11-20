@@ -99,13 +99,15 @@ def describe_shown_content(text, quoted_post, link_preview):
 
 
 def describe_post(platform, community, kind, text, parent_text, image_count, transcript=None,
-                  quoted_post=None, link_preview=None, has_video=False, parent_is_reply=False, thread_text=None):
+                  quoted_post=None, link_preview=None, has_video=False, parent_is_reply=False, thread_text=None,
+                  video_shown=None):
     """The post as the model reads it. parent_text is the text of what a reply
     answers, None when that was never seen; parent_is_reply says it is another
     reply, whose thread starts with the post of thread_text (None when unseen).
     transcript is None for a post that is not a video.
-    has_video says the post shows a video or GIF, which this model cannot
-    watch; the images include its thumbnail."""
+    has_video says the post shows a video or GIF. video_shown says how much of
+    it is attached for the model to watch, or is None when it is not attached
+    and the images include only its thumbnail."""
     lines = [f"Platform: {PLATFORM_NAMES[platform]}"]
     if community:
         lines.append(f"Community: {community}")
@@ -122,7 +124,9 @@ def describe_post(platform, community, kind, text, parent_text, image_count, tra
         lines.append("Kind: post")
 
     lines.append(f"Images attached: {image_count}")
-    if has_video:
+    if video_shown is not None:
+        lines.append(f"Video attached: {video_shown}")
+    elif has_video:
         lines.append("Video: yes (its thumbnail is among the images)")
     lines.extend(describe_shown_content(text, quoted_post, link_preview))
     if transcript is not None:
@@ -237,37 +241,29 @@ def stored_reply_context(post):
     return parent_post.text, True, None
 
 
-def run_classification(classification):
-    """Calls the model for one pending classification and saves the outcome."""
-    plugin_version = classification.plugin_version
-    post = classification.post
-
+def images_for_model(post):
+    """(PostImage, data URL) of each image of the post the model is shown."""
     images_with_data = []
     for post_image in post.images.exclude(status=IMAGE_REJECTED).order_by('id')[:MAX_IMAGES_PER_POST]:
         data_url = model_image_data_url(post_image)
         if data_url is not None:
             images_with_data.append((post_image, data_url))
+    return images_with_data
 
+
+def describe_stored_post(post, image_count, video_shown=None):
     parent_text, parent_is_reply, thread_text = None, False, None
     if post.kind == POST_KIND_REPLY:
         parent_text, parent_is_reply, thread_text = stored_reply_context(post)
-    post_description = describe_post(
-        post.platform, post.community, post.kind, post.text, parent_text, len(images_with_data),
+    return describe_post(
+        post.platform, post.community, post.kind, post.text, parent_text, image_count,
         transcript_for_model(post), post.quoted_post, post.link_preview, post.video_url != '',
-        parent_is_reply, thread_text)
+        parent_is_reply, thread_text, video_shown)
 
-    messages_to_send = build_messages(
-        plugin_version, post_description, [data_url for _, data_url in images_with_data])
-    # The stored prompt points at the stored images instead of repeating their bytes.
-    messages_to_store = build_messages(
-        plugin_version, post_description, [f"post_image:{post_image.id}" for post_image, _ in images_with_data])
 
-    model = configured_model()
-    classification.prompt = messages_to_store
-    classification.model = model
-    classification.inference_source = settings.INFERENCE_SOURCE
-
-    outcome = ask_model(messages_to_send, plugin_version, settings.INFERENCE_SOURCE, model)
+def save_outcome(classification, outcome):
+    """Saves the model's answer, or the failure, on a classification the
+    model was asked about."""
     classification.raw_response = outcome.raw_response
     classification.latency_ms = outcome.latency_ms
     classification.prompt_tokens = outcome.prompt_tokens
@@ -284,3 +280,26 @@ def run_classification(classification):
         classification.criteria_met = outcome.answer['criteria_met']
     classification.completed_at = timezone.now()
     classification.save()
+
+
+def run_classification(classification):
+    """Calls the model for one pending classification and saves the outcome."""
+    plugin_version = classification.plugin_version
+    post = classification.post
+
+    images_with_data = images_for_model(post)
+    post_description = describe_stored_post(post, len(images_with_data))
+
+    messages_to_send = build_messages(
+        plugin_version, post_description, [data_url for _, data_url in images_with_data])
+    # The stored prompt points at the stored images instead of repeating their bytes.
+    messages_to_store = build_messages(
+        plugin_version, post_description, [f"post_image:{post_image.id}" for post_image, _ in images_with_data])
+
+    model = configured_model()
+    classification.prompt = messages_to_store
+    classification.model = model
+    classification.inference_source = settings.INFERENCE_SOURCE
+
+    outcome = ask_model(messages_to_send, plugin_version, settings.INFERENCE_SOURCE, model)
+    save_outcome(classification, outcome)

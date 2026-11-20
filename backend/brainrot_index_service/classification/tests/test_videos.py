@@ -1,18 +1,19 @@
+import importlib
 import json
 import tempfile
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from django.apps import apps
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from classification import video_sources
 from classification.models import (
     CLASSIFICATION_DONE,
-    CLASSIFICATION_FAILED,
-    CLASSIFICATION_NOT_APPLICABLE,
     CLASSIFICATION_PENDING,
+    PLUGIN_INPUT_VIDEO,
     VIDEO_MISSING,
     VIDEO_PENDING,
     VIDEO_READY,
@@ -22,7 +23,6 @@ from classification.models import (
     PostVideo,
     UserPlugin,
 )
-from classification.video_judging import brainrot_points, parse_answer, score_from_points
 from classification.video_sources import hls_stream_urls, x_embed_token
 from classification.views import settings_for_user
 from classification.worker import classify_next_pending, download_next_pending_video
@@ -64,27 +64,23 @@ def http_response(status_code, text='', json_body=None):
     return response
 
 
-def model_watching(engagement, information, cognitive):
-    """A stand-in for requests.post that answers every video with these criterion scores."""
+# What brainrot's criteria say of a video built to hold attention, and of a calm, substantive one.
+BRAINROT_VIDEO = {'stimulation_is_the_point': True, 'made_for_the_next_one': True, 'has_substance': False}
+CALM_LESSON = {'stimulation_is_the_point': False, 'made_for_the_next_one': False, 'has_substance': True}
+
+
+def model_answering(criteria_met):
+    """A stand-in for requests.post that answers like the chat completions API,
+    with these criterion answers, whether or not a video is attached."""
     def answer(url, **request):
-        return model_response({
-            'observations': 'Fast cuts every second over a loud track; nothing is explained.',
-            'engagement_power': engagement,
-            'information_content': information,
-            'cognitive_draw': cognitive,
-        })
+        return model_response({'reasoning': 'Fast cuts over a loud track; nothing is explained.', **criteria_met})
     return answer
 
 
-def gemini_watching(engagement, information, cognitive):
+def gemini_answering(criteria_met):
     """A stand-in for requests.post that answers like the Gemini API."""
     def answer(url, **request):
-        answer_text = json.dumps({
-            'observations': 'A calm lecture with slow animations.',
-            'engagement_power': engagement,
-            'information_content': information,
-            'cognitive_draw': cognitive,
-        })
+        answer_text = json.dumps({'reasoning': 'A calm lecture with slow animations.', **criteria_met})
         body = {
             'candidates': [{'content': {'parts': [{'text': answer_text}]}}],
             'usageMetadata': {'promptTokenCount': 1700, 'candidatesTokenCount': 70, 'thoughtsTokenCount': 5},
@@ -95,6 +91,14 @@ def gemini_watching(engagement, information, cognitive):
         response.raise_for_status.return_value = None
         return response
     return answer
+
+
+def sent_video_url(request_body):
+    """The video attached to a chat completions request, or None."""
+    for part in request_body['messages'][1]['content']:
+        if part['type'] == 'video_url':
+            return part['video_url']['url']
+    return None
 
 
 def ffmpeg_writing_a_clip(command, **arguments):
@@ -110,50 +114,43 @@ def ffmpeg_writing_a_clip(command, **arguments):
 
 @patch('classification.views.PENDING_WAIT_SECONDS', 0)
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp(), VIDEO_MAX_YOUTUBE_SECONDS=180, VIDEO_WATCH_SECONDS=30, GEMINI_API_KEY='')
-class VideoFilterTests(TestCase):
+class BrainrotWatchesVideosTests(TestCase):
     def setUp(self):
         self.user, self.token = create_user_with_token('reader@example.com')
         settings_for_user(self.user)
-        # Only the video filter is on, so every model call below is a video judgment.
-        UserPlugin.objects.filter(user=self.user).update(enabled=False)
-        self.video_plugin = Plugin.objects.get(slug='video-brainrot')
-        UserPlugin.objects.create(user=self.user, plugin=self.video_plugin, threshold=67)
+        # Only Brainrot is on, so every model call below is Brainrot's.
+        UserPlugin.objects.filter(user=self.user).exclude(plugin__slug='brainrot').update(enabled=False)
+        self.brainrot = Plugin.objects.get(slug='brainrot')
         for platform in video_sources.next_download_at:
             video_sources.next_download_at[platform] = 0.0
 
     def classify(self, posts):
         return self.client.post(reverse('classify'), {'posts': posts}, content_type='application/json', **bearer(self.token))
 
-    def video_classification(self, post_id):
-        return Classification.objects.get(post__post_id=post_id, plugin_version__plugin=self.video_plugin)
+    def brainrot_classification(self, post_id):
+        return Classification.objects.get(post__post_id=post_id, plugin_version__plugin=self.brainrot)
 
-    def test_the_video_filter_skips_posts_without_a_video(self):
-        response = self.classify([seen_post('p1'), seen_reddit_video('p2')])
+    def download_reddit_clip(self):
+        with (
+            patch('classification.video_sources.requests.get', return_value=http_response(200, MASTER_PLAYLIST)),
+            patch('classification.video_sources.subprocess.run', side_effect=ffmpeg_writing_a_clip),
+        ):
+            self.assertTrue(download_next_pending_video())
 
-        self.assertEqual(self.video_classification('p1').status, CLASSIFICATION_NOT_APPLICABLE)
-        self.assertEqual(self.video_classification('p2').status, CLASSIFICATION_PENDING)
+    def test_a_post_without_a_video_is_judged_on_its_text_and_one_with_a_video_waits_for_it(self):
+        self.classify([seen_post('p1'), seen_reddit_video('p2')])
         self.assertEqual(PostVideo.objects.get(post__post_id='p2').status, VIDEO_PENDING)
-        results = {result['post_id']: result for result in response.json()['results']}
-        self.assertEqual(results['p1']['status'], 'done')
-        self.assertEqual(results['p1']['action'], 'allow')
-        self.assertEqual(results['p2']['status'], 'pending')
 
-    def test_a_playlist_off_reddit_is_never_fetched(self):
-        self.classify([seen_reddit_video('p1', video_url='https://example.com/HLSPlaylist.m3u8')])
+        with patch('classification.inference.requests.post', side_effect=model_answering(CALM_LESSON)) as model_call:
+            self.assertTrue(classify_next_pending())
+            self.assertFalse(classify_next_pending())
+        self.assertEqual(model_call.call_count, 1)
+        self.assertIsNone(sent_video_url(model_call.call_args.kwargs['json']))
+        self.assertIn('/chat/completions', model_call.call_args.args[0])
+        self.assertEqual(self.brainrot_classification('p1').status, CLASSIFICATION_DONE)
+        self.assertEqual(self.brainrot_classification('p2').status, CLASSIFICATION_PENDING)
 
-        self.assertFalse(PostVideo.objects.exists())
-        self.assertEqual(self.video_classification('p1').status, CLASSIFICATION_NOT_APPLICABLE)
-
-    def test_readers_without_a_video_filter_record_no_videos(self):
-        UserPlugin.objects.filter(user=self.user, plugin=self.video_plugin).update(enabled=False)
-        UserPlugin.objects.filter(user=self.user, plugin__slug='ragebait').update(enabled=True)
-        self.classify([seen_reddit_video('p1')])
-
-        self.assertFalse(PostVideo.objects.exists())
-        # The post still records where its video plays, for a video filter turned on later.
-        self.assertEqual(Post.objects.get(post_id='p1').video_url, REDDIT_PLAYLIST)
-
-    def test_a_reddit_video_is_downloaded_once_and_judged_on_its_clip(self):
+    def test_a_reddit_video_is_downloaded_once_and_judged_by_brainrot_with_its_clip(self):
         self.classify([seen_reddit_video('p1')])
         with (
             patch('classification.video_sources.requests.get', return_value=http_response(200, MASTER_PLAYLIST)) as site,
@@ -170,19 +167,26 @@ class VideoFilterTests(TestCase):
         self.assertEqual(post_video.status, VIDEO_READY)
         self.assertEqual(post_video.clip_seconds, 30.0)
 
-        with patch('classification.video_judging.requests.post', side_effect=model_watching(5, 0, 0)) as model_call:
+        with patch('classification.video_judging.requests.post', side_effect=model_answering(BRAINROT_VIDEO)) as model_call:
             self.assertTrue(classify_next_pending())
-        sent_video = model_call.call_args.kwargs['json']['messages'][1]['content'][0]['video_url']['url']
-        self.assertTrue(sent_video.startswith('data:video/mp4;base64,'))
+        self.assertTrue(sent_video_url(model_call.call_args.kwargs['json']).startswith('data:video/mp4;base64,'))
+        request = model_call.call_args.kwargs['json']
+        self.assertEqual(request['provider']['only'], ['google-ai-studio'])
+        # The same criteria as for any post.
+        self.assertEqual(
+            set(request['response_format']['json_schema']['schema']['properties']),
+            {'reasoning', 'stimulation_is_the_point', 'made_for_the_next_one', 'has_substance'},
+        )
 
-        classification = self.video_classification('p1')
+        classification = self.brainrot_classification('p1')
+        self.assertEqual(classification.plugin_version, self.brainrot.latest_version())
         self.assertEqual(classification.status, CLASSIFICATION_DONE)
-        self.assertEqual(classification.score, 100)
-        self.assertEqual(classification.label, 'brainrot')
+        self.assertEqual(classification.score, 80)
+        self.assertEqual(classification.label, 'stimulation_is_the_point')
+        self.assertEqual(classification.criteria_met, ['stimulation_is_the_point', 'made_for_the_next_one'])
         self.assertEqual(classification.prompt_tokens, 900)
-        self.assertEqual(classification.completion_tokens, 60)
         self.assertIn(f'post_video:{post_video.id}', json.dumps(classification.prompt))
-        self.assertIn('Video shown: the first 30 seconds', json.dumps(classification.prompt))
+        self.assertIn('Video attached: the first 30 seconds', json.dumps(classification.prompt))
 
         response = self.classify([seen_reddit_video('p1')])
         self.assertEqual(response.json()['results'][0]['action'], 'hide')
@@ -190,7 +194,25 @@ class VideoFilterTests(TestCase):
             self.assertFalse(download_next_pending_video())
         site.assert_not_called()
 
-    def test_a_refusal_pauses_downloads_from_that_site(self):
+    def test_a_playlist_off_reddit_is_never_fetched_and_the_post_is_judged_on_its_text(self):
+        self.classify([seen_reddit_video('p1', video_url='https://example.com/HLSPlaylist.m3u8')])
+        self.assertFalse(PostVideo.objects.exists())
+
+        with patch('classification.inference.requests.post', side_effect=model_answering(CALM_LESSON)) as model_call:
+            self.assertTrue(classify_next_pending())
+        self.assertIsNone(sent_video_url(model_call.call_args.kwargs['json']))
+        self.assertEqual(self.brainrot_classification('p1').status, CLASSIFICATION_DONE)
+
+    def test_readers_without_brainrot_record_no_videos(self):
+        UserPlugin.objects.filter(user=self.user, plugin=self.brainrot).update(enabled=False)
+        UserPlugin.objects.filter(user=self.user, plugin__slug='ragebait').update(enabled=True)
+        self.classify([seen_reddit_video('p1')])
+
+        self.assertFalse(PostVideo.objects.exists())
+        # The post still records where its video plays, for when Brainrot is turned on.
+        self.assertEqual(Post.objects.get(post_id='p1').video_url, REDDIT_PLAYLIST)
+
+    def test_a_refused_download_pauses_that_site_and_the_post_is_judged_without_its_video(self):
         self.classify([seen_reddit_video('p1'), seen_reddit_video('p2')])
         with patch('classification.video_sources.requests.get', return_value=http_response(429)):
             self.assertTrue(download_next_pending_video())
@@ -204,19 +226,18 @@ class VideoFilterTests(TestCase):
         site.assert_not_called()
         self.assertEqual(PostVideo.objects.get(post__post_id='p2').status, VIDEO_PENDING)
 
-        with patch('classification.video_judging.requests.post') as model_call:
-            classify_next_pending()
-        model_call.assert_not_called()
-        self.assertEqual(self.video_classification('p1').status, CLASSIFICATION_FAILED)
+        with patch('classification.inference.requests.post', side_effect=model_answering(CALM_LESSON)) as model_call:
+            self.assertTrue(classify_next_pending())
+            self.assertFalse(classify_next_pending())
+        self.assertIsNone(sent_video_url(model_call.call_args.kwargs['json']))
+        self.assertIn('Video: yes (its thumbnail is among the images)', json.dumps(model_call.call_args.kwargs['json']))
+        self.assertEqual(self.brainrot_classification('p1').status, CLASSIFICATION_DONE)
+        self.assertEqual(self.brainrot_classification('p2').status, CLASSIFICATION_PENDING)
 
     def test_downloads_from_one_site_are_spaced_out(self):
         self.classify([seen_reddit_video('p1'), seen_reddit_video('p2')])
-        with (
-            patch('classification.video_sources.requests.get', return_value=http_response(200, MASTER_PLAYLIST)),
-            patch('classification.video_sources.subprocess.run', side_effect=ffmpeg_writing_a_clip),
-        ):
-            self.assertTrue(download_next_pending_video())
-            self.assertFalse(download_next_pending_video())
+        self.download_reddit_clip()
+        self.assertFalse(download_next_pending_video())
         self.assertEqual(PostVideo.objects.get(post__post_id='p2').status, VIDEO_PENDING)
 
     def test_an_x_video_is_found_through_the_embed_endpoint(self):
@@ -256,7 +277,7 @@ class VideoFilterTests(TestCase):
         self.assertIn('https://video.twimg.com/amplify_video/2/vid/320x180/e.mp4', ffmpeg.call_args_list[0].args[0])
         self.assertEqual(PostVideo.objects.get(post__post_id='2123077080887984588').status, VIDEO_READY)
 
-        with patch('classification.video_judging.requests.post', side_effect=model_watching(1, 4, 4)) as model_call:
+        with patch('classification.video_judging.requests.post', side_effect=model_answering(CALM_LESSON)) as model_call:
             self.assertTrue(classify_next_pending())
         described_post = model_call.call_args.kwargs['json']['messages'][1]['content'][1]['text']
         self.assertIn('Quoted post, by MarioNawfal:\nNvidia confirms Huang will NOT return as CEO!', described_post)
@@ -279,19 +300,36 @@ class VideoFilterTests(TestCase):
 
         with (
             patch('classification.video_sources.requests.get') as site,
-            patch('classification.video_judging.requests.post', side_effect=model_watching(1, 5, 4)) as model_call,
+            patch('classification.video_judging.requests.post', side_effect=model_answering(CALM_LESSON)) as model_call,
         ):
             self.assertFalse(download_next_pending_video())
             self.assertTrue(classify_next_pending())
         site.assert_not_called()
-        request = model_call.call_args.kwargs['json']
-        self.assertEqual(request['messages'][1]['content'][0]['video_url']['url'], 'https://www.youtube.com/watch?v=vid00000001')
-        self.assertEqual(request['provider']['only'], ['google-ai-studio'])
-        classification = self.video_classification('vid00000001')
+        self.assertEqual(sent_video_url(model_call.call_args.kwargs['json']), 'https://www.youtube.com/watch?v=vid00000001')
+        classification = self.brainrot_classification('vid00000001')
         self.assertEqual(classification.score, 0)
-        self.assertEqual(classification.label, 'not_brainrot')
+        self.assertEqual(classification.label, 'none')
 
-    def test_long_and_unmeasured_youtube_videos_are_not_watched(self):
+    def test_a_video_is_watched_once_and_its_verdict_reused_for_every_reader(self):
+        self.classify([seen_youtube_video('vid00000001', 95)])
+        with patch('classification.video_judging.requests.post', side_effect=model_answering(BRAINROT_VIDEO)) as model_call:
+            self.assertTrue(classify_next_pending())
+        self.assertEqual(model_call.call_count, 1)
+
+        other_reader, other_token = create_user_with_token('other@example.com')
+        settings_for_user(other_reader)
+        UserPlugin.objects.filter(user=other_reader).exclude(plugin=self.brainrot).update(enabled=False)
+        with patch('requests.post') as model_call:
+            response = self.client.post(
+                reverse('classify'), {'posts': [seen_youtube_video('vid00000001', 95)]},
+                content_type='application/json', **bearer(other_token))
+            self.assertFalse(classify_next_pending())
+        model_call.assert_not_called()
+        self.assertEqual(PostVideo.objects.count(), 1)
+        self.assertEqual(Classification.objects.filter(plugin_version__plugin=self.brainrot).count(), 1)
+        self.assertEqual(response.json()['results'][0]['action'], 'hide')
+
+    def test_long_and_unmeasured_youtube_videos_are_judged_without_being_watched(self):
         self.classify([
             seen_youtube_video('vid00000001', 181),
             seen_youtube_video('vid00000002', None),
@@ -300,11 +338,14 @@ class VideoFilterTests(TestCase):
         statuses = dict(PostVideo.objects.values_list('post__post_id', 'status'))
         self.assertEqual(statuses, {'vid00000001': VIDEO_MISSING, 'vid00000002': VIDEO_MISSING, 'vid00000003': VIDEO_READY})
 
-        with patch('classification.video_judging.requests.post', side_effect=model_watching(5, 0, 0)) as model_call:
+        # The text and the video judgments both go through requests.post.
+        with patch('requests.post', side_effect=model_answering(CALM_LESSON)) as model_call:
             while classify_next_pending():
                 pass
-        self.assertEqual(model_call.call_count, 1)
-        self.assertEqual(self.video_classification('vid00000001').status, CLASSIFICATION_FAILED)
+        watched = [sent_video_url(call.kwargs['json']) for call in model_call.call_args_list]
+        self.assertEqual(sorted(watched, key=str), [None, None, 'https://www.youtube.com/shorts/vid00000003'])
+        for video_id in ['vid00000001', 'vid00000002', 'vid00000003']:
+            self.assertEqual(self.brainrot_classification(video_id).status, CLASSIFICATION_DONE)
 
 
 @patch('classification.views.PENDING_WAIT_SECONDS', 0)
@@ -313,23 +354,22 @@ class GeminiVideoTests(TestCase):
     def setUp(self):
         self.user, self.token = create_user_with_token('reader@example.com')
         settings_for_user(self.user)
-        UserPlugin.objects.filter(user=self.user).update(enabled=False)
-        self.video_plugin = Plugin.objects.get(slug='video-brainrot')
-        UserPlugin.objects.create(user=self.user, plugin=self.video_plugin, threshold=67)
+        UserPlugin.objects.filter(user=self.user).exclude(plugin__slug='brainrot').update(enabled=False)
+        self.brainrot = Plugin.objects.get(slug='brainrot')
         for platform in video_sources.next_download_at:
             video_sources.next_download_at[platform] = 0.0
 
     def classify(self, posts):
         return self.client.post(reverse('classify'), {'posts': posts}, content_type='application/json', **bearer(self.token))
 
-    def video_classification(self, post_id):
-        return Classification.objects.get(post__post_id=post_id, plugin_version__plugin=self.video_plugin)
+    def brainrot_classification(self, post_id):
+        return Classification.objects.get(post__post_id=post_id, plugin_version__plugin=self.brainrot)
 
     def test_any_youtube_video_is_watched_for_its_opening_seconds_only(self):
         self.classify([seen_youtube_video('vid00000001', 3600), seen_youtube_video('vid00000002', None)])
         self.assertEqual(set(PostVideo.objects.values_list('status', flat=True)), {VIDEO_READY})
 
-        with patch('classification.video_judging.requests.post', side_effect=gemini_watching(1, 5, 5)) as model_call:
+        with patch('classification.video_judging.requests.post', side_effect=gemini_answering(CALM_LESSON)) as model_call:
             while classify_next_pending():
                 pass
         self.assertEqual(model_call.call_count, 2)
@@ -342,13 +382,14 @@ class GeminiVideoTests(TestCase):
             'videoMetadata': {'startOffset': '0s', 'endOffset': '15s'},
         })
 
-        classification = self.video_classification('vid00000001')
+        classification = self.brainrot_classification('vid00000001')
         self.assertEqual(classification.status, CLASSIFICATION_DONE)
         self.assertEqual(classification.inference_source, 'gemini')
         self.assertEqual(classification.score, 0)
+        self.assertEqual(classification.criteria_met, ['has_substance'])
         self.assertEqual(classification.prompt_tokens, 1700)
         self.assertEqual(classification.completion_tokens, 75)
-        self.assertIn('Video shown: the first 15 seconds', json.dumps(classification.prompt))
+        self.assertIn('Video attached: the first 15 seconds', json.dumps(classification.prompt))
 
     def test_a_reddit_clip_is_sent_inline_and_stored_as_a_reference(self):
         self.classify([seen_reddit_video('p1')])
@@ -359,35 +400,32 @@ class GeminiVideoTests(TestCase):
             download_next_pending_video()
         self.assertEqual(ffmpeg.call_args_list[0].args[0][ffmpeg.call_args_list[0].args[0].index('-t') + 1], '15')
 
-        with patch('classification.video_judging.requests.post', side_effect=gemini_watching(5, 0, 0)) as model_call:
+        with patch('classification.video_judging.requests.post', side_effect=gemini_answering(BRAINROT_VIDEO)) as model_call:
             self.assertTrue(classify_next_pending())
         sent_part = model_call.call_args.kwargs['json']['contents'][0]['parts'][0]
         self.assertEqual(sent_part['inlineData']['mimeType'], 'video/mp4')
         self.assertNotIn('post_video:', sent_part['inlineData']['data'])
-        classification = self.video_classification('p1')
+        classification = self.brainrot_classification('p1')
         stored_part = classification.prompt['contents'][0]['parts'][0]
         self.assertEqual(stored_part['inlineData']['data'], f'post_video:{PostVideo.objects.get().id}')
-        self.assertEqual(classification.label, 'brainrot')
+        self.assertEqual(classification.score, 80)
+        self.assertEqual(classification.label, 'stimulation_is_the_point')
 
 
-class VideoRubricTests(TestCase):
-    def test_points_count_engagement_for_and_substance_against(self):
-        answer = {'engagement_power': 4, 'information_content': 1, 'cognitive_draw': 2}
-        self.assertEqual(brainrot_points(answer), 4 + 4 + 3)
-        self.assertEqual(score_from_points(11), 73)
+class OneBrainrotFilterTests(TestCase):
+    def test_brainrot_watches_videos_and_the_brainrot_video_prototype_is_unlisted(self):
+        self.assertEqual(Plugin.objects.get(slug='brainrot').input_kind, PLUGIN_INPUT_VIDEO)
+        self.assertFalse(Plugin.objects.get(slug='video-brainrot').is_listed)
 
-    def test_a_calm_video_scores_0_however_little_it_holds(self):
-        calm_and_empty = {'engagement_power': 2, 'information_content': 0, 'cognitive_draw': 0}
-        self.assertEqual(brainrot_points(calm_and_empty), 0)
-        just_engaging_enough = {'engagement_power': 3, 'information_content': 0, 'cognitive_draw': 0}
-        self.assertEqual(brainrot_points(just_engaging_enough), 13)
+    def test_installs_of_the_brainrot_video_prototype_are_turned_off_and_kept(self):
+        user, _ = create_user_with_token('reader@example.com')
+        install = UserPlugin.objects.create(user=user, plugin=Plugin.objects.get(slug='video-brainrot'), threshold=67)
+        one_brainrot = importlib.import_module('classification.migrations.0019_one_brainrot')
+        one_brainrot.make_brainrot_watch_videos(apps, None)
 
-    def test_an_answer_out_of_range_or_incomplete_is_invalid(self):
-        valid = {'observations': 'Calm narration.', 'engagement_power': 1, 'information_content': 5, 'cognitive_draw': 4}
-        self.assertEqual(parse_answer(json.dumps(valid)), valid)
-        self.assertIsNone(parse_answer(json.dumps({**valid, 'engagement_power': 6})))
-        self.assertIsNone(parse_answer(json.dumps({**valid, 'cognitive_draw': True})))
-        self.assertIsNone(parse_answer(json.dumps({key: value for key, value in valid.items() if key != 'observations'})))
+        install.refresh_from_db()
+        self.assertFalse(install.enabled)
+        self.assertEqual(install.threshold, 67)
 
 
 class VideoSourceTests(TestCase):

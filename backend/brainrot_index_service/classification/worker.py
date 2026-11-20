@@ -19,6 +19,7 @@ from .models import (
     PLUGIN_INPUT_VIDEO,
     TRANSCRIPT_PENDING,
     VIDEO_PENDING,
+    VIDEO_READY,
     Classification,
     PostImage,
     PostVideo,
@@ -71,9 +72,9 @@ video_download_locks = {platform: threading.Lock() for platform in DOWNLOADED_PL
 
 
 def download_next_pending_video():
-    """Downloads the opening of one pending Reddit or X video that a video
-    filter is waiting on, from a site that may be asked now. Returns False when
-    there was none."""
+    """Downloads the opening of one pending Reddit or X video that a plugin
+    that watches videos is waiting on, from a site that may be asked now.
+    Returns False when there was none."""
     waiting_post_ids = Classification.objects.filter(
         status=CLASSIFICATION_PENDING,
         plugin_version__plugin__input_kind=PLUGIN_INPUT_VIDEO,
@@ -122,7 +123,8 @@ def download_next_pending_image():
 def classify_next_pending():
     """Runs one pending classification. Returns False when there was none.
     A YouTube video waits until its transcript has been fetched or found
-    missing, and a video filter until the post's video has been settled."""
+    missing, and a plugin that watches videos until the post's video has been
+    settled. A video that cannot be watched leaves the post judged without it."""
     with transaction.atomic():
         classification = (
             Classification.objects
@@ -137,8 +139,9 @@ def classify_next_pending():
         )
         if classification is None:
             return False
-        if classification.plugin_version.plugin.input_kind == PLUGIN_INPUT_VIDEO:
-            run_video_classification(classification)
+        post_video = PostVideo.objects.filter(post=classification.post, status=VIDEO_READY).first()
+        if classification.plugin_version.plugin.input_kind == PLUGIN_INPUT_VIDEO and post_video is not None:
+            run_video_classification(classification, post_video)
         else:
             run_classification(classification)
     return True

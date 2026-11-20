@@ -26,7 +26,6 @@ from .models import (
     ACTION_ALLOW,
     ACTION_HIDE,
     CLASSIFICATION_DONE,
-    CLASSIFICATION_NOT_APPLICABLE,
     CLASSIFICATION_PENDING,
     MODE_CHILD,
     PLATFORM_REDDIT,
@@ -144,7 +143,7 @@ def store_post(seen_post):
 
 def store_post_video(post, seen_post):
     """Records the video a page shows in a post, the first time a reader with a
-    video filter reports it. A YouTube video is settled at once; a Reddit or X
+    plugin that watches videos reports it. A YouTube video is settled at once; a Reddit or X
     video waits for the worker to download its opening. A Reddit playlist off
     Reddit's video host is ignored."""
     if PostVideo.objects.filter(post=post).exists():
@@ -166,13 +165,6 @@ def store_post_video(post, seen_post):
     if post.platform == PLATFORM_REDDIT and not reddit_video_url_is_allowed(video_url):
         return
     PostVideo.objects.get_or_create(post=post, defaults={'source_url': video_url})
-
-
-def new_classification(post, plugin, plugin_version, post_ids_with_video):
-    """A video filter has nothing to judge in a post without a video."""
-    if plugin.input_kind == PLUGIN_INPUT_VIDEO and post.id not in post_ids_with_video:
-        return Classification(post=post, plugin_version=plugin_version, status=CLASSIFICATION_NOT_APPLICABLE)
-    return Classification(post=post, plugin_version=plugin_version)
 
 
 def record_submissions(user, extension_token, posts):
@@ -379,14 +371,11 @@ def classify(request):
         posts.append(post)
     record_submissions(request.user, request.auth, posts)
 
-    post_ids_with_video = set()
-    if watches_videos:
-        post_ids_with_video = set(PostVideo.objects.filter(post__in=posts).values_list('post_id', flat=True))
     # Queue every missing (post, plugin version) pair; existing rows are the cache.
     Classification.objects.bulk_create(
         [
-            new_classification(post, user_plugin.plugin, version, post_ids_with_video)
-            for post in posts for user_plugin, version in plugins_to_apply
+            Classification(post=post, plugin_version=version)
+            for post in posts for _, version in plugins_to_apply
         ],
         ignore_conflicts=True,
     )

@@ -59,7 +59,8 @@ VIDEO_STATUS_CHOICES = [
 CLASSIFICATION_PENDING = 'pending'
 CLASSIFICATION_DONE = 'done'
 CLASSIFICATION_FAILED = 'failed'
-# A video filter meeting a post that has no video. Finished, and never flags.
+# Kept for the rows of the retired Brainrot video filter, which skipped posts
+# without a video. Finished, and never flags.
 CLASSIFICATION_NOT_APPLICABLE = 'not_applicable'
 CLASSIFICATION_STATUS_CHOICES = [
     (CLASSIFICATION_PENDING, 'Pending'),
@@ -68,7 +69,8 @@ CLASSIFICATION_STATUS_CHOICES = [
     (CLASSIFICATION_NOT_APPLICABLE, 'Not applicable'),
 ]
 
-# What a plugin judges: a post as text and images, or the video in it, watched and listened to.
+# What a plugin judges: a post as text and images, or also, when the post has a
+# video that can be watched, that video's frames and audio.
 PLUGIN_INPUT_POST = 'post'
 PLUGIN_INPUT_VIDEO = 'video'
 PLUGIN_INPUT_CHOICES = [
@@ -179,11 +181,11 @@ class VideoTranscript(models.Model):
 
 
 class PostVideo(models.Model):
-    """The video in a post, as a video filter watches it. Settled once for
-    every reader. A Reddit or X video is downloaded once, cut to its opening
-    seconds, and the clip is kept, so judging it again never asks the site
-    again. A YouTube video is never downloaded: the model provider fetches it
-    by its URL, whole."""
+    """The video in a post, as a plugin that watches videos sees it. Settled
+    once for every reader. A Reddit or X video is downloaded once, cut to its
+    opening seconds, and the clip is kept, so judging it again never asks the
+    site again. A YouTube video is never downloaded: the model provider
+    fetches it by its URL."""
 
     post = models.OneToOneField(Post, on_delete=models.CASCADE, related_name='video')
     status = models.CharField(max_length=16, choices=VIDEO_STATUS_CHOICES, default=VIDEO_PENDING)

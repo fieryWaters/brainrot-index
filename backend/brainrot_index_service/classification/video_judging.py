@@ -1,9 +1,6 @@
-"""Applying a video filter to a post's video. The model watches the video,
-frames and audio, and scores each criterion of the rubric from 0 to 5; the
-filter's score and label are computed here from those scores, never by the model.
-
-The criteria are those of the owner's definition of brainrot: high engagement
-power, low information content, low cognitive draw.
+"""Judging a post with its video watched: the same rubric, criteria and score
+as for any post, with the video's opening, frames and audio, attached to the
+post's text and images. Only Gemini watches videos.
 
 With GEMINI_API_KEY set, the video goes straight to the Gemini API, which can
 clip a YouTube video, so only its first VIDEO_WATCH_SECONDS are watched and
@@ -11,29 +8,24 @@ billed. Without it, the video goes through OpenRouter, which cannot clip, so a
 YouTube video is watched whole."""
 
 import base64
-import json
 import logging
 import time
 
 import requests
 from django.conf import settings
-from django.utils import timezone
 
 from .inference import (
     ATTEMPTS_PER_CLASSIFICATION,
     INFERENCE_SOURCE_OPENROUTER,
     OPENROUTER_BASE_URL,
-    PLATFORM_NAMES,
     ModelOutcome,
-    describe_shown_content,
+    describe_stored_post,
+    images_for_model,
+    save_outcome,
+    system_prompt,
 )
-from .models import (
-    CLASSIFICATION_DONE,
-    CLASSIFICATION_FAILED,
-    PLATFORM_YOUTUBE,
-    VIDEO_READY,
-    PostVideo,
-)
+from .models import PLATFORM_YOUTUBE
+from .scoring import answer_schema, parse_answer
 
 logger = logging.getLogger(__name__)
 
@@ -43,80 +35,7 @@ GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 INFERENCE_SOURCE_GEMINI = 'gemini'
 REQUEST_TIMEOUT_SECONDS = 180
 MAX_RESPONSE_TOKENS = 600
-MAX_TEXT_CHARACTERS = 2000
-
-CRITERION_MAX = 5
-ENGAGEMENT_POWER = 'engagement_power'
-INFORMATION_CONTENT = 'information_content'
-COGNITIVE_DRAW = 'cognitive_draw'
-CRITERIA = [ENGAGEMENT_POWER, INFORMATION_CONTENT, COGNITIVE_DRAW]
-MAX_POINTS = CRITERION_MAX * len(CRITERIA)
-# Two thirds of the points: clearly more pull than substance.
-BRAINROT_MIN_POINTS = 10
-# Brainrot needs engagement power: a calm video scores 0 however little it holds.
-MIN_ENGAGEMENT_POWER = 3
-LABEL_BRAINROT = 'brainrot'
-LABEL_NOT_BRAINROT = 'not_brainrot'
-
-RESPONSE_INSTRUCTIONS = """\
-Judge the video the user sends against the rubric above, from what you see and
-hear in it. Answer with a JSON object with exactly these fields, in this order:
-- observations: two to four sentences on what you saw and heard that decides
-  the scores, written before you score.
-- engagement_power, information_content, cognitive_draw: each an integer from
-  0 to 5."""
-
-
-def brainrot_points(answer):
-    """Engagement counts for brainrot; information and cognitive draw count against it.
-    Below MIN_ENGAGEMENT_POWER the video is not brainrot at all, so it scores 0."""
-    if answer[ENGAGEMENT_POWER] < MIN_ENGAGEMENT_POWER:
-        return 0
-    return (
-        answer[ENGAGEMENT_POWER]
-        + (CRITERION_MAX - answer[INFORMATION_CONTENT])
-        + (CRITERION_MAX - answer[COGNITIVE_DRAW])
-    )
-
-
-def score_from_points(points):
-    return round(points * 100 / MAX_POINTS)
-
-
-def label_from_points(points):
-    if points >= BRAINROT_MIN_POINTS:
-        return LABEL_BRAINROT
-    return LABEL_NOT_BRAINROT
-
-
-def answer_schema():
-    properties = {'observations': {'type': 'string'}}
-    for criterion in CRITERIA:
-        properties[criterion] = {'type': 'integer', 'minimum': 0, 'maximum': CRITERION_MAX}
-    return {
-        'type': 'object',
-        'properties': properties,
-        'required': ['observations'] + CRITERIA,
-        'additionalProperties': False,
-    }
-
-
-def parse_answer(answer_text):
-    """The model's answer as a dict, or None when it does not match the schema."""
-    try:
-        answer = json.loads(answer_text)
-    except json.JSONDecodeError:
-        return None
-
-    if not isinstance(answer, dict) or set(answer) != {'observations', *CRITERIA}:
-        return None
-    if not isinstance(answer['observations'], str) or not answer['observations'].strip():
-        return None
-    for criterion in CRITERIA:
-        # bool is a subclass of int, so compare the type exactly.
-        if type(answer[criterion]) is not int or not 0 <= answer[criterion] <= CRITERION_MAX:
-            return None
-    return answer
+DATA_URL_BASE64_MARKER = ';base64,'
 
 
 def watches_through_gemini():
@@ -134,23 +53,9 @@ def watched_description(post_video):
     return f'the first {settings.VIDEO_WATCH_SECONDS} seconds'
 
 
-def describe_video_post(post, watched):
-    """The post around the video, as the model reads it."""
-    lines = [f"Platform: {PLATFORM_NAMES[post.platform]}"]
-    if post.community:
-        lines.append(f"Community: {post.community}")
-    lines.extend(describe_shown_content(post.text[:MAX_TEXT_CHARACTERS], post.quoted_post, post.link_preview))
-    lines.append(f"Video shown: {watched}")
-    return '\n'.join(lines)
-
-
 def clip_base64(post_video):
     with post_video.clip.open('rb') as clip_file:
         return base64.b64encode(clip_file.read()).decode('ascii')
-
-
-def system_prompt(rubric_prompt):
-    return rubric_prompt + '\n\n' + RESPONSE_INSTRUCTIONS
 
 
 # -- Through OpenRouter: a YouTube URL, watched whole, or the clip as a data URL --
@@ -164,17 +69,20 @@ def openrouter_video_url(post_video, stored):
     return 'data:video/mp4;base64,' + clip_base64(post_video)
 
 
-def build_messages(rubric_prompt, post_description, video_url):
+def build_messages(plugin_version, post_description, video_url, image_urls):
+    user_content = [
+        {'type': 'video_url', 'video_url': {'url': video_url}},
+        {'type': 'text', 'text': post_description},
+    ]
+    for image_url in image_urls:
+        user_content.append({'type': 'image_url', 'image_url': {'url': image_url}})
     return [
-        {'role': 'system', 'content': system_prompt(rubric_prompt)},
-        {'role': 'user', 'content': [
-            {'type': 'video_url', 'video_url': {'url': video_url}},
-            {'type': 'text', 'text': post_description},
-        ]},
+        {'role': 'system', 'content': system_prompt(plugin_version)},
+        {'role': 'user', 'content': user_content},
     ]
 
 
-def send_to_openrouter(messages, model):
+def send_to_openrouter(messages, plugin_version, model):
     return requests.post(
         f"{OPENROUTER_BASE_URL}/chat/completions",
         json={
@@ -184,7 +92,7 @@ def send_to_openrouter(messages, model):
             'max_tokens': MAX_RESPONSE_TOKENS,
             'response_format': {
                 'type': 'json_schema',
-                'json_schema': {'name': 'video_judgment', 'strict': True, 'schema': answer_schema()},
+                'json_schema': {'name': 'classification', 'strict': True, 'schema': answer_schema(plugin_version)},
             },
             'provider': {'only': [VIDEO_PROVIDER], 'require_parameters': True},
         },
@@ -218,15 +126,25 @@ def gemini_video_part(post_video, stored):
     return {'inlineData': {'mimeType': 'video/mp4', 'data': clip_base64(post_video)}}
 
 
-def build_gemini_request(rubric_prompt, post_description, video_part):
+def gemini_image_part(image_url):
+    """An image for Gemini, inline: the base64 data of a JPEG data URL, or a
+    stored image's "post_image:<id>" reference, which has no data URL prefix."""
+    image_data = image_url.split(DATA_URL_BASE64_MARKER, 1)[-1]
+    return {'inlineData': {'mimeType': 'image/jpeg', 'data': image_data}}
+
+
+def build_gemini_request(plugin_version, post_description, video_part, image_urls):
+    parts = [video_part, {'text': post_description}]
+    for image_url in image_urls:
+        parts.append(gemini_image_part(image_url))
     return {
-        'systemInstruction': {'parts': [{'text': system_prompt(rubric_prompt)}]},
-        'contents': [{'role': 'user', 'parts': [video_part, {'text': post_description}]}],
+        'systemInstruction': {'parts': [{'text': system_prompt(plugin_version)}]},
+        'contents': [{'role': 'user', 'parts': parts}],
         'generationConfig': {
             'temperature': 0,
             'maxOutputTokens': MAX_RESPONSE_TOKENS,
             'responseMimeType': 'application/json',
-            'responseJsonSchema': answer_schema(),
+            'responseJsonSchema': answer_schema(plugin_version),
         },
     }
 
@@ -254,7 +172,7 @@ def read_gemini_completion(completion):
     )
 
 
-def ask_model_to_watch(send, read_completion):
+def ask_model_to_watch(send, read_completion, plugin_version):
     """Calls send() for the model's answer, retrying once after a failed request
     or an invalid answer, and returns a ModelOutcome."""
     outcome = ModelOutcome()
@@ -268,7 +186,7 @@ def ask_model_to_watch(send, read_completion):
             answer_text, outcome.prompt_tokens, outcome.completion_tokens, cost = read_completion(response.json())
             if cost is not None:
                 outcome.cost = (outcome.cost or 0) + cost
-            outcome.answer = parse_answer(answer_text)
+            outcome.answer = parse_answer(answer_text, plugin_version)
         except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as error:
             logger.warning("Video judgment attempt %s failed: %s", attempt, error)
             continue
@@ -278,63 +196,35 @@ def ask_model_to_watch(send, read_completion):
     return outcome
 
 
-def judgment_reasoning(answer, points):
-    return (
-        f"{answer['observations']}\n\n"
-        f"Engagement power {answer[ENGAGEMENT_POWER]}/5, information content {answer[INFORMATION_CONTENT]}/5, "
-        f"cognitive draw {answer[COGNITIVE_DRAW]}/5: {points} of {MAX_POINTS} points."
-    )
-
-
-def run_video_classification(classification):
-    """Watches the post's video for one pending classification and saves the
-    outcome. A post whose video cannot be watched fails, and is never flagged."""
+def run_video_classification(classification, post_video):
+    """Judges a post with its ready video attached, for one pending
+    classification, and saves the outcome."""
+    plugin_version = classification.plugin_version
     post = classification.post
-    post_video = PostVideo.objects.get(post=post)
-    rubric_prompt = classification.plugin_version.rubric_prompt
+
+    images_with_data = images_for_model(post)
+    post_description = describe_stored_post(post, len(images_with_data), watched_description(post_video))
+    image_urls_to_send = [data_url for _, data_url in images_with_data]
+    # The stored prompt points at the kept clip and images instead of repeating their bytes.
+    image_urls_to_store = [f"post_image:{post_image.id}" for post_image, _ in images_with_data]
 
     if watches_through_gemini():
         model = settings.VIDEO_GEMINI_MODEL
         classification.inference_source = INFERENCE_SOURCE_GEMINI
+        classification.prompt = build_gemini_request(
+            plugin_version, post_description, gemini_video_part(post_video, stored=True), image_urls_to_store)
+        request_body = build_gemini_request(
+            plugin_version, post_description, gemini_video_part(post_video, stored=False), image_urls_to_send)
+        outcome = ask_model_to_watch(
+            lambda: send_to_gemini(request_body, model), read_gemini_completion, plugin_version)
     else:
         model = settings.VIDEO_MODEL
         classification.inference_source = INFERENCE_SOURCE_OPENROUTER
-    classification.model = model
-
-    if post_video.status != VIDEO_READY:
-        classification.status = CLASSIFICATION_FAILED
-        classification.reasoning = f"Video not watched: {post_video.missing_reason}"
-        classification.completed_at = timezone.now()
-        classification.save()
-        return
-
-    post_description = describe_video_post(post, watched_description(post_video))
-    # The stored prompt points at the kept clip instead of repeating its bytes.
-    if watches_through_gemini():
-        classification.prompt = build_gemini_request(
-            rubric_prompt, post_description, gemini_video_part(post_video, stored=True))
-        request_body = build_gemini_request(
-            rubric_prompt, post_description, gemini_video_part(post_video, stored=False))
-        outcome = ask_model_to_watch(lambda: send_to_gemini(request_body, model), read_gemini_completion)
-    else:
         classification.prompt = build_messages(
-            rubric_prompt, post_description, openrouter_video_url(post_video, stored=True))
-        messages = build_messages(rubric_prompt, post_description, openrouter_video_url(post_video, stored=False))
-        outcome = ask_model_to_watch(lambda: send_to_openrouter(messages, model), read_openrouter_completion)
-
-    classification.raw_response = outcome.raw_response
-    classification.latency_ms = outcome.latency_ms
-    classification.prompt_tokens = outcome.prompt_tokens
-    classification.completion_tokens = outcome.completion_tokens
-
-    if outcome.answer is None:
-        logger.warning("Video classification %s failed", classification.id)
-        classification.status = CLASSIFICATION_FAILED
-    else:
-        points = brainrot_points(outcome.answer)
-        classification.status = CLASSIFICATION_DONE
-        classification.score = score_from_points(points)
-        classification.label = label_from_points(points)
-        classification.reasoning = judgment_reasoning(outcome.answer, points)
-    classification.completed_at = timezone.now()
-    classification.save()
+            plugin_version, post_description, openrouter_video_url(post_video, stored=True), image_urls_to_store)
+        messages = build_messages(
+            plugin_version, post_description, openrouter_video_url(post_video, stored=False), image_urls_to_send)
+        outcome = ask_model_to_watch(
+            lambda: send_to_openrouter(messages, plugin_version, model), read_openrouter_completion, plugin_version)
+    classification.model = model
+    save_outcome(classification, outcome)

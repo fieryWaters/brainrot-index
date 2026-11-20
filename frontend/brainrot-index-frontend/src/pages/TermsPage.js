@@ -16,7 +16,7 @@ brainrotindex.com and the BrainRot Index browser extension (together, "the servi
 extension you agree to them. Our <a href="/privacy">Privacy Policy</a> explains what data the service collects and how it is used.</p>
 
 <h2>1. What the service does</h2>
-<p>The extension reads the posts in your feeds on supported sites, sends them to our servers, and blurs or hides the ones that the
+<p>The extension reads the posts in your feeds on supported sites, sends them to our servers, and hides the ones that the
 filters you turned on flag. AI models read each post and score it.</p>
 <p>AI models make mistakes. The service will sometimes hide a post you wanted to see and show a post you did not. We do not promise
 that any particular post will be caught or left alone. BrainRot Index is not affiliated with any site it works on, and changes those

@@ -175,6 +175,17 @@ class InboxTests(TestCase):
         self.assertEqual(thumbs[1]['plugin'], 'shouting')
         self.assertEqual(thumbs[1]['details'], 'This is fine, just loud.')
 
+    def test_an_old_blur_judgment_reads_as_hidden(self):
+        PostJudgment.objects.filter(id=self.judgment.id).update(
+            shown_action='blur', filter_results=[{**self.judgment.filter_results[0], 'flagged_action': 'blur'}])
+
+        item = self.items_by_id(self.owner_client)[f'judgment-{self.judgment.id}']
+        self.assertEqual(item['shown_action'], 'hide')
+        self.assertEqual(item['filters'][0]['flagged_action'], 'hide')
+        thumb = self.owner_client.get(reverse('list_thumbs')).json()['thumbs'][0]
+        self.assertEqual(thumb['shown_action'], 'hide')
+        self.assertEqual(thumb['filters'][0]['flagged_action'], 'hide')
+
     def test_items_from_a_deleted_account_stay_without_their_sender(self):
         self.reader.delete()
 

@@ -1,74 +1,246 @@
-/* Brand colours, sampled from the logo; the site defines the same palette in its index.css. */
+/* The site's look (frontend/brainrot-index-frontend/src/index.css and components/styles.js): the
+   logo's navy page, translucent cards with a hairline border, the shield's blue for buttons and the
+   brain's light cyan for accents and links. */
 :root {
   --navy-950: #0b1830;
-  --shield-500: #2068ad;
+  --navy-900: #11243f;
+  --navy-800: #183453;
+  --shield-300: #3796d1;
+  --shield-400: #2776bb;
   --shield-600: #1a5797;
+  --glow-200: #d2ffff;
+  --glow-300: #9eeef5;
+  --glow-400: #4cbbe1;
+  color-scheme: dark;
 }
 
 body {
-  width: 260px;
-  margin: 12px;
-  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: var(--navy-950);
-  accent-color: var(--shield-500);
-}
-
-h1 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 8px;
-  font-size: 15px;
-}
-
-a {
-  color: var(--shield-600);
+  width: 300px;
+  margin: 0;
+  padding: 14px;
+  background: radial-gradient(ellipse 90% 220px at 50% 0%, var(--navy-800), transparent) var(--navy-950);
+  color: #fff;
+  font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  accent-color: var(--glow-400);
 }
 
 p {
-  margin: 6px 0;
+  margin: 0;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.brand-name {
+  background: linear-gradient(to right, var(--glow-200), var(--glow-400));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+#account-status {
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .switch-row {
-  display: block;
-  margin: 10px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* An on/off switch drawn over the checkbox, so it keeps the checkbox's behaviour. */
+.switch {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.switch:checked {
+  background: linear-gradient(to right, var(--shield-400), var(--shield-600));
+}
+
+.switch:checked::after {
+  transform: translateX(16px);
+}
+
+.counts {
+  flex-direction: row;
+  gap: 0;
+  padding: 0;
+}
+
+.count {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  padding: 10px 12px;
+}
+
+.count + .count {
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.count-number {
+  color: var(--glow-300);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.count-label {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+}
+
+.field-label {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 #feedback-text {
   box-sizing: border-box;
   width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  color: #fff;
   font: inherit;
+  resize: vertical;
 }
 
-.subscribe-button {
+#feedback-text::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+#feedback-text:focus {
+  border-color: var(--glow-400);
+  outline: none;
+}
+
+.form-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#feedback-status {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.primary-button {
   display: inline-block;
-  padding: 4px 12px;
-  border-radius: 6px;
-  background: var(--shield-500);
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(to right, var(--shield-400), var(--shield-600));
   color: #fff;
   font-weight: 600;
   text-decoration: none;
 }
 
-button.subscribe-button {
-  border: none;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
+.primary-button:hover {
+  background: var(--shield-400);
+  box-shadow: 0 6px 16px rgba(76, 187, 225, 0.2);
 }
 
-.link-button {
-  padding: 0;
+.accent-button {
+  flex: none;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(39, 118, 187, 0.25);
+  color: var(--glow-300);
+  font-weight: 600;
+}
+
+.accent-button:hover {
+  background: rgba(39, 118, 187, 0.4);
+}
+
+.quiet-button {
+  padding: 4px 0;
   border: none;
   background: none;
-  color: var(--shield-600);
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.quiet-button:hover {
+  color: #fff;
+}
+
+.site-link {
+  display: inline-block;
+  margin: 2px 0 4px;
+  color: var(--glow-400);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.site-link:hover {
+  color: var(--glow-300);
+}
+
+:focus-visible {
+  outline: 2px solid var(--glow-400);
+  outline-offset: 2px;
 }
 
 .commit-line {
-  margin-top: 10px;
-  color: #888;
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.25);
   font-size: 11px;
 }

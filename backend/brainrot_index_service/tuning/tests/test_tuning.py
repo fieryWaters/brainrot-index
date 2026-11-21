@@ -14,7 +14,7 @@ from classification.models import Plugin, PluginVersion, Post, PostJudgment
 from classification.tests.helpers import create_verified_user, model_response
 from feedback.tests.test_inbox import signed_in_client
 from tuning.models import EXPERIMENT_DONE, EXPERIMENT_PENDING, EXPERIMENT_RUNNING, TuningExperiment, TuningResult
-from tuning.runs import run_next_tuning_experiment
+from tuning.runs import post_as_read, run_next_tuning_experiment
 
 OWNER_EMAIL = 'owner@example.com'
 LIVE_RUBRIC = 'Judge shouting.'
@@ -170,7 +170,10 @@ class TuningTests(TestCase):
         self.assertFalse(loud['should_flag'])
         self.assertEqual(loud['owner'], {'verdict': 'wrong', 'shown_action': 'hide', 'plugin': 'shouting',
                                          'details': 'Just cheerful.'})
-        self.assertIn('GOOD MORNING EVERYONE', loud['description'])
+        self.assertEqual(loud['post'], {
+            'platform': 'x', 'kind': 'post', 'author': '', 'community': '', 'text': 'GOOD MORNING EVERYONE',
+            'quoted_post': {}, 'link_preview': {}, 'parent_text': None, 'parent_is_reply': False, 'thread_text': None,
+        })
         self.assertEqual(loud['draft']['score'], 0)
         self.assertEqual(loud['live']['score'], 60)
         # The draft decided differently from the live version, so it was explained.
@@ -218,7 +221,20 @@ class TuningTests(TestCase):
         self.assertEqual(shown['scores']['synthetic']['cases'], 1)
         synthetic = next(result for result in shown['results'] if result['case_id'] == 'syn-1')
         self.assertEqual(synthetic['owner'], {'why': 'Shouts at someone.'})
+        self.assertEqual((synthetic['post']['text'], synthetic['post']['author']), ('YOU NEVER LISTEN', ''))
         self.assertTrue(synthetic['should_flag'])
+
+    def test_a_reply_is_shown_with_the_posts_it_answers(self):
+        Post.objects.create(platform='reddit', post_id='t1', kind='post', author='op', text='What do you think?')
+        Post.objects.create(platform='reddit', post_id='c1', kind='reply', parent_post_id='t1', author='first',
+                            text='I think yes.')
+        reply = Post.objects.create(platform='reddit', post_id='c2', kind='reply', parent_post_id='c1',
+                                    author='second', community='r/test', text='NO WAY')
+        self.assertEqual(post_as_read(reply), {
+            'platform': 'reddit', 'kind': 'reply', 'author': 'second', 'community': 'r/test', 'text': 'NO WAY',
+            'quoted_post': {}, 'link_preview': {}, 'parent_text': 'I think yes.', 'parent_is_reply': True,
+            'thread_text': 'What do you think?',
+        })
 
     def test_the_synthetic_test_set_is_refused_when_it_has_no_examples_for_the_filter(self):
         response = self.owner_client.post(reverse('tuning_experiments'), self.draft(include_synthetic=True),

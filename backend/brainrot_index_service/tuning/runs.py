@@ -34,8 +34,9 @@ from classification.inference import (
     describe_stored_post,
     images_for_model,
     inference_endpoint,
+    stored_reply_context,
 )
-from classification.models import PLUGIN_INPUT_VIDEO, VIDEO_READY, PostJudgment, PostVideo
+from classification.models import PLUGIN_INPUT_VIDEO, POST_KIND_REPLY, VIDEO_READY, PostJudgment, PostVideo
 
 from .models import (
     CASE_SYNTHETIC,
@@ -70,6 +71,7 @@ class Case:
     should_flag: bool
     owner: dict
     description: str
+    post: dict
     image_data_urls: list
     image_urls: list = field(default_factory=list)
     post_url: str = ''
@@ -101,6 +103,44 @@ def synthetic_examples_for(plugin):
     return [example for example in load_examples(dataset_path) if plugin.slug in example.get('expected', {})]
 
 
+def post_as_read(post):
+    """A stored post as a reader sees it in the feed, with the posts a reply
+    answers: {platform, kind, author, community, text, quoted_post,
+    link_preview, parent_text, parent_is_reply, thread_text}, the last three
+    as stored_reply_context gives them."""
+    shown = {
+        'platform': post.platform,
+        'kind': post.kind,
+        'author': post.author,
+        'community': post.community,
+        'text': post.text,
+        'quoted_post': post.quoted_post,
+        'link_preview': post.link_preview,
+        'parent_text': None,
+        'parent_is_reply': False,
+        'thread_text': None,
+    }
+    if post.kind == POST_KIND_REPLY:
+        shown['parent_text'], shown['parent_is_reply'], shown['thread_text'], _ = stored_reply_context(post)
+    return shown
+
+
+def example_as_read(example):
+    """A synthetic test set example in the form post_as_read gives; the test set names no authors."""
+    return {
+        'platform': example['platform'],
+        'kind': example['kind'],
+        'author': '',
+        'community': example.get('community', ''),
+        'text': example['text'],
+        'quoted_post': example.get('quoted_post') or {},
+        'link_preview': example.get('link_preview') or {},
+        'parent_text': example.get('parent_text'),
+        'parent_is_reply': example.get('parent_is_reply', False),
+        'thread_text': example.get('thread_text'),
+    }
+
+
 def thumb_case(judgment, expected, plugin):
     """A thumbs as a case, described exactly as the production worker describes its post."""
     post = judgment.post
@@ -122,6 +162,7 @@ def thumb_case(judgment, expected, plugin):
             'details': judgment.details,
         },
         description=describe_stored_post(post, len(images_with_data)),
+        post=post_as_read(post),
         image_data_urls=[data_url for _, data_url in images_with_data],
         image_urls=[post_image.source_url for post_image, _ in images_with_data],
         post_url=post.url,
@@ -140,6 +181,7 @@ def synthetic_case(example, plugin):
         should_flag=expected['flag'],
         owner={'why': expected['why']},
         description=description,
+        post=example_as_read(example),
         image_data_urls=image_data_urls,
     )
 
@@ -267,6 +309,7 @@ def judge_case(experiment, draft_version, live_version, case, reused_live_answer
         'source': case.source,
         'judgment': case.judgment,
         'description': case.description,
+        'post': case.post,
         'image_urls': case.image_urls,
         'post_url': case.post_url,
         'should_flag': case.should_flag,

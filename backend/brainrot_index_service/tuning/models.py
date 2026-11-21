@@ -91,6 +91,8 @@ class TuningResult(models.Model):
     judgment = models.ForeignKey(PostJudgment, on_delete=models.SET_NULL, null=True, blank=True, related_name='tuning_results')
     # The post as the model read it, context included.
     description = models.TextField()
+    # The post as a reader sees it, for the page, as runs.post_as_read gives it.
+    post = models.JSONField(default=dict)
     # Where the post's images are on the web. Empty for the synthetic test set.
     image_urls = models.JSONField(default=list, blank=True)
     post_url = models.TextField(blank=True, default='')

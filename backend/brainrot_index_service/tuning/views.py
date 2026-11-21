@@ -98,7 +98,7 @@ def result_as_dict(result):
         'case_id': result.case_id,
         'source': result.source,
         'judgment_id': result.judgment_id,
-        'description': result.description,
+        'post': result.post,
         'image_urls': result.image_urls,
         'post_url': result.post_url,
         'should_flag': result.should_flag,
@@ -115,8 +115,6 @@ def experiment_as_dict(experiment):
     experiment_dict = experiment_summary(experiment)
     experiment_dict['rubric_prompt'] = experiment.rubric_prompt
     experiment_dict['criteria'] = experiment.criteria
-    experiment_dict['live_rubric_prompt'] = experiment.live_version.rubric_prompt
-    experiment_dict['live_criteria'] = experiment.live_version.criteria
     experiment_dict['results'] = [result_as_dict(result) for result in experiment.results.order_by('id')]
     return experiment_dict
 

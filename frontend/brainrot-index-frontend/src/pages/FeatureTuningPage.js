@@ -265,7 +265,11 @@ function wrongFiltersText(result, cutoffs) {
 }
 
 function createRatings(result, experiment) {
-  if (result.failed) return el('p', `text-sm ${FAILED_CLASS}`, 'The model gave no usable answer.')
+  if (result.failed) {
+    return el('div', 'text-sm',
+      el('p', FAILED_CLASS, 'The model gave no usable answer. Its response:'),
+      el('pre', 'mt-1 whitespace-pre-wrap break-all font-mono text-xs text-white/60', result.raw_response))
+  }
   return el('div', 'text-sm text-white/80',
     el('p', 'text-xs text-white/50', 'Ratings'),
     el('ul', 'mt-1 space-y-1', ...experiment.features.map((feature) => el('li', 'flex gap-2',

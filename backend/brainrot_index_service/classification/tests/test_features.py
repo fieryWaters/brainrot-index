@@ -39,12 +39,14 @@ class FeaturePromptTests(TestCase):
                       '  3.3: Some hooks.\n  6.7: Hook-driven.\n  10: Relentless.', prompt)
         self.assertIn('humor: Would a reader laugh.\n  0: Not a joke.\n  5: Stings.\n  10: Funny.', prompt)
 
-    def test_the_answer_is_one_whole_number_from_0_to_10_per_feature(self):
+    def test_the_answer_is_one_number_from_0_to_10_per_feature(self):
         features = [FOUR_LEVELS, THREE_LEVELS]
         self.assertEqual(scores_schema(features)['required'], ['pull', 'humor'])
         self.assertEqual(parse_scores('{"pull": 4, "humor": 10}', features), {'pull': 4, 'humor': 10})
+        # The levels of a four level feature sit at 3.3 and 6.7, and the model answers with those points.
+        self.assertEqual(parse_scores('{"pull": 6.7, "humor": 0}', features), {'pull': 6.7, 'humor': 0})
         for answer in ['{"pull": 11, "humor": 0}', '{"pull": true, "humor": 0}', '{"pull": 4}',
-                       '{"pull": 4, "humor": 1, "reasoning": "x"}', '{"pull": 4.5, "humor": 1}', 'not json']:
+                       '{"pull": 4, "humor": 1, "reasoning": "x"}', '{"pull": "4", "humor": 1}', 'not json']:
             self.assertIsNone(parse_scores(answer, features), answer)
 
 

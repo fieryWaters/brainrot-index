@@ -193,6 +193,8 @@ def judge_feature_case(experiment, live_plugin_versions, case, known_live):
     usage = Usage()
     messages = chat_messages(features_prompt(experiment.features), case.description, case.image_data_urls)
     outcome = ask_feature_scores(messages, experiment.features, experiment.inference_source, experiment.model)
+    rating_usage = Usage()
+    rating_usage.add(outcome)
     usage.add(outcome)
     scores = outcome.answer or {}
 
@@ -228,12 +230,17 @@ def judge_feature_case(experiment, live_plugin_versions, case, known_live):
         'video_not_watched': case.video_not_watched,
         'scores': scores,
         'failed': outcome.answer is None,
+        'raw_response': outcome.raw_response,
         'reasons': reasons,
         'live': live,
         'prompt_tokens': usage.prompt_tokens,
         'cached_prompt_tokens': usage.cached_prompt_tokens,
         'completion_tokens': usage.completion_tokens,
         'cost': usage.cost,
+        'rating_prompt_tokens': rating_usage.prompt_tokens,
+        'rating_cached_prompt_tokens': rating_usage.cached_prompt_tokens,
+        'rating_completion_tokens': rating_usage.completion_tokens,
+        'rating_cost': rating_usage.cost,
     }
 
 

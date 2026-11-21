@@ -361,6 +361,7 @@ def feature_result_as_dict(result, filters):
         'video_not_watched': result.video_not_watched,
         'scores': result.scores,
         'failed': result.failed,
+        'raw_response': result.raw_response if result.failed else '',
         'reasons': result.reasons,
         'live': result.live,
         'filter_scores': filter_scores,

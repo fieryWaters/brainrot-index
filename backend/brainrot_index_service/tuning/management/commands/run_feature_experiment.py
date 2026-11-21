@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from classification.models import FeatureSet
+from classification.models import CLASSIFICATION_DONE, Classification, FeatureSet
 from tuning.feature_runs import create_experiment, filter_counts, run_now
 from tuning.models import EXPERIMENT_FAILED, EXPERIMENT_RUNNING, FeatureExperiment
 
@@ -35,6 +35,47 @@ def filter_lines(experiment, results):
             swept = filter_counts(filter_definition, live, results, cutoff)['draft']
             lines.append(f"    {cutoff:3d}  {swept['right']:4d}  {swept['missed']:4d}  {swept['wrongly_flagged']:4d}")
     return lines
+
+
+def rating_cost_lines(results):
+    """The rating call alone, averaged over the posts: what production would pay per post."""
+    rated = [result for result in results if result.rating_prompt_tokens]
+    if not rated:
+        return []
+    prompt_tokens = sum(result.rating_prompt_tokens for result in rated)
+    cached_prompt_tokens = sum(result.rating_cached_prompt_tokens for result in rated)
+    completion_tokens = sum(result.rating_completion_tokens for result in rated)
+    costs = [result.rating_cost for result in rated if result.rating_cost is not None]
+    line = (f"Rating call alone, per post: {prompt_tokens / len(rated):.0f} prompt tokens "
+            f"({100 * cached_prompt_tokens / prompt_tokens:.0f}% read from cache), "
+            f"{completion_tokens / len(rated):.0f} completion tokens, ")
+    if costs:
+        line += f"${sum(costs) / len(costs):.6f} ({len(rated)} posts)."
+    else:
+        line += "cost not reported."
+    return [line]
+
+
+def production_token_lines(experiment, results):
+    """What production spends on the same posts today: the tokens of its stored
+    classifications by the live versions, one call per filter, summed per post.
+    Only posts production classified with every live filter count."""
+    version_ids = [live['version_id'] for live in experiment.live.values()]
+    post_ids = [result.judgment.post_id for result in results if result.judgment is not None]
+    calls_by_post = {}
+    classifications = Classification.objects.filter(
+        post_id__in=post_ids, plugin_version_id__in=version_ids, status=CLASSIFICATION_DONE,
+        prompt_tokens__isnull=False, completion_tokens__isnull=False)
+    for classification in classifications:
+        calls_by_post.setdefault(classification.post_id, {})[classification.plugin_version_id] = classification
+    complete = [calls for calls in calls_by_post.values() if len(calls) == len(version_ids)]
+    if not complete:
+        return ["Production today: no post here was classified by every live filter."]
+    prompt_tokens = sum(call.prompt_tokens for calls in complete for call in calls.values())
+    completion_tokens = sum(call.completion_tokens for calls in complete for call in calls.values())
+    return [f"Production today, same posts: {len(version_ids)} calls per post, "
+            f"{prompt_tokens / len(complete):.0f} prompt tokens, {completion_tokens / len(complete):.0f} "
+            f"completion tokens per post ({len(complete)} posts; production does not record cached tokens)."]
 
 
 class Command(BaseCommand):
@@ -76,6 +117,10 @@ class Command(BaseCommand):
                           f"Tokens: {prompt_tokens} in ({cached_prompt_tokens} read from cache), "
                           f"{completion_tokens} out. Cost: "
                           + (f"${sum(costs):.4f}" if costs else "not reported") + ".")
+        self.stdout.write('\n'.join(rating_cost_lines(results) + production_token_lines(experiment, results)))
+        for result in results:
+            if result.failed:
+                self.stdout.write(f"No usable answer for {result.case_id}: {result.raw_response[:500]}")
         self.stdout.write('\n'.join(filter_lines(experiment, results)))
         self.stdout.write('')
         self.stdout.write(f"On the page: {settings.SITE_URL}/tuning/features/{experiment.id}")

@@ -3,8 +3,8 @@
 The model does not judge each filter. It rates a few shared features of a
 post, each from 0 to 10, in one call. A feature is described by its levels,
 from least to most, written evenly spaced in meaning; level i of N sits at
-10 * i / (N - 1). The model may answer any whole number, so a post between
-two levels lands between their points.
+10 * i / (N - 1). The model may answer any number from 0 to 10, decimals
+included, so a post between two levels lands between their points.
 
 A filter is a formula over the feature scores, scaled to 0 to 100, with a
 cutoff: a product of features, for a concept that needs all of them (empty
@@ -37,8 +37,8 @@ FEATURE_INSTRUCTIONS = """\
 You rate one social media post or reply on each feature below. A feature is a
 scale from 0 to 10. Its levels are described from least to most, each at the
 point shown; a post that falls between two levels gets a number between their
-points. Rate each feature on its own, as a whole number from 0 to 10, by what
-the post shows: a post can be high on one feature and low on another.
+points. Rate each feature on its own, as a number from 0 to 10, by what the
+post shows: a post can be high on one feature and low on another.
 
 Rate only the post or reply marked as being judged. Anything marked as
 context, such as the post a reply answers, is there to help you read it and
@@ -80,7 +80,7 @@ def features_prompt(features):
 
 def scores_schema(features):
     properties = {
-        feature['name']: {'type': 'integer', 'minimum': LOWEST_RATING, 'maximum': HIGHEST_RATING}
+        feature['name']: {'type': 'number', 'minimum': LOWEST_RATING, 'maximum': HIGHEST_RATING}
         for feature in features
     }
     return {'type': 'object', 'properties': properties, 'required': list(properties), 'additionalProperties': False}
@@ -97,7 +97,7 @@ def parse_scores(answer_text, features):
         return None
     for name in names:
         # bool is a subclass of int, so compare the type exactly.
-        if type(answer[name]) is not int or not LOWEST_RATING <= answer[name] <= HIGHEST_RATING:
+        if type(answer[name]) not in (int, float) or not LOWEST_RATING <= answer[name] <= HIGHEST_RATING:
             return None
     return {name: answer[name] for name in names}
 

@@ -172,6 +172,8 @@ class FeatureResult(models.Model):
     # {feature name: 0 to 10}; empty when the model gave no usable answer.
     scores = models.JSONField(default=dict)
     failed = models.BooleanField(default=False)
+    # The provider's whole response to the rating call, kept to see why an answer was unusable.
+    raw_response = models.TextField(blank=True, default='')
     # Why the model gave each rating: {feature name: explanation}.
     reasons = models.JSONField(default=dict, blank=True)
     # Each live filter's answer, {plugin slug: {failed, score, criteria_met, reasoning}}, for the filters in expected.
@@ -181,6 +183,11 @@ class FeatureResult(models.Model):
     cached_prompt_tokens = models.PositiveIntegerField(default=0)
     completion_tokens = models.PositiveIntegerField(default=0)
     cost = models.FloatField(null=True, blank=True)
+    # The rating call alone, what the post would cost in production.
+    rating_prompt_tokens = models.PositiveIntegerField(default=0)
+    rating_cached_prompt_tokens = models.PositiveIntegerField(default=0)
+    rating_completion_tokens = models.PositiveIntegerField(default=0)
+    rating_cost = models.FloatField(null=True, blank=True)
 
     class Meta:
         constraints = [

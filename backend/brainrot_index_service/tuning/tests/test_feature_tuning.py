@@ -181,5 +181,18 @@ class FeatureTuningTests(TestCase):
         self.assertIn('== low-effort: draft cutoff 80, live v', printed)
         self.assertIn("owner's thumbs, 3 posts:\n  draft: 2 right, 0 missed, 1 wrongly blocked", printed)
         self.assertIn(f"/tuning/features/{experiment.id}", printed)
+        self.assertIn("Rating call alone, per post: 900 prompt tokens (0% read from cache), 60 completion tokens", printed)
+        self.assertIn("Production today: no post here was classified by every live filter.", printed)
         # Nothing was left for the worker.
         self.assertFalse(run_next_feature_experiment())
+
+    def test_an_unusable_rating_is_kept_and_printed(self):
+        RATINGS_WITH_A_WORD = {**RATINGS, 'lol': {**RATINGS['lol'], 'pull': 'high'}}
+        output = io.StringIO()
+        with patch.dict(RATINGS, RATINGS_WITH_A_WORD), patch('requests.post', side_effect=fake_model([])):
+            call_command('run_feature_experiment', stdout=output)
+
+        result = FeatureExperiment.objects.get().results.get(case_id=f"judgment-{self.thumbs['lol'].id}")
+        self.assertTrue(result.failed)
+        self.assertIn('high', result.raw_response)
+        self.assertIn(f"No usable answer for judgment-{self.thumbs['lol'].id}:", output.getvalue())

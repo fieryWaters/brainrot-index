@@ -72,6 +72,18 @@ Said on 2026-11-20 about the post "Am I being petty that I don't want my (separa
 
 > what makes "Am I being petty that I don't want my (separated) husband to drive my car?" bait is that it has an obvious answer. Obviously no. It's triggering your instinct to correct the record. "My boyfriend beats me every hour, should I leave him?" like its toxic for the reader because it ellicits a strong "OMG NO" response that is basically somewhat akin to rage bait, its kinda rage bait actually because you feel enraged that someone could be such a doorknob
 
+## Negativity a post delivers, whoever wrote it
+
+Said on 2026-11-20 about a seller's post of screenshots of a buyer's abusive messages, and a post of a husband's abusive texts:
+
+> yeah the screenshots weren't "them" except they were they posted the screenshots. The screenshots said horrible things and it made me feel stressed to read it.
+
+> yeah its wrong that should be blocked. They are the source even if it happened to them, they're directly funneling negativity into me
+
+About a reply that called people who "adopted the trans lifestyle" maniacs:
+
+> yeah maybe youre right on this one. This would be a good example of something that a less sensitive classifier wouldn't flag vs a more sensitive one would.
+
 ## Parents and children
 
 > parents may choose this for children ... and if they create a filter to limit what kinds of content they can see, theres a sort of double edged sword here where on one hand they should have some control over their childs media diet as their parent but also a child should have autonomy. But maybe "turn down gender ideology" is more acceptable than "turn down for/against gender ideology posts (forcing child into filter bubble)" so filters get applied evenly to both sides of a topic. This is important. I think it strikes the right balance of valuing the parents role without smothering the child in a biased manner.

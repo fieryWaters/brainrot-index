@@ -7,7 +7,9 @@ from unittest.mock import patch
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 
+from classification.inference import system_prompt
 from classification.models import Classification, Plugin, Post, PostJudgment
+from classification.scoring import answer_schema
 from classification.views import store_post
 from feedback.models import Feedback
 
@@ -203,3 +205,40 @@ class CriteriaEvaluationTests(TestCase):
         self.assertIn('demeans_people (50): 1 of 1, 0 of 1', summary)
         self.assertIn('makes_readers_laugh (-50): 0 of 1, 0 of 1', summary)
         self.assertIn('clear cases precision  1.00  recall  1.00', summary)
+
+
+@override_settings(OPENROUTER_API_KEY='test-key')
+class ExplainEvaluationTests(TestCase):
+    def test_explain_records_why_each_criterion_was_judged(self):
+        requests_sent = []
+
+        def contempt_explained(url, **request):
+            requests_sent.append(request['json'])
+            schema = request['json']['response_format']['json_schema']['schema']
+            answer = {'reasoning': 'A reply.'}
+            for name in schema['properties']:
+                if name.startswith('why_'):
+                    answer[name] = f"Explanation of {name[len('why_'):]}."
+                elif name != 'reasoning':
+                    answer[name] = name == 'demeans_people'
+            return model_response(answer)
+
+        example = labeled_example('a', False, text='example a')
+        example['expected'] = {'rude-or-toxic': {'flag': True, 'difficulty': 'clear', 'why': 'test'}}
+        with tempfile.TemporaryDirectory() as directory:
+            dataset_path = write_dataset(directory, [example])
+            output = io.StringIO()
+            with patch('classification.inference.requests.post', side_effect=contempt_explained):
+                call_command('evaluate_plugins', dataset=str(dataset_path), inference_source='openrouter',
+                             model='test/model', plugin='rude-or-toxic', explain=True, stdout=output)
+            results_path = next((Path(directory) / 'results').glob('*__explained.json'))
+            record = json.loads(results_path.read_text())['results'][0]
+
+        self.assertEqual(record['score'], 50)
+        self.assertEqual(record['criteria_explanations']['demeans_people'], 'Explanation of demeans_people.')
+        self.assertIn('    makes_readers_laugh: Explanation of makes_readers_laugh.', output.getvalue())
+        self.assertIn('why_', requests_sent[0]['messages'][0]['content'])
+
+        plugin_version = Plugin.objects.get(slug='rude-or-toxic').latest_version()
+        self.assertNotIn('why_', json.dumps(answer_schema(plugin_version)))
+        self.assertNotIn('why_', system_prompt(plugin_version))

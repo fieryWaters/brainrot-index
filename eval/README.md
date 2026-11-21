@@ -32,6 +32,10 @@ docker compose run --rm --no-deps --user "$(id -u):$(id -g)" -v "$PWD/eval:/app/
   with the `--model` name given; for the stack's own model server that is
   `--model Qwen/Qwen3.5-9B-FP8` (see `DEPLOY.md`), free to run.
 - `--concurrency` sets how many requests are in flight (default 8).
+- `--explain`, for debugging, also asks the model to explain, for each criterion,
+  why it judged it met or not met. The explanations are saved with each answer
+  and printed under the worst misses, in a results file of its own. The prompt
+  differs from production, so answers can differ too; production never asks.
 
 The prompt building, the request, the one retry, and the answer parsing are
 the production code in `classification/inference.py`. Evaluation never reads

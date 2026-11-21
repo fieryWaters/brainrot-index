@@ -34,7 +34,7 @@ const CHEERFUL = {
   case_id: 'judgment-7', source: 'thumb', judgment_id: 7,
   post: post('GOOD MORNING EVERYONE'),
   image_urls: [], post_url: 'https://x.com/a/status/1', should_flag: false,
-  owner: { verdict: 'wrong', shown_action: 'hide', plugin: 'shouting', details: 'Just cheerful.' },
+  owner: { verdict: 'wrong', shown_action: 'hide', should_be: 'shown', plugin: '', details: 'Just cheerful.' },
   video_not_watched: false, draft: answer(0, []), live: answer(60, ['caps']), live_reused: false,
   explanations: { caps: 'It greets people.', insult: 'Nobody is insulted.' },
 }
@@ -44,7 +44,7 @@ const RUDE = {
   case_id: 'judgment-8', source: 'thumb', judgment_id: 8,
   post: post('you are all wrong and dumb', { kind: 'reply', parent_text: 'What do you think of my cat?' }),
   image_urls: [], post_url: 'https://x.com/a/status/2', should_flag: true,
-  owner: { verdict: 'right', shown_action: 'hide', plugin: 'shouting', details: '' },
+  owner: { verdict: 'right', shown_action: 'hide', should_be: 'blocked', plugin: 'shouting', details: '' },
   video_not_watched: false, draft: answer(40, ['insult']), live: answer(40, ['insult']), live_reused: false,
   explanations: { caps: 'It is in lowercase.', insult: 'It calls people dumb.' },
 }
@@ -162,23 +162,26 @@ describe('TuningPage', () => {
     expect(screen.getByText('The draft gets every one of these right.')).toBeInTheDocument()
   })
 
-  it('flips the verdict of a thumbs from its opened post', async () => {
-    let sentChange = null
+  it('relabels a thumbs from its opened post as shown or blocked as a filter', async () => {
+    const sentChanges = []
     document.cookie = 'csrftoken=test'
     showExperimentFour({
       'PATCH /tuning/thumbs/8/': (options) => {
-        sentChange = JSON.parse(options.body)
-        return jsonResponse({ id: 8, verdict: 'wrong', details: '' })
+        sentChanges.push(JSON.parse(options.body))
+        return jsonResponse({ id: 8, should_be: 'shown', plugin: '', details: '' })
       },
     })
 
     fireEvent.click(await screen.findByText('you are all wrong and dumb'))
-    expect(screen.getByText('You said block.')).toBeInTheDocument()
-    fireEvent.click(screen.getByText('Change to allow'))
+    const labelChoice = screen.getByLabelText('Label')
+    expect(labelChoice.selectedOptions[0].textContent).toBe('Should be blocked as: Shouting')
+    expect([...labelChoice.options].map((option) => option.textContent)).toEqual(
+      ['Should be shown', 'Should be blocked as: Shouting', 'Should be blocked as: Other'])
+    fireEvent.change(labelChoice, { target: { value: 'shown' } })
     expect(await screen.findByText('Saved; the next run uses it.')).toBeInTheDocument()
-    expect(sentChange).toEqual({ verdict: 'wrong' })
-    expect(screen.getByText('You said allow.')).toBeInTheDocument()
-    expect(screen.getByText('Change to block')).toBeInTheDocument()
+    fireEvent.change(labelChoice, { target: { value: 'blocked:' } })
+    await waitFor(() => expect(sentChanges).toHaveLength(2))
+    expect(sentChanges).toEqual([{ should_be: 'shown' }, { should_be: 'blocked', plugin: null }])
   })
 
   it('tells everyone but the owner that the page is not for them', async () => {

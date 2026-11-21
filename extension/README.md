@@ -87,10 +87,14 @@ dashboard tab and press Connect extension again.
   of a post's row of actions and between Share and "..." on a comment, on YouTube under a tile's
   "More actions" button. Replies get them as posts do. On Reddit, where the site's own up and down
   votes sit in the same row, the thumbs carry the logo's small shield so they read as ours. Thumbs down on a shown post means a filter should have caught it.
-- After the click a small box offers, optionally, a severity (Low, Medium, High), details, and for a
-  shown post that should have been caught, which filter. Save sends them; the box leaves by itself
-  after a few seconds when it is not touched. Each verdict is stored on the server as a labeled
-  example (`PostJudgment`) with what every filter decided about the post, for evaluating filters.
+- After the click a small box shows the label the thumb gave the post, which the reader can change:
+  Shown, or blocked as one of their filters, or as Other (with details saying why). A thumbs up
+  keeps what the reader saw (a hidden post is blocked as the filter that hid it); a thumbs down asks
+  for the opposite (a shown post is blocked as Other until the reader names a filter). The box also
+  offers, optionally, a severity (Low, Medium, High) and details. Save sends them; the box leaves by
+  itself after a few seconds when it is not touched. Each thumbs is stored on the server with its
+  label as a labeled example (`PostJudgment`), with what every filter decided about the post, for
+  evaluating filters.
 - **Right-click a post, "BrainRot Index: report this post"**: the same form over a post the extension
   left alone, with Hidden chosen. Use the text box to name a new kind of post to filter. Outside a
   post it reports the page as one that should have been filtered.

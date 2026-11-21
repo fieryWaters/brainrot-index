@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.response import Response
 
 from classification.inference import configured_model
-from classification.models import VERDICT_CHOICES, Plugin
+from classification.models import SHOULD_BE_CHOICES, SHOULD_BE_SHOWN, Plugin
 from feedback.views import CanOpenInbox
 
 from .models import CASE_SYNTHETIC, CASE_THUMB, TuningExperiment
@@ -217,18 +217,26 @@ def experiment_detail(request, experiment_id):
 
 
 class ThumbChangeSerializer(serializers.Serializer):
-    verdict = serializers.ChoiceField(choices=VERDICT_CHOICES, required=False)
+    should_be = serializers.ChoiceField(choices=SHOULD_BE_CHOICES, required=False)
+    # The filter a post that should be blocked is blocked as; null for Other.
+    plugin = serializers.SlugRelatedField(slug_field='slug', queryset=Plugin.objects.all(), allow_null=True, required=False)
     details = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        if attrs.get('should_be') == SHOULD_BE_SHOWN:
+            attrs['plugin'] = None
+        return attrs
 
 
 def thumb_as_dict(judgment):
-    return {'id': judgment.id, 'verdict': judgment.verdict, 'details': judgment.details}
+    plugin_slug = judgment.plugin.slug if judgment.plugin is not None else ''
+    return {'id': judgment.id, 'should_be': judgment.should_be, 'plugin': plugin_slug, 'details': judgment.details}
 
 
 @api_view(['PATCH', 'DELETE'])
 @owner_only
 def thumb_detail(request, judgment_id):
-    """Changes the verdict or note of one of the owner's thumbs, or deletes it."""
+    """Changes the label or note of one of the owner's thumbs, or deletes it."""
     judgment = owner_judgments().filter(id=judgment_id).first()
     if judgment is None:
         return Response({'error': f"No thumbs {judgment_id} of yours."}, status=status.HTTP_404_NOT_FOUND)

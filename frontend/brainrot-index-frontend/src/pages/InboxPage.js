@@ -60,13 +60,18 @@ export function senderText(item) {
   return text
 }
 
+// The thumbs' label: "Shown", "Blocked as shouting", or "Blocked as Other" when no filter covers it.
+export function labelText(thumb) {
+  if (thumb.should_be === 'shown') return 'Shown'
+  return `Blocked as ${thumb.plugin || 'Other'}`
+}
+
 // The facts about an item that are not its message, one short line each.
 function detailLines(item) {
   const lines = []
   if (item.kind === 'judgment') {
     lines.push(`Shown as: ${item.shown_action}`)
-    if (item.plugin) lines.push(`About filter: ${item.plugin}`)
-    if (item.no_filter_covers) lines.push('About filter: Other (no filter covers it)')
+    lines.push(`Label: ${labelText(item)}`)
     if (item.severity) lines.push(`Severity: ${item.severity}`)
   } else {
     if (item.shown_action || item.expected_action) {

@@ -1695,8 +1695,10 @@ async function judgeShownPostAsMissed(page, judgmentCalls, control, platform, po
   await waitUntil(async () => (await detailsBox.locator(".brainrot-index-details-status").textContent()).endsWith("saved"), 3000);
   check(await detailsBox.locator(".brainrot-index-details-status").textContent() === "Should have been filtered · saved",
     "the box says what was saved");
-  const filterChips = await detailsBox.locator('.brainrot-index-chip').allTextContents();
-  check(filterChips.slice(0, 3).join(",") === "Engagement bait,Ragebait,Brainrot", "the box offers the reader's filters");
+  const labelChips = await detailsBox.locator('.brainrot-index-chip').allTextContents();
+  check(labelChips.slice(0, 5).join(",") === "Shown,Engagement bait,Ragebait,Brainrot,Other",
+    "the box offers Shown, then blocked as each of the reader's filters or Other: " + labelChips.join(","));
+  check(await detailsBox.locator('.brainrot-index-chip[aria-pressed="true"]').count() === 0, "with no label chosen until the reader names one");
   await detailsBox.locator('.brainrot-index-chip[data-value="ragebait"]').click();
   await detailsBox.locator('.brainrot-index-chip[data-value="high"]').click();
   await detailsBox.locator(".brainrot-index-details-input").fill("automated test: outrage farming");
@@ -1704,7 +1706,7 @@ async function judgeShownPostAsMissed(page, judgmentCalls, control, platform, po
   await waitUntil(() => judgmentCalls.length > callsBefore + 1, 5000);
   const detailsCall = judgmentCalls[callsBefore + 1];
   check(detailsCall?.method === "PATCH" && /\/api\/judgments\/\d+\/$/.test(detailsCall.url), "the details are sent to the judgment saved");
-  check(JSON.stringify(detailsCall.body) === JSON.stringify({ plugin: "ragebait", severity: "high", details: "automated test: outrage farming" }),
+  check(JSON.stringify(detailsCall.body) === JSON.stringify({ should_be: "blocked", plugin: "ragebait", severity: "high", details: "automated test: outrage farming" }),
     "with the filter, severity and text: " + JSON.stringify(detailsCall.body));
   check(await waitUntil(async () => (await detailsBox.count()) === 0, 3000), "the box closes once the details are saved");
 }
@@ -1721,14 +1723,14 @@ async function judgeShownPostAsMissedByEveryFilter(page, judgmentCalls, control,
   check(await otherChip.count() === 1, "the box offers Other after the reader's filters");
   await otherChip.click();
   await detailsBox.locator(".brainrot-index-details-save").click();
-  check(await detailsBox.locator(".brainrot-index-details-status").textContent() === "Say why it should have been caught",
+  check(await detailsBox.locator(".brainrot-index-details-status").textContent() === "Say why it should be blocked",
     "Other asks for details before saving");
   check(judgmentCalls.length === callsBefore + 1, "and sends nothing without them");
   await detailsBox.locator(".brainrot-index-details-input").fill("automated test: a crypto scam");
   await detailsBox.locator(".brainrot-index-details-save").click();
   await waitUntil(() => judgmentCalls.length > callsBefore + 1, 5000);
   const detailsCall = judgmentCalls[callsBefore + 1];
-  check(JSON.stringify(detailsCall?.body) === JSON.stringify({ no_filter_covers: true, details: "automated test: a crypto scam" }),
+  check(JSON.stringify(detailsCall?.body) === JSON.stringify({ should_be: "blocked", plugin: null, details: "automated test: a crypto scam" }),
     "with no filter named and the text: " + JSON.stringify(detailsCall?.body));
   check(await waitUntil(async () => (await detailsBox.count()) === 0, 3000), "the box closes once the details are saved");
 }
@@ -1776,10 +1778,35 @@ async function testThumbsOnHiddenXLine(page, judgmentCalls) {
   await waitUntil(() => judgmentCalls.length > callsBefore, 5000);
   checkJudgmentCall(judgmentCalls[callsBefore], { platform: "x", post_id: hiddenTweet.id, verdict: "right", shown_action: "hide" });
   const detailsBox = page.locator(".brainrot-index-details");
-  check(await detailsBox.locator('.brainrot-index-chip[data-value="ragebait"]').count() === 0, "a filtered post's box asks for no filter");
+  await waitUntil(async () => (await detailsBox.locator(".brainrot-index-details-status").textContent()).endsWith("saved"), 3000);
+  check(await detailsBox.locator('.brainrot-index-chip[aria-pressed="true"]').getAttribute("data-value") === "engagement-bait",
+    "the box shows the label the thumb gave: blocked as the filter that hid it");
   await page.mouse.move(0, 0);
   check(await waitUntil(async () => (await detailsBox.count()) === 0, 6000), "the box leaves by itself when the reader does not touch it");
   check(judgmentCalls.length === callsBefore + 1, "and nothing more was sent");
+}
+
+// Thumbs down on a hidden post labels it Shown; the reader relabels it blocked as another filter.
+// Follows 11b, which left the hidden tweet's thumbs up pressed.
+async function testRelabelHiddenPost(page, judgmentCalls) {
+  const hiddenTweet = SAMPLE_X_TWEETS[1];
+  const notice = page.locator(`.brainrot-index-notice:has(+ article [href="/${hiddenTweet.handle}/status/${hiddenTweet.id}"])`);
+  await notice.hover();
+  const callsBefore = judgmentCalls.length;
+  await notice.locator('.brainrot-index-judge-button[data-verdict="wrong"]').click();
+  await waitUntil(() => judgmentCalls.length > callsBefore, 5000);
+  const detailsBox = page.locator(".brainrot-index-details");
+  await waitUntil(async () => (await detailsBox.locator(".brainrot-index-details-status").textContent()).endsWith("saved"), 3000);
+  check(await detailsBox.locator('.brainrot-index-chip[aria-pressed="true"]').getAttribute("data-value") === "(shown)",
+    "a thumbs down on a hidden post is labeled Shown");
+  await detailsBox.locator('.brainrot-index-chip[data-value="ragebait"]').click();
+  check(await detailsBox.locator('.brainrot-index-chip[aria-pressed="true"]').count() === 1, "one label is chosen at a time");
+  await detailsBox.locator(".brainrot-index-details-save").click();
+  await waitUntil(() => judgmentCalls.length > callsBefore + 1, 5000);
+  const detailsCall = judgmentCalls[callsBefore + 1];
+  check(JSON.stringify(detailsCall?.body) === JSON.stringify({ should_be: "blocked", plugin: "ragebait" }),
+    "the new label is sent: " + JSON.stringify(detailsCall?.body));
+  check(await waitUntil(async () => (await detailsBox.count()) === 0, 3000), "the box closes once the label is saved");
 }
 
 // Clicking the pressed thumb again takes the verdict back: the judgment is deleted on the server and
@@ -1928,6 +1955,7 @@ async function runJudgmentsGroup() {
     await runTest("11a. judgments: thumbs by an X tweet's More menu", () => testThumbsInXActionRow(page, judgmentCalls));
     await runTest("11f. judgments: clicking the pressed thumb again takes it back", () => testUndoThumb(page, judgmentCalls));
     await runTest("11b. judgments: thumbs on a hidden tweet's line", () => testThumbsOnHiddenXLine(page, judgmentCalls));
+    await runTest("11i. judgments: a hidden tweet relabeled blocked as another filter", () => testRelabelHiddenPost(page, judgmentCalls));
     await runTest("11c. judgments: thumbs in Reddit's post and comment rows", () => testThumbsInRedditActionRows(page, judgmentCalls));
     await runTest("11d. judgments: the details box keeps key presses", () => testDetailsBoxKeepsKeyPresses(page, judgmentCalls));
     await runTest("11e. judgments: thumbs in a YouTube tile", () => testThumbsInYouTubeTile(page, judgmentCalls));

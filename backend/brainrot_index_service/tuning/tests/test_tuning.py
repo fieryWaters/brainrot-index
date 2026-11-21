@@ -75,15 +75,15 @@ class TuningTests(TestCase):
                                         text='YOU ARE ALL WRONG')
         # Hidden, and the owner says it should not have been.
         self.loud_thumb = PostJudgment.objects.create(
-            user=self.owner, post=loud_post, verdict='wrong', shown_action='hide', plugin=self.plugin,
+            user=self.owner, post=loud_post, verdict='wrong', shown_action='hide', should_be='shown',
             details='Just cheerful.', filter_results=flagged_by_shouting())
         # Hidden, and the owner says rightly.
         self.rude_thumb = PostJudgment.objects.create(
-            user=self.owner, post=rude_post, verdict='right', shown_action='hide', plugin=self.plugin,
+            user=self.owner, post=rude_post, verdict='right', shown_action='hide', should_be='blocked', plugin=self.plugin,
             filter_results=flagged_by_shouting())
         # Another reader's thumbs is not the owner's labeled set.
         self.reader_thumb = PostJudgment.objects.create(
-            user=self.reader, post=loud_post, verdict='right', shown_action='hide', plugin=self.plugin,
+            user=self.reader, post=loud_post, verdict='right', shown_action='hide', should_be='blocked', plugin=self.plugin,
             filter_results=flagged_by_shouting())
 
     def draft(self, **overrides):
@@ -120,12 +120,12 @@ class TuningTests(TestCase):
             started = client.post(reverse('tuning_experiments'), self.draft(), content_type='application/json')
             self.assertIn(started.status_code, [401, 403])
             self.assertIn(client.get(reverse('tuning_experiment', args=[experiment.id])).status_code, [401, 403])
-            changed = client.patch(reverse('tuning_thumb', args=[self.loud_thumb.id]), {'verdict': 'right'},
+            changed = client.patch(reverse('tuning_thumb', args=[self.loud_thumb.id]), {'should_be': 'blocked'},
                                    content_type='application/json')
             self.assertIn(changed.status_code, [401, 403])
             self.assertIn(client.delete(reverse('tuning_thumb', args=[self.loud_thumb.id])).status_code, [401, 403])
         self.assertEqual(TuningExperiment.objects.count(), 1)
-        self.assertTrue(PostJudgment.objects.filter(id=self.loud_thumb.id, verdict='wrong').exists())
+        self.assertTrue(PostJudgment.objects.filter(id=self.loud_thumb.id, should_be='shown').exists())
 
     def test_filters_list_the_live_rubric_and_the_owners_thumbs_for_it(self):
         response = self.owner_client.get(reverse('tuning_filters'))
@@ -168,8 +168,8 @@ class TuningTests(TestCase):
         results = {result['case_id']: result for result in shown['results']}
         loud = results[f"judgment-{self.loud_thumb.id}"]
         self.assertFalse(loud['should_flag'])
-        self.assertEqual(loud['owner'], {'verdict': 'wrong', 'shown_action': 'hide', 'plugin': 'shouting',
-                                         'details': 'Just cheerful.'})
+        self.assertEqual(loud['owner'], {'verdict': 'wrong', 'shown_action': 'hide', 'should_be': 'shown',
+                                         'plugin': '', 'details': 'Just cheerful.'})
         self.assertEqual(loud['post'], {
             'platform': 'x', 'kind': 'post', 'author': '', 'community': '', 'text': 'GOOD MORNING EVERYONE',
             'quoted_post': {}, 'link_preview': {}, 'parent_text': None, 'parent_is_reply': False, 'thread_text': None,
@@ -279,12 +279,20 @@ class TuningTests(TestCase):
         self.run_worker()
 
         changed = self.owner_client.patch(reverse('tuning_thumb', args=[self.loud_thumb.id]),
-                                          {'verdict': 'right', 'details': 'Loud after all.'}, content_type='application/json')
+                                          {'should_be': 'blocked', 'plugin': 'shouting', 'details': 'Loud after all.'},
+                                          content_type='application/json')
         self.assertEqual(changed.status_code, 200)
+        self.assertEqual(changed.json()['plugin'], 'shouting')
         self.loud_thumb.refresh_from_db()
-        self.assertEqual((self.loud_thumb.verdict, self.loud_thumb.details), ('right', 'Loud after all.'))
+        self.assertEqual((self.loud_thumb.should_be, self.loud_thumb.plugin, self.loud_thumb.details),
+                         ('blocked', self.plugin, 'Loud after all.'))
+        # Should be shown names no filter.
+        self.owner_client.patch(reverse('tuning_thumb', args=[self.loud_thumb.id]), {'should_be': 'shown'},
+                                content_type='application/json')
+        self.loud_thumb.refresh_from_db()
+        self.assertEqual((self.loud_thumb.should_be, self.loud_thumb.plugin), ('shown', None))
 
-        refused = self.owner_client.patch(reverse('tuning_thumb', args=[self.loud_thumb.id]), {'verdict': 'maybe'},
+        refused = self.owner_client.patch(reverse('tuning_thumb', args=[self.loud_thumb.id]), {'should_be': 'maybe'},
                                           content_type='application/json')
         self.assertEqual(refused.status_code, 400)
         # Another reader's thumbs is theirs.

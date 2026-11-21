@@ -3,13 +3,14 @@ import { screen } from '@testing-library/dom'
 import { renderElement } from '../test-utils.js'
 import { mountThumbsPage } from './ThumbsPage.js'
 
-function thumb(id, verdict, plugin, sender) {
+function thumb(id, verdict, shouldBe, plugin, sender) {
   return {
     id,
     received_at: '2026-11-18T10:00:00+00:00',
     sender,
     verdict,
     shown_action: 'hide',
+    should_be: shouldBe,
     plugin,
     severity: '',
     details: '',
@@ -35,12 +36,12 @@ describe('ThumbsPage', () => {
     const reader = { email: 'reader@example.com', signed_in: true, name: '' }
     const deleted = { email: '', signed_in: false, name: '' }
     const fetchMock = vi.fn(async () => jsonResponse({
-      thumbs: [thumb('judgment-2', 'wrong', 'shouting', reader), thumb('judgment-1', 'right', '', deleted)],
+      thumbs: [thumb('judgment-2', 'wrong', 'shown', '', reader), thumb('judgment-1', 'right', 'blocked', 'shouting', deleted)],
     }))
     vi.stubGlobal('fetch', fetchMock)
     renderElement(mountThumbsPage().el)
 
-    expect(await screen.findByText('2 thumbs. (no filter named): 1 up, 0 down; shouting: 0 up, 1 down')).toBeInTheDocument()
+    expect(await screen.findByText('2 thumbs. Blocked as shouting: 1 up, 0 down; Shown: 0 up, 1 down')).toBeInTheDocument()
     expect(fetchMock.mock.calls[0][0]).toBe('/api/inbox/thumbs/')
     expect(screen.getByText('judgment-2').getAttribute('href')).toBe('/inbox/judgment-2')
     expect(screen.getByText('post of judgment-1')).toBeInTheDocument()
@@ -48,13 +49,13 @@ describe('ThumbsPage', () => {
     expect(screen.getByText('Deleted account')).toBeInTheDocument()
   })
 
-  it('shows Other for a thumbs down that no filter covers', async () => {
+  it('shows Blocked as Other for a thumbs that no filter covers', async () => {
     const reader = { email: 'reader@example.com', signed_in: true, name: '' }
-    const missed = { ...thumb('judgment-3', 'wrong', '', reader), no_filter_covers: true }
+    const missed = thumb('judgment-3', 'wrong', 'blocked', '', reader)
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ thumbs: [missed] })))
     renderElement(mountThumbsPage().el)
 
-    expect(await screen.findByText('Other')).toBeInTheDocument()
+    expect(await screen.findByText('Blocked as Other')).toBeInTheDocument()
   })
 
   it('tells everyone but the owner that the thumbs are not for them', async () => {

@@ -11,6 +11,7 @@
 //   { verdict, plugins, onJudge(verdict), onRemove(), onAddDetails(details) }. verdict is the
 //   reader's earlier "right" or "wrong", or null. plugins are the reader's filters, [{ slug, name }].
 //   onJudge, onRemove and onAddDetails send to the server and return a promise of { sent, reason }.
+//   onJudge's reply body holds the label the thumb gave the post: { id, should_be, plugin }.
 //
 // The line says only "Hidden": which filter hid the post and why, and the buttons, appear while the
 // pointer is over the line, since a reason in plain sight invites a look. A post that was left alone
@@ -25,8 +26,9 @@ const JUDGE_CLASS = "brainrot-index-judge";
 const JUDGE_ROOT_ATTRIBUTE = "data-brainrot-index-judge-root";
 const SHOWN_ACTION_WORDS = { allow: "Shown", hide: "Hidden" };
 const SEVERITY_WORDS = { low: "Low", medium: "Medium", high: "High" };
-// The Filter choice for a post that should have been caught for a reason none of the reader's filters
-// covers. Parentheses cannot appear in a filter's slug, so it is never mistaken for one.
+// The label choices that are not a filter: should be shown, and blocked for a reason none of the
+// reader's filters covers. Parentheses cannot appear in a filter's slug, so neither is mistaken for one.
+const SHOWN_CHOICE = "(shown)";
 const NO_FILTER_COVERS_CHOICE = "(other)";
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -213,6 +215,63 @@ function makeChoiceRow(labelText, choices, onChoose) {
   return row;
 }
 
+// The post's label as one choice over two rows: Shown, or blocked as one of the reader's filters or
+// as Other. Unlike makeChoiceRow, a label is never cleared: clicking the chosen chip keeps it.
+function makeLabelChoice(plugins, onChoose) {
+  const shownRow = document.createElement("div");
+  shownRow.className = "brainrot-index-details-row";
+  const blockedRow = document.createElement("div");
+  blockedRow.className = "brainrot-index-details-row";
+  for (const [row, labelText] of [[shownRow, "Should be"], [blockedRow, "Or blocked as"]]) {
+    const label = document.createElement("span");
+    label.className = "brainrot-index-details-label";
+    label.textContent = labelText;
+    row.append(label);
+  }
+  const chips = [];
+  function select(value) {
+    for (const chip of chips) {
+      chip.setAttribute("aria-pressed", String(chip.dataset.value === value));
+    }
+  }
+  const choices = [[SHOWN_CHOICE, "Shown"], ...plugins.map((plugin) => [plugin.slug, plugin.name]), [NO_FILTER_COVERS_CHOICE, "Other"]];
+  for (const [value, word] of choices) {
+    const chip = makeButton("brainrot-index-chip", word, () => {
+      select(value);
+      onChoose(value);
+    });
+    chip.dataset.value = value;
+    chip.setAttribute("aria-pressed", "false");
+    chips.push(chip);
+    if (value === SHOWN_CHOICE) {
+      shownRow.append(chip);
+    } else {
+      blockedRow.append(chip);
+    }
+  }
+  return { rows: [shownRow, blockedRow], select: select };
+}
+
+// The label choice a saved thumb's reply names, or null when it names none: a shown post with a
+// thumbs down is blocked as Other only until the reader names a filter.
+function labelChoiceOf(replyBody) {
+  if (replyBody?.should_be === "shown") {
+    return SHOWN_CHOICE;
+  }
+  return replyBody?.plugin ?? null;
+}
+
+// What the details say about a changed label.
+function labelDetails(choice) {
+  if (choice === SHOWN_CHOICE) {
+    return { should_be: "shown" };
+  }
+  if (choice === NO_FILTER_COVERS_CHOICE) {
+    return { should_be: "blocked", plugin: null };
+  }
+  return { should_be: "blocked", plugin: choice };
+}
+
 // How long the box stays after a click when the reader does not touch it, so one click is all it costs.
 const UNTOUCHED_DETAILS_BOX_MS = 4000;
 
@@ -280,32 +339,29 @@ function openBox(control, statusText) {
   return box;
 }
 
-// The box after a thumb: that it was saved, and optionally which filter should have caught the post
-// (or Other, with details saying why), a severity and details.
+// The box after a thumb: that it was saved, the label it gave the post, which the reader can change
+// (shown, or blocked as a filter, or as Other with details saying why), a severity and details.
 function openDetailsBox(control, shownAction, verdict, judgment) {
   const box = openBox(control, verdictMeaning(shownAction, verdict) + " · saving");
 
   const fields = document.createElement("div");
   fields.className = "brainrot-index-details-fields";
   fields.hidden = true;
-  const chosen = { plugin: null, severity: null };
+  const chosen = { savedLabel: null, label: null, severity: null };
   const detailsInput = document.createElement("input");
   detailsInput.type = "text";
   detailsInput.className = "brainrot-index-details-input";
   detailsInput.placeholder = "Details (optional)";
   detailsInput.setAttribute("aria-label", "Details (optional)");
-  if (shownAction === "allow" && verdict === "wrong") {
-    const filterChoices = judgment.plugins.map((plugin) => [plugin.slug, plugin.name]);
-    filterChoices.push([NO_FILTER_COVERS_CHOICE, "Other"]);
-    fields.append(makeChoiceRow("Filter", filterChoices, (slug) => {
-      chosen.plugin = slug;
-      if (slug === NO_FILTER_COVERS_CHOICE) {
-        detailsInput.placeholder = "Why should it have been caught?";
-      } else {
-        detailsInput.placeholder = "Details (optional)";
-      }
-    }));
-  }
+  const labelChoice = makeLabelChoice(judgment.plugins, (choice) => {
+    chosen.label = choice;
+    if (choice === NO_FILTER_COVERS_CHOICE) {
+      detailsInput.placeholder = "Why should it be blocked?";
+    } else {
+      detailsInput.placeholder = "Details (optional)";
+    }
+  });
+  fields.append(...labelChoice.rows);
   fields.append(makeChoiceRow("Severity", Object.entries(SEVERITY_WORDS), (severity) => { chosen.severity = severity; }));
   const detailsRow = document.createElement("div");
   detailsRow.className = "brainrot-index-details-row";
@@ -319,16 +375,14 @@ function openDetailsBox(control, shownAction, verdict, judgment) {
 
   box.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const details = {};
-    if (chosen.plugin === NO_FILTER_COVERS_CHOICE) {
-      if (detailsInput.value.trim() === "") {
-        box.setStatus("Say why it should have been caught");
+    let details = {};
+    if (chosen.label !== chosen.savedLabel) {
+      if (chosen.label === NO_FILTER_COVERS_CHOICE && detailsInput.value.trim() === "") {
+        box.setStatus("Say why it should be blocked");
         detailsInput.focus();
         return;
       }
-      details.no_filter_covers = true;
-    } else if (chosen.plugin !== null) {
-      details.plugin = chosen.plugin;
+      details = labelDetails(chosen.label);
     }
     if (chosen.severity !== null) {
       details.severity = chosen.severity;
@@ -352,7 +406,8 @@ function openDetailsBox(control, shownAction, verdict, judgment) {
     }
   });
 
-  // The thumb's click is saved before the details can be: they need the judgment's id.
+  // The thumb's click is saved before the details can be: they need the judgment's id, and the
+  // label the thumb gave the post comes back with it.
   box.showSaveResult = (reply) => {
     if (!box.isConnected) {
       return;
@@ -362,6 +417,9 @@ function openDetailsBox(control, shownAction, verdict, judgment) {
       return;
     }
     box.setStatus(verdictMeaning(shownAction, verdict) + " · saved");
+    chosen.savedLabel = labelChoiceOf(reply.body);
+    chosen.label = chosen.savedLabel;
+    labelChoice.select(chosen.savedLabel);
     fields.hidden = false;
     placeDetailsBox(box, control);
     box.closeLater();

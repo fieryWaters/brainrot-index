@@ -44,6 +44,7 @@ from .models import (
     UserPlugin,
     UserSettings,
     VideoTranscript,
+    label_from_thumb,
 )
 from .serializers import (
     ClassifyRequestSerializer,
@@ -431,7 +432,8 @@ def strongest_flagging_plugin(filter_results):
 
 
 # A new thumbs up or down replaces the account's earlier judgment of the post,
-# including its severity and details, which the reader adds again afterwards.
+# including its label, severity and details. The label starts as the thumbs
+# says it and the reader can change it afterwards; the reply says what it is.
 @api_view(['POST'])
 @authentication_classes([ExtensionTokenAuthentication])
 @permission_classes([IsAuthenticated, HasVerifiedEmail, HasAccess])
@@ -442,14 +444,15 @@ def create_judgment(request):
     judged = serializer.validated_data
     post = get_object_or_404(Post, platform=judged['platform'], post_id=judged['post_id'])
     filter_results = filter_results_for(request.user, post)
+    should_be, plugin = label_from_thumb(judged['verdict'], judged['shown_action'], strongest_flagging_plugin(filter_results))
     judgment, created = PostJudgment.objects.update_or_create(
         user=request.user,
         post=post,
         defaults={
             'verdict': judged['verdict'],
             'shown_action': judged['shown_action'],
-            'plugin': strongest_flagging_plugin(filter_results),
-            'no_filter_covers': False,
+            'should_be': should_be,
+            'plugin': plugin,
             'severity': '',
             'details': '',
             'filter_results': filter_results,
@@ -460,10 +463,11 @@ def create_judgment(request):
         response_status = status.HTTP_201_CREATED
     else:
         response_status = status.HTTP_200_OK
-    return Response({'id': judgment.id}, status=response_status)
+    plugin_slug = plugin.slug if plugin is not None else None
+    return Response({'id': judgment.id, 'should_be': should_be, 'plugin': plugin_slug}, status=response_status)
 
 
-# PATCH adds the reader's details to a judgment; DELETE takes the thumb back,
+# PATCH changes a judgment's label or adds the reader's details; DELETE takes the thumb back,
 # when the reader clicks it again.
 @api_view(['PATCH', 'DELETE'])
 @authentication_classes([ExtensionTokenAuthentication])

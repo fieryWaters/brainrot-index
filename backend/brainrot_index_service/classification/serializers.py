@@ -3,6 +3,8 @@ from rest_framework import serializers
 from .models import (
     PLATFORM_CHOICES,
     POST_KIND_CHOICES,
+    SHOULD_BE_BLOCKED,
+    SHOULD_BE_SHOWN,
     SHOWN_ACTION_CHOICES,
     VERDICT_CHOICES,
     Plugin,
@@ -111,11 +113,19 @@ class JudgmentSerializer(serializers.Serializer):
 
 
 class JudgmentDetailsSerializer(serializers.ModelSerializer):
-    """What the reader adds after the click: a severity, details, and the filter it is about, or that
-    no filter covers it."""
+    """What the reader adds after the click: the label (should be shown, or
+    should be blocked as a filter, or as Other when no filter is named), a
+    severity and details. Naming a filter alone means blocked as it."""
 
     plugin = serializers.SlugRelatedField(slug_field='slug', queryset=Plugin.objects.all(), allow_null=True)
 
     class Meta:
         model = PostJudgment
-        fields = ['severity', 'details', 'plugin', 'no_filter_covers']
+        fields = ['should_be', 'plugin', 'severity', 'details']
+
+    def validate(self, attrs):
+        if attrs.get('plugin') is not None and 'should_be' not in attrs:
+            attrs['should_be'] = SHOULD_BE_BLOCKED
+        if attrs.get('should_be') == SHOULD_BE_SHOWN:
+            attrs['plugin'] = None
+        return attrs

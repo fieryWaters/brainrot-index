@@ -52,7 +52,7 @@ class InboxTests(TestCase):
             user=self.reader, source='extension', platform='x', post_id='185', shown_action='allow',
             expected_action='hide', text='Missed this one', site_commit='abc1234', extension_commit='ext1')
         self.judgment = PostJudgment.objects.create(
-            user=self.reader, post=self.post, verdict='wrong', shown_action='hide', plugin=plugin,
+            user=self.reader, post=self.post, verdict='wrong', shown_action='hide', should_be='blocked', plugin=plugin,
             severity='high', details='This is fine, just loud.', extension_commit='ext2',
             filter_results=[{
                 'plugin': 'shouting', 'version': 1, 'threshold': 50, 'flagged_action': 'hide',
@@ -98,7 +98,7 @@ class InboxTests(TestCase):
         self.assertEqual(item['sender'], {'email': 'reader@example.com', 'signed_in': True, 'name': ''})
         self.assertEqual(item['verdict'], 'wrong')
         self.assertEqual(item['details'], 'This is fine, just loud.')
-        self.assertFalse(item['no_filter_covers'])
+        self.assertEqual((item['should_be'], item['plugin']), ('blocked', 'shouting'))
         self.assertEqual(item['extension_commit'], 'ext2')
         self.assertEqual(item['post']['text'], 'STOP SCROLLING')
         self.assertEqual(item['post']['url'], 'https://x.com/someone/status/185')
@@ -159,7 +159,7 @@ class InboxTests(TestCase):
         quiet_post = Post.objects.create(platform='x', post_id='186', kind='post', url='https://x.com/someone/status/186',
                                          author='someone', text='quiet post')
         quiet_judgment = PostJudgment.objects.create(
-            user=self.reader, post=quiet_post, verdict='right', shown_action='allow',
+            user=self.reader, post=quiet_post, verdict='right', shown_action='allow', should_be='shown',
             filter_results=[{
                 'plugin': 'shouting', 'version': 1, 'threshold': 50, 'flagged_action': 'hide',
                 'classification_id': None, 'status': 'done', 'score': 10, 'label': '', 'flagged': False,
@@ -173,7 +173,7 @@ class InboxTests(TestCase):
         self.assertEqual(thumbs[0]['verdict'], 'right')
         self.assertEqual(thumbs[0]['post']['text'], 'quiet post')
         self.assertEqual(thumbs[0]['filters'][0]['score'], 10)
-        self.assertEqual(thumbs[1]['plugin'], 'shouting')
+        self.assertEqual((thumbs[1]['should_be'], thumbs[1]['plugin']), ('blocked', 'shouting'))
         self.assertEqual(thumbs[1]['details'], 'This is fine, just loud.')
 
     def test_an_old_blur_judgment_reads_as_hidden(self):

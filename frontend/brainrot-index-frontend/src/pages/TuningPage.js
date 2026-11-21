@@ -294,24 +294,42 @@ function createReason(title, answer, criteria, explanations, threshold) {
   return reason
 }
 
-// Fixing the owner's label: flip it, note it, or delete it.
-function createLabelControls(result) {
+const OTHER_FILTER = ''
+
+// The thumbs' label as the choice's value: "shown", "blocked:low-effort", or "blocked:" for Other.
+// Results from before thumbs carried a label say only whether this filter should block.
+function labelValue(result, pluginSlug) {
+  const shouldBe = result.owner.should_be || (result.should_flag ? 'blocked' : 'shown')
+  if (shouldBe === 'shown') return 'shown'
+  const plugin = result.owner.should_be ? result.owner.plugin : pluginSlug
+  return `blocked:${plugin}`
+}
+
+function createLabelChoice(filters, value) {
+  const select = el('select', `${SELECT_CLASS} py-1 text-xs`)
+  select.setAttribute('aria-label', 'Label')
+  const choices = [['shown', 'Should be shown']]
+  for (const filter of filters) choices.push([`blocked:${filter.slug}`, `Should be blocked as: ${filter.name}`])
+  choices.push([`blocked:${OTHER_FILTER}`, 'Should be blocked as: Other'])
+  for (const [choiceValue, text] of choices) {
+    const option = el('option', '', text)
+    option.value = choiceValue
+    option.selected = choiceValue === value
+    select.appendChild(option)
+  }
+  return select
+}
+
+// Fixing the owner's label: choose it again, note it, or delete it.
+function createLabelControls(result, filters, pluginSlug) {
   if (result.source === 'synthetic') {
     return el('p', 'text-xs text-white/50', `Test set says ${decisionWord(result.should_flag)}: ${result.owner.why}`)
   }
   if (result.judgment_id === null) {
     return el('p', 'text-xs text-white/40', 'This thumbs was deleted.')
   }
-  let verdict = result.owner.verdict
-  let shouldBlock = result.should_flag
-  const labelText = el('span', 'text-white/60')
-  const flipButton = el('button', SMALL_BUTTON_CLASS)
-  flipButton.type = 'button'
-  function showLabel() {
-    labelText.textContent = `You said ${decisionWord(shouldBlock)}.`
-    flipButton.textContent = `Change to ${decisionWord(!shouldBlock)}`
-  }
-  showLabel()
+  let savedValue = labelValue(result, pluginSlug)
+  const labelChoice = createLabelChoice(filters, savedValue)
   const deleteButton = el('button', `${SMALL_BUTTON_CLASS} text-red-300`, 'Delete')
   deleteButton.type = 'button'
   const noteInput = el('input', `${INPUT_CLASS} py-1 text-xs`)
@@ -332,25 +350,26 @@ function createLabelControls(result) {
     status.textContent = doneText
     return data
   }
-  flipButton.addEventListener('click', async () => {
-    const nextVerdict = verdict === 'right' ? 'wrong' : 'right'
-    if (await change('PATCH', { verdict: nextVerdict }, 'Saved; the next run uses it.')) {
-      verdict = nextVerdict
-      shouldBlock = !shouldBlock
-      showLabel()
+  labelChoice.addEventListener('change', async () => {
+    const [shouldBe, plugin] = labelChoice.value.split(':')
+    const body = shouldBe === 'shown' ? { should_be: 'shown' } : { should_be: 'blocked', plugin: plugin || null }
+    if (await change('PATCH', body, 'Saved; the next run uses it.')) {
+      savedValue = labelChoice.value
+    } else {
+      labelChoice.value = savedValue
     }
   })
   saveNoteButton.addEventListener('click', () => change('PATCH', { details: noteInput.value.trim() }, 'Note saved.'))
   deleteButton.addEventListener('click', async () => {
     if (!window.confirm('Delete this thumbs for good? It leaves the labeled set; experiments keep their copy.')) return
     if (await change('DELETE', undefined, 'Deleted.')) {
-      flipButton.disabled = true
+      labelChoice.disabled = true
       saveNoteButton.disabled = true
       deleteButton.disabled = true
     }
   })
   return el('div', 'space-y-1 border-t border-white/10 pt-2 text-xs',
-    el('div', 'flex flex-wrap items-center gap-1', labelText, flipButton, deleteButton, status),
+    el('div', 'flex flex-wrap items-center gap-1', labelChoice, deleteButton, status),
     el('div', 'flex gap-1', noteInput, saveNoteButton))
 }
 
@@ -396,7 +415,7 @@ function ownerPart(result) {
 
 // -- An experiment --
 
-function createResultRow(result, experiment) {
+function createResultRow(result, experiment, filters) {
   let mark = el('span', `w-12 shrink-0 text-xs font-semibold ${WRONG_CLASS}`, 'wrong')
   let rowClass = 'border-l-2 border-l-red-400/70 bg-red-500/[0.06]'
   if (result.draft.failed) {
@@ -415,11 +434,12 @@ function createResultRow(result, experiment) {
     rowClass,
     () => createOpenedPost(result,
       createReason('Draft', result.draft, experiment.criteria, result.explanations, experiment.threshold),
-      createLabelControls(result)))
+      createLabelControls(result, filters, experiment.plugin)))
 }
 
 // view: { onlyDiffering, rightOpen }, kept while the page polls a running experiment.
-function createResultsList(experiment, view) {
+// filters are the filters a thumbs can be labeled blocked as.
+function createResultsList(experiment, view, filters) {
   const differingBox = el('input', '')
   differingBox.type = 'checkbox'
   differingBox.checked = view.onlyDiffering
@@ -434,12 +454,12 @@ function createResultsList(experiment, view) {
     let wrongPart = el('p', 'py-2 text-sm text-white/50', 'The draft gets every one of these right.')
     if (wrong.length > 0) {
       wrongPart = el('div', 'overflow-hidden rounded-xl border border-white/10',
-        ...wrong.map((result) => createResultRow(result, experiment)))
+        ...wrong.map((result) => createResultRow(result, experiment, filters)))
     }
     const rightPart = el('details', 'mt-3',
       el('summary', 'cursor-pointer text-sm text-white/50 hover:text-white/80', `${right.length} right`),
       el('div', 'mt-2 overflow-hidden rounded-xl border border-white/10',
-        ...right.map((result) => createResultRow(result, experiment))))
+        ...right.map((result) => createResultRow(result, experiment, filters))))
     rightPart.open = view.rightOpen
     rightPart.addEventListener('toggle', () => { view.rightOpen = rightPart.open })
     listSlot.replaceChildren(wrongPart, right.length > 0 ? rightPart : '')
@@ -474,7 +494,7 @@ function experimentFactsText(experiment) {
     `${experiment.model} (${experiment.inference_source}), ${tokens} tokens, ${costText(experiment.cost)}.`
 }
 
-function createExperimentCard(experiment, view) {
+function createExperimentCard(experiment, view, filters) {
   const card = el('section', CARD_CLASS,
     el('div', 'flex flex-wrap items-baseline justify-between gap-2',
       el('h2', 'text-lg font-semibold text-white', `Experiment ${experiment.id} on ${experiment.plugin}`),
@@ -493,7 +513,7 @@ function createExperimentCard(experiment, view) {
   }
   card.appendChild(createCounts(experiment))
   if (experiment.results.length > 0) {
-    card.appendChild(createResultsList(experiment, view))
+    card.appendChild(createResultsList(experiment, view, filters))
   }
   return card
 }
@@ -690,17 +710,17 @@ export function mountTuningPage({ experimentId } = {}) {
       const refreshed = await apiFetch(`/tuning/experiments/?plugin=${filter.slug}`)
       if (!stopped && refreshed.response.ok) showPastExperiments(refreshed.data.experiments)
     }
-    if (experiment) showExperiment(experimentSlot, experiment, refreshPastExperiments)
+    if (experiment) showExperiment(experimentSlot, experiment, filters, refreshPastExperiments)
   }
 
-  function showExperiment(slot, experiment, onFinished) {
-    slot.replaceChildren(createExperimentCard(experiment, view))
+  function showExperiment(slot, experiment, filters, onFinished) {
+    slot.replaceChildren(createExperimentCard(experiment, view, filters))
     if (experiment.status !== 'pending' && experiment.status !== 'running') return
     pollTimer = setTimeout(async () => {
       if (stopped) return
       const { response, data } = await apiFetch(`/tuning/experiments/${experiment.id}/`)
       if (stopped || !response.ok) return
-      showExperiment(slot, data, onFinished)
+      showExperiment(slot, data, filters, onFinished)
       if (data.status !== 'pending' && data.status !== 'running') onFinished()
     }, POLL_MILLISECONDS)
   }

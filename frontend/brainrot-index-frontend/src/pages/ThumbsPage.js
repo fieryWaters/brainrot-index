@@ -1,17 +1,15 @@
 // Every reader's thumbs up or down on a post, one compact row each, newest
 // first: the labeled examples new filters are measured against. Each row shows
-// the verdict, how the post was shown, the filter the verdict is about, a
-// snippet of the post, and what every filter decided when it was judged. The
-// row's id opens the full item. Above the table, the count of thumbs up and
-// down for each filter. The server refuses everyone but the owner.
+// the verdict, how the post was shown, its label (should be shown, or blocked
+// as a filter), a snippet of the post, and what every filter decided when it
+// was judged. The row's id opens the full item. Above the table, the count of
+// thumbs up and down for each label. The server refuses everyone but the owner.
 
 import { apiFetch, errorMessageFrom } from '../lib/api.js'
 import { el } from '../lib/dom.js'
 import { createErrorBanner } from '../components/ErrorBanner.js'
 import { QUIET_BUTTON_CLASS } from '../components/styles.js'
-import { senderText } from './InboxPage.js'
-
-const NO_FILTER_NAMED = '(no filter named)'
+import { labelText, senderText } from './InboxPage.js'
 
 const VERDICT_TEXT = {
   right: 'up',
@@ -31,25 +29,18 @@ function filterDecisionText(filter) {
   return `${filter.plugin} v${filter.version} ${score} ${decision}`
 }
 
-// How many thumbs up and down each filter has, by the filter the verdict is about.
+// How many thumbs up and down each label has.
 function createCountsLine(thumbs) {
   const counts = {}
   for (const thumb of thumbs) {
-    const plugin = thumb.plugin || NO_FILTER_NAMED
-    if (!counts[plugin]) {
-      counts[plugin] = { right: 0, wrong: 0 }
+    const label = labelText(thumb)
+    if (!counts[label]) {
+      counts[label] = { right: 0, wrong: 0 }
     }
-    counts[plugin][thumb.verdict] += 1
+    counts[label][thumb.verdict] += 1
   }
-  const parts = Object.keys(counts).sort().map((plugin) => `${plugin}: ${counts[plugin].right} up, ${counts[plugin].wrong} down`)
+  const parts = Object.keys(counts).sort().map((label) => `${label}: ${counts[label].right} up, ${counts[label].wrong} down`)
   return el('p', 'mb-4 text-xs text-white/60', `${thumbs.length} thumbs. ${parts.join('; ')}`)
-}
-
-// The filter the verdict is about, Other when the reader said none covers the post, or a dash.
-function filterNamedText(thumb) {
-  if (thumb.plugin) return thumb.plugin
-  if (thumb.no_filter_covers) return 'Other'
-  return '-'
 }
 
 function createThumbRow(thumb) {
@@ -65,7 +56,7 @@ function createThumbRow(thumb) {
     el('td', 'py-1.5 pr-3 whitespace-nowrap', idLink, el('div', 'text-white/40', formatDate(thumb.received_at))),
     el('td', `py-1.5 pr-3 whitespace-nowrap ${verdictClass}`, VERDICT_TEXT[thumb.verdict]),
     el('td', 'py-1.5 pr-3 whitespace-nowrap', thumb.shown_action),
-    el('td', 'py-1.5 pr-3 whitespace-nowrap', filterNamedText(thumb)),
+    el('td', 'py-1.5 pr-3 whitespace-nowrap', labelText(thumb)),
     el('td', 'py-1.5 pr-3 max-w-xs', postLink, el('div', 'text-white/40', `${thumb.post.platform} ${thumb.post.kind}`)),
     el('td', 'py-1.5 pr-3 whitespace-nowrap',
       ...thumb.filters.map((filter) => el('div', '', filterDecisionText(filter)))),
@@ -101,7 +92,7 @@ export function mountThumbsPage() {
         el('th', 'pb-1 pr-3 font-medium', 'Item'),
         el('th', 'pb-1 pr-3 font-medium', 'Thumbs'),
         el('th', 'pb-1 pr-3 font-medium', 'Shown'),
-        el('th', 'pb-1 pr-3 font-medium', 'About filter'),
+        el('th', 'pb-1 pr-3 font-medium', 'Label'),
         el('th', 'pb-1 pr-3 font-medium', 'Post'),
         el('th', 'pb-1 pr-3 font-medium', 'Filters: score/threshold, decision'),
         el('th', 'pb-1 pr-3 font-medium', 'Note and sender'))),

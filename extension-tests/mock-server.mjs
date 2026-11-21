@@ -14,7 +14,10 @@
 //   answered done on the first request.
 //
 // POST /api/feedback/ checks the required fields and answers 201 with a new id.
-// POST /api/judgments/ (a thumbs up or down) checks its fields and answers 201 with a new id;
+// POST /api/judgments/ (a thumbs up or down) checks its fields and answers 201 with a new id and the
+// label the thumb gives the post, as the real server does: thumbs up keeps what the reader saw (a
+// hidden post blocked as the filter that hid it), thumbs down asks for the opposite (a shown post is
+// blocked as Other, plugin null);
 // PATCH /api/judgments/<id>/ (its details) answers 200 with what it was sent; DELETE (the thumb taken
 // back) answers 204.
 // POST /api/extension/consent/ (the reader agreed on the consent screen) checks its fields and answers
@@ -70,15 +73,31 @@ function postIdCharacterSum(postId) {
   return sum;
 }
 
+// The slug of the filter that hid each post: post_id -> slug.
+const hidingPluginByPostId = new Map();
+
 function chooseAnswer(post) {
   const postIdGroup = postIdCharacterSum(post.post_id) % 3;
   if (post.text.includes("AITA") || postIdGroup === 0) {
+    hidingPluginByPostId.set(post.post_id, "engagement-bait");
     return { action: "hide", reasons: [{ plugin: "Engagement bait", label: "Asks for engagement", score: 90 }] };
   }
   if (post.text.length > 400 || postIdGroup === 1) {
+    hidingPluginByPostId.set(post.post_id, "ragebait");
     return { action: "hide", reasons: [{ plugin: "Ragebait", label: "Written to anger", score: 75 }] };
   }
   return { action: "allow", reasons: [] };
+}
+
+function labelFromThumb(judgment) {
+  const shown = judgment.shown_action === "allow";
+  if (judgment.verdict === "right" && !shown) {
+    return { should_be: "blocked", plugin: hidingPluginByPostId.get(judgment.post_id) ?? null };
+  }
+  if (judgment.verdict === "wrong" && shown) {
+    return { should_be: "blocked", plugin: null };
+  }
+  return { should_be: "shown", plugin: null };
 }
 
 function sendJson(response, statusCode, body) {
@@ -165,7 +184,7 @@ export function startMockServer(port) {
         return;
       }
       judgmentCount = judgmentCount + 1;
-      sendJson(response, 201, { id: judgmentCount });
+      sendJson(response, 201, { id: judgmentCount, ...labelFromThumb(judgment) });
       return;
     }
     if (/^\/api\/judgments\/\d+\/$/.test(path) && request.method === "PATCH") {

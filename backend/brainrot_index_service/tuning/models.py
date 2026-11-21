@@ -97,7 +97,8 @@ class TuningResult(models.Model):
     image_urls = models.JSONField(default=list, blank=True)
     post_url = models.TextField(blank=True, default='')
     should_flag = models.BooleanField()
-    # A thumbs: {verdict, shown_action, plugin, details}. A synthetic example: {why}.
+    # A thumbs: {verdict, shown_action, should_be, plugin, details}, plugin being the filter
+    # it is blocked as, or empty. A synthetic example: {why}.
     owner = models.JSONField(default=dict)
     # True for a filter that watches videos, on a post whose video production watched;
     # the draft judges it on its text and images only.

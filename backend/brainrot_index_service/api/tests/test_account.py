@@ -199,7 +199,7 @@ class DeleteAccountTests(TestCase):
         post = Post.objects.create(platform='x', post_id='185', kind='post', url='https://x.com/a/status/185', text='LOUD')
         filter_results = [{'plugin': 'shouting', 'version': 1, 'score': 60, 'threshold': 50, 'flagged': True}]
         judgment = PostJudgment.objects.create(
-            user=self.user, post=post, verdict='wrong', shown_action='hide', details='Fine, just loud.',
+            user=self.user, post=post, verdict='wrong', shown_action='hide', should_be='shown', details='Fine, just loud.',
             filter_results=filter_results)
 
         response = self.client.post(reverse('account_delete'), {'email': 'reader@example.com'},

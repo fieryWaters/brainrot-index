@@ -43,8 +43,11 @@ class JudgmentTests(TestCase):
         self.assertEqual(judgment.verdict, 'right')
         self.assertEqual(judgment.shown_action, 'hide')
         self.assertEqual(judgment.extension_commit, 'ext1234')
-        # Rude or Toxic scored highest among the filters that flagged it.
+        # Blocked as Rude or Toxic, which scored highest among the filters that flagged it.
+        self.assertEqual(judgment.should_be, 'blocked')
         self.assertEqual(judgment.plugin.slug, 'rude-or-toxic')
+        self.assertEqual(response.json()['should_be'], 'blocked')
+        self.assertEqual(response.json()['plugin'], 'rude-or-toxic')
         results = {result['plugin']: result for result in judgment.filter_results}
         self.assertEqual(set(results), {'engagement-bait', 'brainrot', 'rude-or-toxic', 'low-effort'})
         self.assertEqual(results['rude-or-toxic']['score'], 100)
@@ -53,35 +56,53 @@ class JudgmentTests(TestCase):
         self.assertEqual(results['brainrot']['status'], 'pending')
         self.assertFalse(results['brainrot']['flagged'])
 
-    def test_thumbs_down_on_a_shown_post_names_no_filter_until_the_reader_does(self):
-        self.set_score('rude-or-toxic', 0)
+    def test_each_thumbs_starts_with_the_label_it_says(self):
+        self.set_score('rude-or-toxic', 100)
+        cases = [
+            ('right', 'allow', 'shown', None),
+            ('right', 'hide', 'blocked', 'rude-or-toxic'),
+            ('wrong', 'hide', 'shown', None),
+            ('wrong', 'allow', 'blocked', None),
+        ]
+        for verdict, shown_action, should_be, plugin_slug in cases:
+            reply = self.judge(verdict, shown_action=shown_action).json()
+            self.assertEqual((reply['should_be'], reply['plugin']), (should_be, plugin_slug), (verdict, shown_action))
 
+    def test_a_shown_post_with_thumbs_down_is_blocked_as_the_filter_the_reader_names(self):
+        self.set_score('rude-or-toxic', 0)
         judgment_id = self.judge('wrong', shown_action='allow').json()['id']
+        # Blocked as Other until the reader names a filter.
         self.assertIsNone(PostJudgment.objects.get(id=judgment_id).plugin)
 
         response = self.add_details(judgment_id, {'plugin': 'low-effort', 'severity': 'high', 'details': 'Reply-bot filler.'})
 
         self.assertEqual(response.status_code, 200)
         judgment = PostJudgment.objects.get(id=judgment_id)
-        self.assertEqual(judgment.plugin.slug, 'low-effort')
+        self.assertEqual((judgment.should_be, judgment.plugin.slug), ('blocked', 'low-effort'))
         self.assertEqual(judgment.severity, 'high')
         self.assertEqual(judgment.details, 'Reply-bot filler.')
 
-    def test_thumbs_down_on_a_shown_post_can_say_no_filter_covers_it(self):
-        self.set_score('rude-or-toxic', 0)
-        judgment_id = self.judge('wrong', shown_action='allow').json()['id']
+    def test_a_hidden_post_can_be_relabeled_shown_or_blocked_as_another_filter(self):
+        self.set_score('rude-or-toxic', 100)
+        judgment_id = self.judge('right').json()['id']
 
-        response = self.add_details(judgment_id, {'no_filter_covers': True, 'details': 'Crypto giveaway scam.'})
-
-        self.assertEqual(response.status_code, 200)
+        self.add_details(judgment_id, {'should_be': 'blocked', 'plugin': 'low-effort'})
         judgment = PostJudgment.objects.get(id=judgment_id)
-        self.assertTrue(judgment.no_filter_covers)
-        self.assertIsNone(judgment.plugin)
-        self.assertEqual(judgment.details, 'Crypto giveaway scam.')
+        self.assertEqual((judgment.should_be, judgment.plugin.slug), ('blocked', 'low-effort'))
+
+        # Should be shown names no filter, whatever is sent with it.
+        self.add_details(judgment_id, {'should_be': 'shown', 'plugin': 'low-effort'})
+        judgment = PostJudgment.objects.get(id=judgment_id)
+        self.assertEqual((judgment.should_be, judgment.plugin), ('shown', None))
+
+        # Blocked as Other: no filter named.
+        self.add_details(judgment_id, {'should_be': 'blocked', 'plugin': None, 'details': 'Crypto giveaway scam.'})
+        judgment = PostJudgment.objects.get(id=judgment_id)
+        self.assertEqual((judgment.should_be, judgment.plugin, judgment.details), ('blocked', None, 'Crypto giveaway scam.'))
 
     def test_judging_again_replaces_the_judgment_and_its_details(self):
-        judgment_id = self.judge('right').json()['id']
-        self.add_details(judgment_id, {'severity': 'low', 'details': 'Fine either way.', 'no_filter_covers': True})
+        judgment_id = self.judge('right', shown_action='allow').json()['id']
+        self.add_details(judgment_id, {'severity': 'low', 'details': 'Fine either way.', 'plugin': 'low-effort'})
 
         response = self.judge('wrong')
 
@@ -89,9 +110,9 @@ class JudgmentTests(TestCase):
         self.assertEqual(response.json()['id'], judgment_id)
         judgment = PostJudgment.objects.get(id=judgment_id)
         self.assertEqual(judgment.verdict, 'wrong')
+        self.assertEqual((judgment.should_be, judgment.plugin), ('shown', None))
         self.assertEqual(judgment.severity, '')
         self.assertEqual(judgment.details, '')
-        self.assertFalse(judgment.no_filter_covers)
         self.assertEqual(PostJudgment.objects.count(), 1)
 
     def test_only_filters_turned_on_are_recorded(self):

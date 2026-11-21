@@ -126,56 +126,60 @@ class ExportJudgmentExamplesTests(TestCase):
             call_command('export_judgment_examples', output=str(output_path), stdout=io.StringIO())
             return {example['text']: example for example in map(json.loads, output_path.read_text().splitlines())}
 
-    def judge(self, user, post_id, verdict, shown_action, filter_results, plugin=None, severity=''):
+    def judge(self, user, post_id, verdict, shown_action, should_be, filter_results, plugin_slug=None, severity=''):
         post = store_post(seen_post(post_id, text=post_id))
-        PostJudgment.objects.create(user=user, post=post, verdict=verdict, shown_action=shown_action,
+        plugin = Plugin.objects.get(slug=plugin_slug) if plugin_slug else None
+        PostJudgment.objects.create(user=user, post=post, verdict=verdict, shown_action=shown_action, should_be=should_be,
                                     filter_results=filter_results, plugin=plugin, severity=severity)
 
-    def test_each_verdict_says_what_the_filters_should_have_decided(self):
+    def test_a_label_is_a_case_for_the_filters_it_speaks_for(self):
         user, _ = create_user_with_token('reader@example.com')
-        both_on = [filter_result('rude-or-toxic', True), filter_result('low-effort', False)]
+        flagged = [filter_result('rude-or-toxic', True), filter_result('low-effort', False)]
         none_flagged = [filter_result('rude-or-toxic', False), filter_result('low-effort', False)]
-        self.judge(user, 'rightly-hidden', 'right', 'hide', both_on)
-        self.judge(user, 'wrongly-hidden', 'wrong', 'hide', both_on, severity='low')
-        self.judge(user, 'rightly-shown', 'right', 'allow', none_flagged)
-        self.judge(user, 'missed', 'wrong', 'allow', none_flagged, plugin=Plugin.objects.get(slug='low-effort'))
-        self.judge(user, 'missed-no-filter-named', 'wrong', 'allow', none_flagged)
+        self.judge(user, 'rightly-hidden', 'right', 'hide', 'blocked', flagged, 'rude-or-toxic')
+        self.judge(user, 'wrongly-hidden', 'wrong', 'hide', 'shown', flagged, severity='low')
+        self.judge(user, 'rightly-shown', 'right', 'allow', 'shown', none_flagged)
+        self.judge(user, 'missed', 'wrong', 'allow', 'blocked', none_flagged, 'low-effort')
+        self.judge(user, 'other', 'wrong', 'allow', 'blocked', none_flagged)
 
         examples = self.export()
 
+        # Blocked as Other is no filter's case.
         self.assertEqual(set(examples), {'rightly-hidden', 'wrongly-hidden', 'rightly-shown', 'missed'})
-        self.assertEqual(examples['rightly-hidden']['expected']['rude-or-toxic']['flag'], True)
-        self.assertNotIn('low-effort', examples['rightly-hidden']['expected'])
+        # Blocked as a filter is a case for that filter only.
+        self.assertEqual({slug: answer['flag'] for slug, answer in examples['rightly-hidden']['expected'].items()},
+                         {'rude-or-toxic': True})
+        # Should be shown is a case for every default filter, whether it was on or not.
         self.assertEqual(examples['wrongly-hidden']['expected']['rude-or-toxic'],
-                         {'flag': False, 'difficulty': 'borderline',
-                          'why': "Reader's thumbs down on a post that was hide."})
+                         {'flag': False, 'difficulty': 'borderline', 'why': "Reader's label: should be shown."})
         self.assertEqual({slug: answer['flag'] for slug, answer in examples['rightly-shown']['expected'].items()},
-                         {'rude-or-toxic': False, 'low-effort': False})
+                         {'engagement-bait': False, 'brainrot': False, 'rude-or-toxic': False, 'low-effort': False})
         self.assertEqual({slug: answer['flag'] for slug, answer in examples['missed']['expected'].items()},
                          {'low-effort': True})
         self.assertEqual(examples['missed']['source'], 'judgment')
+        self.assertEqual(examples['missed']['judgment']['should_be'], 'blocked')
 
     def test_prints_each_filters_test_cases_by_verdict_and_expected_answer(self):
         user, _ = create_user_with_token('reader@example.com')
-        both_on = [filter_result('rude-or-toxic', True), filter_result('low-effort', False)]
+        flagged = [filter_result('rude-or-toxic', True), filter_result('low-effort', False)]
         none_flagged = [filter_result('rude-or-toxic', False), filter_result('low-effort', False)]
-        self.judge(user, 'rightly-hidden', 'right', 'hide', both_on)
-        self.judge(user, 'wrongly-hidden', 'wrong', 'hide', both_on)
-        self.judge(user, 'rightly-shown', 'right', 'allow', none_flagged)
-        self.judge(user, 'missed', 'wrong', 'allow', none_flagged, plugin=Plugin.objects.get(slug='low-effort'))
+        self.judge(user, 'rightly-hidden', 'right', 'hide', 'blocked', flagged, 'rude-or-toxic')
+        self.judge(user, 'wrongly-hidden', 'wrong', 'hide', 'shown', flagged)
+        self.judge(user, 'rightly-shown', 'right', 'allow', 'shown', none_flagged)
+        self.judge(user, 'missed', 'wrong', 'allow', 'blocked', none_flagged, 'low-effort')
 
         output = io.StringIO()
         with tempfile.TemporaryDirectory() as directory:
             call_command('export_judgment_examples', output=str(Path(directory) / 'judgments.jsonl'), stdout=output)
 
-        self.assertIn('  low-effort: 2 cases; 1 thumbs up, 1 thumbs down; 1 should flag, 1 should not flag',
+        self.assertIn('  low-effort: 3 cases; 1 thumbs up, 2 thumbs down; 1 should flag, 2 should not flag',
                       output.getvalue())
         self.assertIn('  rude-or-toxic: 3 cases; 2 thumbs up, 1 thumbs down; 1 should flag, 2 should not flag',
                       output.getvalue())
 
     def test_a_thumbs_from_a_deleted_account_is_still_a_test_case(self):
         user, _ = create_user_with_token('reader@example.com')
-        self.judge(user, 'rightly-hidden', 'right', 'hide', [filter_result('rude-or-toxic', True)])
+        self.judge(user, 'rightly-hidden', 'right', 'hide', 'blocked', [filter_result('rude-or-toxic', True)], 'rude-or-toxic')
         user.delete()
 
         self.assertEqual(set(self.export()), {'rightly-hidden'})

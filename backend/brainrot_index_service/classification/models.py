@@ -426,14 +426,38 @@ SHOWN_ACTION_CHOICES = [
     (ACTION_HIDE, 'Hidden'),
 ]
 
+# What the reader says should happen to a judged post.
+SHOULD_BE_SHOWN = 'shown'
+SHOULD_BE_BLOCKED = 'blocked'
+SHOULD_BE_CHOICES = [
+    (SHOULD_BE_SHOWN, 'Should be shown'),
+    (SHOULD_BE_BLOCKED, 'Should be blocked'),
+]
+
+
+def label_from_thumb(verdict, shown_action, flagging_plugin):
+    """(should_be, plugin) that a thumbs says by itself: up keeps what the
+    reader saw, down asks for the opposite. A post rightly hidden is blocked as
+    the filter that hid it; a shown post with a thumbs down is blocked as
+    Other until the reader names a filter."""
+    shown = shown_action == ACTION_ALLOW
+    right = verdict == VERDICT_RIGHT
+    if right and shown:
+        return SHOULD_BE_SHOWN, None
+    if right:
+        return SHOULD_BE_BLOCKED, flagging_plugin
+    if not shown:
+        return SHOULD_BE_SHOWN, None
+    return SHOULD_BE_BLOCKED, None
+
 
 class PostJudgment(models.Model):
-    """A reader's verdict on how the extension treated one post: a labeled
-    example of the reader's real judgment, for evaluating and tuning filters.
-    A thumbs down on a post that was shown means a filter should have caught
-    it. One per account and post; judging the post again replaces it. When
-    the account is deleted the judgment stays, without its user, since the
-    judgments are the test set for filters."""
+    """A reader's thumbs on how the extension treated one post, and the label
+    it gives the post: should be shown, or should be blocked as one filter (or
+    as Other, when none of the reader's filters covers it). The labels are the
+    test set for evaluating and tuning filters. One per account and post;
+    judging the post again replaces it. When the account is deleted the
+    judgment stays, without its user, since the judgments are the test set."""
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='post_judgments')
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='judgments')
@@ -441,13 +465,10 @@ class PostJudgment(models.Model):
     # What the reader saw. Judgments made before blurring was removed can say
     # blur; filter_results has what the filters decided.
     shown_action = models.CharField(max_length=16, choices=SHOWN_ACTION_CHOICES)
-    # The filter the verdict is about: the strongest one that flagged the post,
-    # or, for a shown post that should have been caught, the one the reader
-    # names. Empty when the reader names none.
+    should_be = models.CharField(max_length=16, choices=SHOULD_BE_CHOICES)
+    # The filter a post that should be blocked is blocked as. Empty for a post
+    # that should be shown, and for a post blocked as Other.
     plugin = models.ForeignKey(Plugin, on_delete=models.PROTECT, null=True, blank=True, related_name='judgments')
-    # True when the reader chose Other: a shown post that should have been
-    # caught for a reason none of their filters covers. details says why.
-    no_filter_covers = models.BooleanField(default=False)
     # How much the verdict matters to the reader. Blank until the reader says.
     severity = models.CharField(max_length=16, choices=SEVERITY_CHOICES, blank=True, default='')
     details = models.TextField(blank=True, default='')

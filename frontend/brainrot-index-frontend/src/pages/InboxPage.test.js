@@ -10,6 +10,7 @@ const JUDGMENT = {
   sender: { email: 'reader@example.com', signed_in: true, name: '' },
   verdict: 'wrong',
   shown_action: 'hide',
+  should_be: 'blocked',
   plugin: 'shouting',
   severity: 'high',
   details: 'This is fine, just loud.',

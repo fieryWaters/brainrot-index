@@ -24,7 +24,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from classification.evaluation import example_description_and_images, expected_answers, load_examples
+from classification.evaluation import example_description_and_images, expected_answer, load_examples
 from classification.inference import (
     INFERENCE_SOURCE_OPENROUTER,
     REQUEST_TIMEOUT_SECONDS,
@@ -84,11 +84,12 @@ def owner_judgments():
 
 
 def owner_judgments_for(plugin):
-    """(judgment, expected answer) for each of the owner's thumbs that says
-    what this filter should have decided."""
+    """(judgment, expected answer) for each of the owner's thumbs in this
+    filter's test set: those labeled should be shown, and those labeled
+    should be blocked as this filter."""
     found = []
     for judgment in owner_judgments():
-        expected = expected_answers(judgment).get(plugin.slug)
+        expected = expected_answer(judgment, plugin.slug)
         if expected is not None:
             found.append((judgment, expected))
     return found
@@ -158,6 +159,7 @@ def thumb_case(judgment, expected, plugin):
         owner={
             'verdict': judgment.verdict,
             'shown_action': judgment.shown_action,
+            'should_be': judgment.should_be,
             'plugin': plugin_named,
             'details': judgment.details,
         },

@@ -329,7 +329,7 @@ async function sendJudgment(judgment) {
   return sendReport("POST", "/api/judgments/", body);
 }
 
-// details holds any of severity, details and plugin (a plugin slug).
+// details holds any of should_be, plugin (a plugin slug, or null for Other), severity and details.
 async function addJudgmentDetails(judgmentId, details) {
   return sendReport("PATCH", "/api/judgments/" + judgmentId + "/", details);
 }

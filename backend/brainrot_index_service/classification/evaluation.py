@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .images import image_file_data_url
 from .inference import ask_model, build_messages, describe_post, stored_reply_context
-from .models import ACTION_ALLOW, IMAGE_DOWNLOADED, POST_KIND_REPLY, SEVERITY_LOW, VERDICT_RIGHT
+from .models import IMAGE_DOWNLOADED, POST_KIND_REPLY, SEVERITY_LOW, SHOULD_BE_SHOWN
 
 # The threshold a new user starts with (UserPlugin.threshold).
 DEFAULT_THRESHOLD = 60
@@ -93,38 +93,34 @@ def example_from_post(example_id, source, post, images_dir):
     return example
 
 
-def expected_answers(judgment):
-    """What each filter should have decided, as far as the verdict says. A
-    filter missing from the result has no known answer."""
+def label_text(judgment):
+    """The thumbs' label in words: "should be shown", "should be blocked as low-effort"."""
+    if judgment.should_be == SHOULD_BE_SHOWN:
+        return "should be shown"
+    if judgment.plugin is None:
+        return "should be blocked as Other"
+    return f"should be blocked as {judgment.plugin.slug}"
+
+
+def expected_answer(judgment, plugin_slug):
+    """What one filter should decide about a judged post, or None when the
+    thumbs is not in that filter's test set. A post that should be shown
+    should be allowed by every filter; a post blocked as this filter should
+    be flagged by it. A post blocked as another filter, or as Other, says
+    nothing about this one."""
     if judgment.severity == SEVERITY_LOW:
         difficulty = DIFFICULTY_BORDERLINE
     else:
         difficulty = DIFFICULTY_CLEAR
-    shown = judgment.shown_action == ACTION_ALLOW
-    right = judgment.verdict == VERDICT_RIGHT
-    why = f"Reader's thumbs {'up' if right else 'down'} on a post that was {judgment.shown_action}."
+    why = f"Reader's label: {label_text(judgment)}."
     if judgment.details:
         why += f" Reader said: {judgment.details}"
 
-    expected = {}
-    if right and shown:
-        # Every filter that was on rightly let it through.
-        for filter_result in judgment.filter_results:
-            expected[filter_result['plugin']] = {'flag': False, 'difficulty': difficulty, 'why': why}
-    elif right:
-        # Every filter that flagged it was right to.
-        for filter_result in judgment.filter_results:
-            if filter_result['flagged']:
-                expected[filter_result['plugin']] = {'flag': True, 'difficulty': difficulty, 'why': why}
-    elif not shown:
-        # Every filter that flagged it was wrong to.
-        for filter_result in judgment.filter_results:
-            if filter_result['flagged']:
-                expected[filter_result['plugin']] = {'flag': False, 'difficulty': difficulty, 'why': why}
-    elif judgment.plugin is not None:
-        # Shown but should not have been: only the filter the reader named is known.
-        expected[judgment.plugin.slug] = {'flag': True, 'difficulty': difficulty, 'why': why}
-    return expected
+    if judgment.should_be == SHOULD_BE_SHOWN:
+        return {'flag': False, 'difficulty': difficulty, 'why': why}
+    if judgment.plugin is not None and judgment.plugin.slug == plugin_slug:
+        return {'flag': True, 'difficulty': difficulty, 'why': why}
+    return None
 
 
 def save_results(results_path, results):

@@ -1,7 +1,3 @@
-import json
-from pathlib import Path
-
-from django.conf import settings
 from django.db import migrations, models
 
 MAX_THREAD_DEPTH = 50
@@ -34,16 +30,6 @@ def stored_post_as_read(Post, post):
     if post.kind == 'reply':
         shown['parent_text'], shown['parent_is_reply'], shown['thread_text'] = reply_context(Post, post)
     return shown
-
-
-def example_as_read(example):
-    return {
-        'platform': example['platform'], 'kind': example['kind'], 'author': '',
-        'community': example.get('community', ''), 'text': example['text'],
-        'quoted_post': example.get('quoted_post') or {}, 'link_preview': example.get('link_preview') or {},
-        'parent_text': example.get('parent_text'), 'parent_is_reply': example.get('parent_is_reply', False),
-        'thread_text': example.get('thread_text'),
-    }
 
 
 # The lines of a description (classification.inference.describe_post) that
@@ -101,18 +87,9 @@ def description_as_read(description):
 def fill_in_posts(apps, schema_editor):
     TuningResult = apps.get_model('tuning', 'TuningResult')
     Post = apps.get_model('classification', 'Post')
-    examples = {}
-    dataset_path = Path(settings.TUNING_SYNTHETIC_DATASET)
-    if dataset_path.exists():
-        for line in dataset_path.read_text().splitlines():
-            if line.strip():
-                example = json.loads(line)
-                examples[example['id']] = example
     for result in TuningResult.objects.select_related('judgment__post'):
         if result.judgment is not None:
             result.post = stored_post_as_read(Post, result.judgment.post)
-        elif result.case_id in examples:
-            result.post = example_as_read(examples[result.case_id])
         else:
             result.post = description_as_read(result.description)
         result.save(update_fields=['post'])

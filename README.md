@@ -97,7 +97,6 @@ the site and extension commits it was written against.
 | `DEPLOY.md`                         | Ports, addresses, accounts, email, and going public.             |
 | `cloudflared/config.yml`            | Cloudflare Tunnel routes for `brainrotindex.com`.                |
 | `legacy/`                           | The original proof of concept (Safari userscript, Node server, Ollama scoring). |
-| `eval/`                             | Labeled posts and per-model results for scoring the classifier; see `eval/README.md`. |
 
 ## Deploy
 

@@ -1,17 +1,15 @@
-"""Scoring a model and rubric versions against a labeled dataset of posts
-(eval/dataset.jsonl). Uses the production prompt and answer parsing, but
-never reads or writes the Post and Classification tables: results live in
-JSON files next to the dataset, in eval/results/."""
+"""Scoring a model and rubric versions against the owner's thumbs, each of
+which says what a filter should have decided about a stored post. Uses the
+production prompt, post description and answer parsing, but never writes
+the Post and Classification tables: the summary is printed, not saved."""
 
-import json
 import math
-import os
 import statistics
-from pathlib import Path
 
-from .images import image_file_data_url
-from .inference import ask_model, build_messages, describe_post, stored_reply_context
-from .models import IMAGE_DOWNLOADED, POST_KIND_REPLY, SEVERITY_LOW, SHOULD_BE_SHOWN
+from django.conf import settings
+
+from .inference import ask_model, build_messages, describe_stored_post, images_for_model
+from .models import SEVERITY_LOW, SHOULD_BE_SHOWN, PostJudgment
 
 # The threshold a new user starts with (UserPlugin.threshold).
 DEFAULT_THRESHOLD = 60
@@ -21,76 +19,8 @@ DIFFICULTY_CLEAR = 'clear'
 DIFFICULTY_BORDERLINE = 'borderline'
 
 
-def load_examples(dataset_path):
-    examples = []
-    with open(dataset_path, encoding='utf-8') as dataset_file:
-        for line in dataset_file:
-            if line.strip():
-                examples.append(json.loads(line))
-    return examples
-
-
-def results_file_path(dataset_path, inference_source, model, plugin_versions, explain=False):
-    """One file per configuration, so re-running a configuration resumes it.
-    Explained runs have their own file, since their prompt differs."""
-    rubric_part = '_'.join(f"{plugin_version.plugin.slug}-v{plugin_version.version}" for plugin_version in plugin_versions)
-    model_part = model.replace('/', '_').replace(':', '_')
-    file_name = f"{Path(dataset_path).stem}__{inference_source}__{model_part}__{rubric_part}"
-    if explain:
-        file_name += '__explained'
-    file_name += '.json'
-    return Path(dataset_path).parent / 'results' / file_name
-
-
-def load_results(results_path, dataset_path, inference_source, model, plugin_versions):
-    if results_path.exists():
-        with open(results_path, encoding='utf-8') as results_file:
-            return json.load(results_file)
-    return {
-        'dataset': str(dataset_path),
-        'inference_source': inference_source,
-        'model': model,
-        'plugin_versions': {plugin_version.plugin.slug: plugin_version.version for plugin_version in plugin_versions},
-        'results': [],
-    }
-
-
-def example_from_post(example_id, source, post, images_dir):
-    """A stored post as a dataset example without expected answers, with its
-    first stored image copied into images_dir."""
-    example = {
-        'id': example_id,
-        'source': source,
-        'platform': post.platform,
-        'kind': post.kind,
-        'community': post.community,
-        'text': post.text,
-    }
-    if post.quoted_post:
-        example['quoted_post'] = post.quoted_post
-    if post.link_preview:
-        example['link_preview'] = post.link_preview
-    if post.video_url:
-        example['has_video'] = True
-    if post.kind == POST_KIND_REPLY:
-        parent_text, parent_is_reply, thread_text, by_original_poster = stored_reply_context(post)
-        if parent_text is not None:
-            example['parent_text'] = parent_text
-        if parent_is_reply:
-            example['parent_is_reply'] = True
-        if thread_text is not None:
-            example['thread_text'] = thread_text
-        if by_original_poster:
-            example['by_original_poster'] = True
-
-    post_image = post.images.filter(status=IMAGE_DOWNLOADED).order_by('id').first()
-    if post_image is not None:
-        image_name = f"{example_id}{Path(post_image.file.name).suffix}"
-        images_dir.mkdir(parents=True, exist_ok=True)
-        with post_image.file.open('rb') as stored_image, open(images_dir / image_name, 'wb') as copied_image:
-            copied_image.write(stored_image.read())
-        example['image'] = image_name
-    return example
+def owner_judgments():
+    return PostJudgment.objects.filter(user__email__iexact=settings.ADMIN_EMAIL).select_related('post', 'plugin').order_by('id')
 
 
 def label_text(judgment):
@@ -123,46 +53,35 @@ def expected_answer(judgment, plugin_slug):
     return None
 
 
-def save_results(results_path, results):
-    # Written to a temporary file first so an interrupted run never leaves half a file.
-    results_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = results_path.with_suffix('.json.partial')
-    with open(temporary_path, 'w', encoding='utf-8') as results_file:
-        json.dump(results, results_file, indent=1)
-    os.replace(temporary_path, results_path)
+def judged_examples(plugin_slugs):
+    """One example for each of the owner's thumbs in the test set of any of
+    these filters: {id, text, description, image_urls, expected}, expected
+    being {plugin slug: expected answer}. The post is described exactly as
+    the production worker describes it."""
+    examples = []
+    for judgment in owner_judgments():
+        expected = {}
+        for slug in plugin_slugs:
+            answer = expected_answer(judgment, slug)
+            if answer is not None:
+                expected[slug] = answer
+        if not expected:
+            continue
+        images_with_data = images_for_model(judgment.post)
+        examples.append({
+            'id': f"judgment-{judgment.id}",
+            'text': judgment.post.text,
+            'description': describe_stored_post(judgment.post, len(images_with_data)),
+            'image_urls': [data_url for _, data_url in images_with_data],
+            'expected': expected,
+        })
+    return examples
 
 
-def example_description_and_images(example, images_dir):
-    """(post description, image data URLs) of a dataset example, as the model reads it."""
-    image_urls = []
-    if example.get('image'):
-        image_urls.append(image_file_data_url(images_dir / example['image']))
-    post_description = describe_post(
-        example['platform'],
-        example.get('community', ''),
-        example['kind'],
-        example['text'],
-        example.get('parent_text'),
-        len(image_urls),
-        quoted_post=example.get('quoted_post'),
-        link_preview=example.get('link_preview'),
-        has_video=example.get('has_video', False),
-        parent_is_reply=example.get('parent_is_reply', False),
-        thread_text=example.get('thread_text'),
-        by_original_poster=example.get('by_original_poster', False),
-    )
-    return post_description, image_urls
-
-
-def example_messages(example, plugin_version, images_dir, explain=False):
-    post_description, image_urls = example_description_and_images(example, images_dir)
-    return build_messages(plugin_version, post_description, image_urls, explain)
-
-
-def classify_example(example, plugin_version, images_dir, inference_source, model, explain=False):
+def classify_example(example, plugin_version, inference_source, model, explain=False):
     """One result record: the model's answer for one example and one plugin.
     With explain, it also holds the model's explanation of each criterion."""
-    messages = example_messages(example, plugin_version, images_dir, explain)
+    messages = build_messages(plugin_version, example['description'], example['image_urls'], explain)
     outcome = ask_model(messages, plugin_version, inference_source, model, explain)
     record = {
         'example_id': example['id'],
@@ -177,9 +96,7 @@ def classify_example(example, plugin_version, images_dir, inference_source, mode
         'completion_tokens': outcome.completion_tokens,
         'cost': outcome.cost,
     }
-    if outcome.answer is None:
-        record['raw_response'] = outcome.raw_response
-    else:
+    if outcome.answer is not None:
         record['score'] = outcome.answer['score']
         record['label'] = outcome.answer['label']
         record['reasoning'] = outcome.answer['reasoning']

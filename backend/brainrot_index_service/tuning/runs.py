@@ -2,8 +2,7 @@
 version, through the production prompt, model and answer parsing.
 
 The cases are the owner's thumbs that say what the filter should have
-decided, and, when asked for, the synthetic test set's examples for the
-filter. The background worker runs one experiment at a time per claim, with
+decided. The background worker runs one experiment at a time per claim, with
 a few model calls in flight, and saves each case as it finishes so the page
 can show progress.
 
@@ -16,15 +15,13 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import timedelta
-from pathlib import Path
 
 import requests
-from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from classification.evaluation import example_description_and_images, expected_answer, load_examples
+from classification.evaluation import expected_answer, owner_judgments
 from classification.inference import (
     INFERENCE_SOURCE_OPENROUTER,
     REQUEST_TIMEOUT_SECONDS,
@@ -39,8 +36,6 @@ from classification.inference import (
 from classification.models import PLUGIN_INPUT_VIDEO, POST_KIND_REPLY, VIDEO_READY, PostJudgment, PostVideo
 
 from .models import (
-    CASE_SYNTHETIC,
-    CASE_THUMB,
     EXPERIMENT_DONE,
     EXPERIMENT_FAILED,
     EXPERIMENT_PENDING,
@@ -67,7 +62,6 @@ class Case:
     """One post to judge, with what the owner says the filter should decide."""
 
     case_id: str
-    source: str
     should_flag: bool
     owner: dict
     description: str
@@ -77,10 +71,6 @@ class Case:
     post_url: str = ''
     judgment: PostJudgment | None = None
     video_not_watched: bool = False
-
-
-def owner_judgments():
-    return PostJudgment.objects.filter(user__email__iexact=settings.ADMIN_EMAIL).select_related('post', 'plugin').order_by('id')
 
 
 def owner_judgments_for(plugin):
@@ -93,15 +83,6 @@ def owner_judgments_for(plugin):
         if expected is not None:
             found.append((judgment, expected))
     return found
-
-
-def synthetic_examples_for(plugin):
-    """The synthetic test set's examples with an answer for this filter;
-    none when the test set is not where the settings say."""
-    dataset_path = Path(settings.TUNING_SYNTHETIC_DATASET)
-    if not dataset_path.exists():
-        return []
-    return [example for example in load_examples(dataset_path) if plugin.slug in example.get('expected', {})]
 
 
 def post_as_read(post):
@@ -126,22 +107,6 @@ def post_as_read(post):
     return shown
 
 
-def example_as_read(example):
-    """A synthetic test set example in the form post_as_read gives; the test set names no authors."""
-    return {
-        'platform': example['platform'],
-        'kind': example['kind'],
-        'author': '',
-        'community': example.get('community', ''),
-        'text': example['text'],
-        'quoted_post': example.get('quoted_post') or {},
-        'link_preview': example.get('link_preview') or {},
-        'parent_text': example.get('parent_text'),
-        'parent_is_reply': example.get('parent_is_reply', False),
-        'thread_text': example.get('thread_text'),
-    }
-
-
 def thumb_fields(judgment):
     """What a case of a thumbs holds, its post described exactly as the
     production worker describes it, as Case fields."""
@@ -153,7 +118,6 @@ def thumb_fields(judgment):
         plugin_named = ''
     return {
         'case_id': f"judgment-{judgment.id}",
-        'source': CASE_THUMB,
         'owner': {
             'verdict': judgment.verdict,
             'shown_action': judgment.shown_action,
@@ -179,30 +143,9 @@ def thumb_case(judgment, expected, plugin):
     return Case(should_flag=expected['flag'], video_not_watched=video_not_watched, **thumb_fields(judgment))
 
 
-def synthetic_fields(example):
-    """What a case of a synthetic test set example holds, as Case fields; the owner part is for one filter."""
-    images_dir = Path(settings.TUNING_SYNTHETIC_DATASET).parent / 'images'
-    description, image_data_urls = example_description_and_images(example, images_dir)
-    return {
-        'case_id': example['id'],
-        'source': CASE_SYNTHETIC,
-        'description': description,
-        'post': example_as_read(example),
-        'image_data_urls': image_data_urls,
-    }
-
-
-def synthetic_case(example, plugin):
-    expected = example['expected'][plugin.slug]
-    return Case(should_flag=expected['flag'], owner={'why': expected['why']}, **synthetic_fields(example))
-
-
 def experiment_cases(experiment):
     plugin = experiment.plugin
-    cases = [thumb_case(judgment, expected, plugin) for judgment, expected in owner_judgments_for(plugin)]
-    if experiment.include_synthetic:
-        cases += [synthetic_case(example, plugin) for example in synthetic_examples_for(plugin)]
-    return cases
+    return [thumb_case(judgment, expected, plugin) for judgment, expected in owner_judgments_for(plugin)]
 
 
 def answer_record(outcome):
@@ -327,7 +270,6 @@ def judge_case(experiment, draft_version, live_version, case, reused_live_answer
 
     return {
         'case_id': case.case_id,
-        'source': case.source,
         'judgment': case.judgment,
         'description': case.description,
         'post': case.post,
@@ -391,8 +333,7 @@ def run_or_mark_failed(experiment, run):
     try:
         run(experiment)
     except Exception as error:
-        # A run that cannot finish, such as one whose synthetic test set is unreadable, is marked failed
-        # rather than taken up again and again.
+        # A run that cannot finish is marked failed rather than taken up again and again.
         logger.exception("Experiment %s failed", experiment)
         experiment.status = EXPERIMENT_FAILED
         experiment.error = str(error)

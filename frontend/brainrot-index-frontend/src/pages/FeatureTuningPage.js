@@ -30,7 +30,6 @@ import {
 } from './TuningPage.js'
 
 const POLL_MILLISECONDS = 2000
-const SOURCE_NAMES = { thumb: 'Your thumbs', synthetic: 'Test set' }
 const FORM_NAMES = { product: 'Product', weighted_sum: 'Weighted sum' }
 const VIDEO_NOTE = "Drafts rate a post's text, images and transcript only. Production's Brainrot watches videos; a draft rates a video post on its text, thumbnail and transcript."
 
@@ -178,7 +177,7 @@ function createFilterRow(filterRow, liveFilters, onRemove) {
     el('td', 'py-1', smallButton('Remove', onRemove)))
 }
 
-// draft: { features, filterRows, include_synthetic, explain_every_case, started_from, started_from_feature_set }, edited in place.
+// draft: { features, filterRows, explain_every_case, started_from, started_from_feature_set }, edited in place.
 function createDraftEditor(overview, draft, onRun) {
   const featuresSlot = el('div', 'space-y-3')
   function renderFeatures() {
@@ -206,12 +205,6 @@ function createDraftEditor(overview, draft, onRun) {
     renderFilters()
   })
 
-  const syntheticCases = Math.max(0, ...overview.filters.map((live) => live.synthetic_cases))
-  const syntheticBox = el('input', '')
-  syntheticBox.type = 'checkbox'
-  syntheticBox.checked = draft.include_synthetic && syntheticCases > 0
-  syntheticBox.disabled = syntheticCases === 0
-  syntheticBox.addEventListener('change', () => { draft.include_synthetic = syntheticBox.checked })
   const explainBox = el('input', '')
   explainBox.type = 'checkbox'
   explainBox.checked = draft.explain_every_case
@@ -245,7 +238,6 @@ function createDraftEditor(overview, draft, onRun) {
       filtersBody),
     el('div', 'mt-1', addFilterButton),
     el('div', 'mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-white/70',
-      el('label', 'flex items-center gap-2', syntheticBox, syntheticCases > 0 ? 'Also the test set' : 'No test set'),
       el('label', 'flex items-center gap-2', explainBox, 'Explain every post'),
       runButton),
     runStatus)
@@ -254,7 +246,6 @@ function createDraftEditor(overview, draft, onRun) {
 // -- An experiment --
 
 function ownerText(result) {
-  if (result.source === 'synthetic') return 'Test set'
   if (result.owner.should_be === 'shown') return 'You: shown'
   return `You: blocked as ${result.owner.plugin}`
 }
@@ -305,11 +296,6 @@ function createFilterDecisions(result, experiment, cutoffs) {
     el('tbody', '', ...rows))
 }
 
-function createSyntheticNote(result) {
-  return el('ul', 'space-y-1 text-xs text-white/50', ...Object.entries(result.owner.why).map(([slug, why]) =>
-    el('li', '', `Test set says ${slug} should ${decisionWord(result.expected[slug])}: ${why}`)))
-}
-
 function createResultRow(result, experiment, cutoffs, liveFilters) {
   const right = isRight(result, cutoffs)
   let mark = el('span', `w-12 shrink-0 text-xs font-semibold ${WRONG_CLASS}`, 'wrong')
@@ -321,7 +307,7 @@ function createResultRow(result, experiment, cutoffs, liveFilters) {
     mark = el('span', `w-12 shrink-0 text-xs font-semibold ${RIGHT_CLASS}`, 'right')
     rowClass = 'opacity-60 hover:opacity-100'
   }
-  const labelPart = result.source === 'synthetic' ? createSyntheticNote(result) : createLabelControls(result, liveFilters, null)
+  const labelPart = createLabelControls(result, liveFilters, null)
   return createPostRow(result, mark,
     [el('span', 'shrink-0 whitespace-nowrap text-white/70 sm:w-48 truncate', ownerText(result)),
       el('span', 'shrink-0 whitespace-nowrap text-xs text-white/50 sm:w-72 truncate', right ? scoresText(result, experiment) : wrongFiltersText(result, cutoffs))],
@@ -364,17 +350,17 @@ function createExperimentCard(experiment, view, liveFilters) {
         show()
       })
       const formula = filter.form === 'product' ? filter.features.join(' x ') : termsText(filter)
-      const sourceCells = ['thumb', 'synthetic'].map((source) => {
-        const counts = filterCounts(experiment.results.filter((result) => result.source === source), slug, view.cutoffs[slug], experiment)
-        if (counts.cases === 0) return el('td', 'py-1 pr-3 text-white/30', '-')
-        return el('td', 'py-1 pr-3',
+      const counts = filterCounts(experiment.results, slug, view.cutoffs[slug], experiment)
+      let countsCell = el('td', 'py-1 pr-3 text-white/30', '-')
+      if (counts.cases > 0) {
+        countsCell = el('td', 'py-1 pr-3',
           el('div', 'font-semibold text-white', `${counts.cases}: ${countsText(counts.draft)}`),
           el('div', 'text-white/40', `live: ${countsText(counts.live)}`))
-      })
+      }
       return el('tr', 'border-t border-white/10 align-top',
         el('td', 'py-1 pr-3 font-mono', slug, el('div', 'font-sans text-white/40', formula)),
         el('td', 'py-1 pr-3', cutoffInput, el('div', 'text-white/40', `live v${experiment.live[slug].version}, ${experiment.live[slug].threshold}`)),
-        ...sourceCells)
+        countsCell)
     }))
 
     const wrong = experiment.results.filter((result) => !isRight(result, view.cutoffs))
@@ -398,8 +384,7 @@ function createExperimentCard(experiment, view, liveFilters) {
     el('thead', '', el('tr', 'text-white/40',
       el('th', 'pb-1 pr-3 font-medium', 'Filter'),
       el('th', 'pb-1 pr-3 font-medium', 'Cutoff'),
-      el('th', 'pb-1 pr-3 font-medium', SOURCE_NAMES.thumb),
-      el('th', 'pb-1 pr-3 font-medium', SOURCE_NAMES.synthetic))),
+      el('th', 'pb-1 pr-3 font-medium', 'Your thumbs'))),
     countsBody)))
   card.appendChild(el('p', 'mt-1 text-xs text-white/40', 'Moving a cutoff recomputes the counts and marks from the stored ratings, without asking the model again.'))
   card.appendChild(el('details', 'mt-3',
@@ -412,7 +397,7 @@ function createExperimentCard(experiment, view, liveFilters) {
 // -- Past experiments --
 
 function filterRightText(experiment, filter) {
-  const score = experiment.scores[filter.plugin]?.thumb
+  const score = experiment.scores[filter.plugin]
   if (!score) return `${filter.plugin} -`
   return `${filter.plugin} ${score.draft.right}/${score.cases} (live ${score.live.right})`
 }
@@ -444,7 +429,6 @@ function draftFrom(source, startedFrom, startedFromFeatureSet) {
   return {
     features: structuredClone(source.features),
     filterRows: source.filters.map((filter) => ({ plugin: filter.plugin, form: filter.form, terms: termsText(filter), cutoff: filter.cutoff })),
-    include_synthetic: Boolean(source.include_synthetic),
     explain_every_case: Boolean(source.explain_every_case),
     started_from: startedFrom,
     started_from_feature_set: startedFromFeatureSet,
@@ -492,7 +476,6 @@ export function mountFeatureTuningPage({ experimentId } = {}) {
       const body = {
         features: draft.features,
         filters,
-        include_synthetic: draft.include_synthetic,
         explain_every_case: draft.explain_every_case,
         started_from: draft.started_from,
         started_from_feature_set: draft.started_from_feature_set,

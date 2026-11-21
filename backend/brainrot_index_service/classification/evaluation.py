@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .images import image_file_data_url
 from .inference import ask_model, build_messages, describe_post, stored_reply_context
-from .models import IMAGE_DOWNLOADED, POST_KIND_REPLY
+from .models import ACTION_ALLOW, IMAGE_DOWNLOADED, POST_KIND_REPLY, SEVERITY_LOW, VERDICT_RIGHT
 
 # The threshold a new user starts with (UserPlugin.threshold).
 DEFAULT_THRESHOLD = 60
@@ -93,6 +93,40 @@ def example_from_post(example_id, source, post, images_dir):
     return example
 
 
+def expected_answers(judgment):
+    """What each filter should have decided, as far as the verdict says. A
+    filter missing from the result has no known answer."""
+    if judgment.severity == SEVERITY_LOW:
+        difficulty = DIFFICULTY_BORDERLINE
+    else:
+        difficulty = DIFFICULTY_CLEAR
+    shown = judgment.shown_action == ACTION_ALLOW
+    right = judgment.verdict == VERDICT_RIGHT
+    why = f"Reader's thumbs {'up' if right else 'down'} on a post that was {judgment.shown_action}."
+    if judgment.details:
+        why += f" Reader said: {judgment.details}"
+
+    expected = {}
+    if right and shown:
+        # Every filter that was on rightly let it through.
+        for filter_result in judgment.filter_results:
+            expected[filter_result['plugin']] = {'flag': False, 'difficulty': difficulty, 'why': why}
+    elif right:
+        # Every filter that flagged it was right to.
+        for filter_result in judgment.filter_results:
+            if filter_result['flagged']:
+                expected[filter_result['plugin']] = {'flag': True, 'difficulty': difficulty, 'why': why}
+    elif not shown:
+        # Every filter that flagged it was wrong to.
+        for filter_result in judgment.filter_results:
+            if filter_result['flagged']:
+                expected[filter_result['plugin']] = {'flag': False, 'difficulty': difficulty, 'why': why}
+    elif judgment.plugin is not None:
+        # Shown but should not have been: only the filter the reader named is known.
+        expected[judgment.plugin.slug] = {'flag': True, 'difficulty': difficulty, 'why': why}
+    return expected
+
+
 def save_results(results_path, results):
     # Written to a temporary file first so an interrupted run never leaves half a file.
     results_path.parent.mkdir(parents=True, exist_ok=True)
@@ -102,7 +136,8 @@ def save_results(results_path, results):
     os.replace(temporary_path, results_path)
 
 
-def example_messages(example, plugin_version, images_dir, explain=False):
+def example_description_and_images(example, images_dir):
+    """(post description, image data URLs) of a dataset example, as the model reads it."""
     image_urls = []
     if example.get('image'):
         image_urls.append(image_file_data_url(images_dir / example['image']))
@@ -120,6 +155,11 @@ def example_messages(example, plugin_version, images_dir, explain=False):
         thread_text=example.get('thread_text'),
         by_original_poster=example.get('by_original_poster', False),
     )
+    return post_description, image_urls
+
+
+def example_messages(example, plugin_version, images_dir, explain=False):
+    post_description, image_urls = example_description_and_images(example, images_dir)
     return build_messages(plugin_version, post_description, image_urls, explain)
 
 

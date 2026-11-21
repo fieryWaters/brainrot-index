@@ -15,4 +15,5 @@ urlpatterns = [
     path('api/', include('billing.urls')),
     path('api/', include('store.urls')),
     path('api/', include('families.urls')),
+    path('api/', include('tuning.urls')),
 ]

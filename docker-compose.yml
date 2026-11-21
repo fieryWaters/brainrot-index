@@ -55,6 +55,8 @@ services:
     volumes:
       - backend_static:/app/staticfiles
       - post_images:/app/media
+      # The synthetic test set, which the tuning page can judge a draft rubric on.
+      - ./eval:/app/eval:ro
     depends_on:
       db:
         condition: service_healthy
@@ -84,6 +86,7 @@ services:
       start_period: 30s
     volumes:
       - post_images:/app/media
+      - ./eval:/app/eval:ro
     depends_on:
       backend:
         condition: service_healthy

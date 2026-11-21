@@ -42,9 +42,11 @@ export function createLayout() {
   familyLink.href = '/family'
   const accountLink = el('a', dropdownLinkClass, 'Account settings')
   accountLink.href = '/account'
-  // Only the site owner can open the inbox.
+  // Only the site owner can open the inbox and the tuning page.
   const inboxLink = el('a', dropdownLinkClass, 'Inbox')
   inboxLink.href = '/inbox'
+  const tuningLink = el('a', dropdownLinkClass, 'Tuning')
+  tuningLink.href = '/tuning'
 
   const signOutBtn = el('button', 'w-full text-left px-3 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-colors', 'Sign Out')
   signOutBtn.addEventListener('click', async () => {
@@ -57,7 +59,7 @@ export function createLayout() {
 
   const dropdown = el('div', 'absolute right-0 mt-2 w-72 bg-navy-900 border border-white/10 rounded-xl shadow-2xl shadow-black/50 overflow-hidden z-50 hidden',
     el('div', 'px-4 py-3 border-b border-white/10', emailP),
-    el('div', 'p-1', dashboardLink, storeLink, familyLink, accountLink, inboxLink, signOutBtn))
+    el('div', 'p-1', dashboardLink, storeLink, familyLink, accountLink, inboxLink, tuningLink, signOutBtn))
 
   const dropdownWrapper = el('div', 'relative', avatarBtn, dropdown)
 
@@ -96,6 +98,7 @@ export function createLayout() {
     if (isAuthenticated) {
       emailP.textContent = email || ''
       inboxLink.classList.toggle('hidden', !canOpenInbox)
+      tuningLink.classList.toggle('hidden', !canOpenInbox)
 
       rightSlot.replaceChildren(navStoreLink, dropdownWrapper)
     } else {

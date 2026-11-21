@@ -45,7 +45,7 @@ describe('Layout', () => {
     expect(outlet.id).toBe('page-outlet')
   })
 
-  it('shows the Inbox link in the menu only to the site owner', async () => {
+  it('shows the Inbox and Tuning links in the menu only to the site owner', async () => {
     for (const canOpenInbox of [true, false]) {
       _resetForTesting()
       vi.stubGlobal('fetch', vi.fn(async (url) => {
@@ -63,6 +63,9 @@ describe('Layout', () => {
       const inboxLink = screen.getByText('Inbox', { selector: 'a' })
       expect(inboxLink.getAttribute('href')).toBe('/inbox')
       expect(inboxLink.classList.contains('hidden')).toBe(!canOpenInbox)
+      const tuningLink = screen.getByText('Tuning', { selector: 'a' })
+      expect(tuningLink.getAttribute('href')).toBe('/tuning')
+      expect(tuningLink.classList.contains('hidden')).toBe(!canOpenInbox)
       document.body.innerHTML = ''
     }
   })

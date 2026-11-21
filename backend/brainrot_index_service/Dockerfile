@@ -29,6 +29,7 @@ COPY --chown=app:app feedback ./feedback
 COPY --chown=app:app billing ./billing
 COPY --chown=app:app families ./families
 COPY --chown=app:app store ./store
+COPY --chown=app:app tuning ./tuning
 COPY --chown=app:app brainrot_index_service ./brainrot_index_service
 RUN uv pip install --system --no-deps .
 

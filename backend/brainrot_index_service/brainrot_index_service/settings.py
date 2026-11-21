@@ -122,6 +122,10 @@ OPENROUTER_MODEL = config('OPENROUTER_MODEL', default='google/gemini-2.5-flash-l
 LOCAL_INFERENCE_BASE_URL = config('LOCAL_INFERENCE_BASE_URL', default='').strip().rstrip('/')
 LOCAL_INFERENCE_MODEL = config('LOCAL_INFERENCE_MODEL', default='').strip()
 
+# The synthetic test set the evaluations use (eval/dataset.jsonl, mounted into
+# the containers), which the tuning page can also judge a draft rubric on.
+TUNING_SYNTHETIC_DATASET = config('TUNING_SYNTHETIC_DATASET', default='/app/eval/dataset.jsonl').strip()
+
 # Brainrot watches a post's video itself, frames and audio, with Gemini, the only
 # model that fetches YouTube videos by URL: straight through the Gemini API
 # when GEMINI_API_KEY is set, which can clip a YouTube video to its opening,
@@ -157,6 +161,7 @@ INSTALLED_APPS = [
     'billing',
     'store',
     'families',
+    'tuning',
 ]
 
 # -- Email -------------------------------------------------------------------

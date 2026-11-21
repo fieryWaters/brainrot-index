@@ -4,42 +4,8 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand
 
-from classification.evaluation import DIFFICULTY_BORDERLINE, DIFFICULTY_CLEAR, example_from_post
-from classification.models import ACTION_ALLOW, SEVERITY_LOW, VERDICT_RIGHT, VERDICT_WRONG, PostJudgment
-
-
-def expected_answers(judgment):
-    """What each filter should have decided, as far as the verdict says. A
-    filter missing from the result has no known answer."""
-    if judgment.severity == SEVERITY_LOW:
-        difficulty = DIFFICULTY_BORDERLINE
-    else:
-        difficulty = DIFFICULTY_CLEAR
-    shown = judgment.shown_action == ACTION_ALLOW
-    right = judgment.verdict == VERDICT_RIGHT
-    why = f"Reader's thumbs {'up' if right else 'down'} on a post that was {judgment.shown_action}."
-    if judgment.details:
-        why += f" Reader said: {judgment.details}"
-
-    expected = {}
-    if right and shown:
-        # Every filter that was on rightly let it through.
-        for filter_result in judgment.filter_results:
-            expected[filter_result['plugin']] = {'flag': False, 'difficulty': difficulty, 'why': why}
-    elif right:
-        # Every filter that flagged it was right to.
-        for filter_result in judgment.filter_results:
-            if filter_result['flagged']:
-                expected[filter_result['plugin']] = {'flag': True, 'difficulty': difficulty, 'why': why}
-    elif not shown:
-        # Every filter that flagged it was wrong to.
-        for filter_result in judgment.filter_results:
-            if filter_result['flagged']:
-                expected[filter_result['plugin']] = {'flag': False, 'difficulty': difficulty, 'why': why}
-    elif judgment.plugin is not None:
-        # Shown but should not have been: only the filter the reader named is known.
-        expected[judgment.plugin.slug] = {'flag': True, 'difficulty': difficulty, 'why': why}
-    return expected
+from classification.evaluation import example_from_post, expected_answers
+from classification.models import VERDICT_RIGHT, VERDICT_WRONG, PostJudgment
 
 
 def filter_count_lines(examples):

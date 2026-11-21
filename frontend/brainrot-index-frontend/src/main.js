@@ -22,6 +22,7 @@ import { mountTermsPage } from './pages/TermsPage.js'
 import { mountContactPage } from './pages/ContactPage.js'
 import { mountInboxPage } from './pages/InboxPage.js'
 import { mountThumbsPage } from './pages/ThumbsPage.js'
+import { mountTuningPage, mountTuningComparePage } from './pages/TuningPage.js'
 import { mountNotFoundPage } from './pages/NotFoundPage.js'
 
 // Build the persistent shell and mount it into #root
@@ -57,6 +58,10 @@ register('/family/join', mountJoinFamilyPage, { title: 'Join a family' })
 register('/inbox', mountInboxPage, { requiresAuth: true, title: 'Inbox' })
 register('/inbox/thumbs', mountThumbsPage, { requiresAuth: true, title: 'Post thumbs' })
 register('/inbox/:itemId', mountInboxPage, { requiresAuth: true, title: 'Inbox' })
+// The owner's tuning page for filter rubrics; the server refuses everyone else.
+register('/tuning', mountTuningPage, { requiresAuth: true, title: 'Tuning' })
+register('/tuning/compare/:first/:second', mountTuningComparePage, { requiresAuth: true, title: 'Tuning' })
+register('/tuning/:experimentId', mountTuningPage, { requiresAuth: true, title: 'Tuning' })
 
 // Centralized auth gate: protected routes redirect to '/' when there's no
 // session. Reads live state so a fresh refreshSession() on boot is honored.

@@ -67,7 +67,7 @@ class FeatureTuningTests(TestCase):
         rude = Plugin.objects.get(slug='rude-or-toxic')
         Classification.objects.create(post=self.thumbs['A thoughtful explanation'].post, plugin_version=rude.latest_version(),
                                       status=CLASSIFICATION_DONE, score=5, criteria_met=[], reasoning='Plain.')
-        self.feature_set = FeatureSet.objects.get(version=1)
+        self.feature_set = FeatureSet.objects.get(version=2)
 
     def draft(self, **overrides):
         draft = {'features': self.feature_set.features, 'filters': self.feature_set.filters,
@@ -155,7 +155,7 @@ class FeatureTuningTests(TestCase):
 
     def test_the_overview_starts_from_the_saved_feature_set(self):
         overview = self.owner_client.get(reverse('tuning_features')).json()
-        self.assertEqual(overview['feature_set']['version'], 1)
+        self.assertEqual(overview['feature_set']['version'], 2)
         self.assertEqual({tunable['slug'] for tunable in overview['filters']},
                          {'brainrot', 'engagement-bait', 'low-effort', 'rude-or-toxic'})
         low_effort = next(tunable for tunable in overview['filters'] if tunable['slug'] == 'low-effort')

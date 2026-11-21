@@ -79,6 +79,13 @@ class FirstFeatureSetTests(TestCase):
             for level in feature['levels']:
                 self.assertTrue(1 <= len(level['examples']) <= 2)
 
+    def test_version_2_lowers_only_the_brainrot_cutoff(self):
+        first = FeatureSet.objects.get(version=1)
+        second = FeatureSet.objects.get(version=2)
+        self.assertEqual(second.features, first.features)
+        cutoffs = {filter_definition['plugin']: filter_definition['cutoff'] for filter_definition in second.filters}
+        self.assertEqual(cutoffs, {'brainrot': 40, 'engagement-bait': 50, 'low-effort': 80, 'rude-or-toxic': 60})
+
     def test_a_feature_set_is_immutable(self):
         feature_set = FeatureSet.objects.get(version=1)
         with self.assertRaises(ValueError):

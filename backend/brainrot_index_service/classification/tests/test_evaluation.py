@@ -58,7 +58,7 @@ class EvaluatePluginsTests(TestCase):
 
             self.assertEqual(model_call.call_count, 2)
             sent_text = model_call.call_args.kwargs['json']['messages'][1]['content'][0]['text']
-            self.assertIn('Replying to this post: We just shipped version 2', sent_text)
+            self.assertIn('The post it answers: We just shipped version 2', sent_text)
             self.assertEqual(Post.objects.count(), 0)
             self.assertEqual(Classification.objects.count(), 0)
 
@@ -190,7 +190,7 @@ class CriteriaEvaluationTests(TestCase):
             answer = {'reasoning': 'A reply.'}
             for name in schema['properties']:
                 if name != 'reasoning':
-                    answer[name] = is_a and name in ('demeans_people', 'us_against_them')
+                    answer[name] = is_a and name in ('delivers_hostility', 'contempt_for_people')
             return model_response(answer)
 
         examples = []
@@ -202,7 +202,7 @@ class CriteriaEvaluationTests(TestCase):
             with patch('classification.inference.requests.post', side_effect=contempt_for_example_a):
                 summary = evaluate(write_dataset(directory, examples))
 
-        self.assertIn('demeans_people (50): 1 of 1, 0 of 1', summary)
+        self.assertIn('delivers_hostility (50): 1 of 1, 0 of 1', summary)
         self.assertIn('makes_readers_laugh (-50): 0 of 1, 0 of 1', summary)
         self.assertIn('clear cases precision  1.00  recall  1.00', summary)
 
@@ -220,7 +220,7 @@ class ExplainEvaluationTests(TestCase):
                 if name.startswith('why_'):
                     answer[name] = f"Explanation of {name[len('why_'):]}."
                 elif name != 'reasoning':
-                    answer[name] = name == 'demeans_people'
+                    answer[name] = name == 'delivers_hostility'
             return model_response(answer)
 
         example = labeled_example('a', False, text='example a')
@@ -235,7 +235,7 @@ class ExplainEvaluationTests(TestCase):
             record = json.loads(results_path.read_text())['results'][0]
 
         self.assertEqual(record['score'], 50)
-        self.assertEqual(record['criteria_explanations']['demeans_people'], 'Explanation of demeans_people.')
+        self.assertEqual(record['criteria_explanations']['delivers_hostility'], 'Explanation of delivers_hostility.')
         self.assertIn('    makes_readers_laugh: Explanation of makes_readers_laugh.', output.getvalue())
         self.assertIn('why_', requests_sent[0]['messages'][0]['content'])
 

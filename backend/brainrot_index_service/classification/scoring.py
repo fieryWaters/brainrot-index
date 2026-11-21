@@ -23,8 +23,9 @@ fields, in this order:
 - label: exactly one of: {labels}."""
 
 CRITERIA_INSTRUCTIONS = """\
-Judge the single post the user sends against each criterion below. Read it
-in its context: where it is posted and what it replies to. Decide each
+Judge only the post or reply the user marks as being judged, against each
+criterion below. Anything marked as context, such as the post a reply answers,
+is there to help you read it and is never judged itself. Decide each
 criterion on its own: a post can meet one and not the others. A criterion is met only when the post clearly meets
 it; when in doubt, it is not met.
 
@@ -32,8 +33,8 @@ CRITERIA
 {criteria}
 
 Answer with a JSON object with exactly these fields, in this order:
-- reasoning: one or two sentences describing what the post says or shows,
-  without judging it.
+- reasoning: one or two sentences describing what the post or reply being
+  judged says or shows, without judging it.
 - one field per criterion, named as above: true when the post meets it,
   false when it does not."""
 

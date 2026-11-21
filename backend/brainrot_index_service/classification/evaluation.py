@@ -73,13 +73,15 @@ def example_from_post(example_id, source, post, images_dir):
     if post.video_url:
         example['has_video'] = True
     if post.kind == POST_KIND_REPLY:
-        parent_text, parent_is_reply, thread_text = stored_reply_context(post)
+        parent_text, parent_is_reply, thread_text, by_original_poster = stored_reply_context(post)
         if parent_text is not None:
             example['parent_text'] = parent_text
         if parent_is_reply:
             example['parent_is_reply'] = True
         if thread_text is not None:
             example['thread_text'] = thread_text
+        if by_original_poster:
+            example['by_original_poster'] = True
 
     post_image = post.images.filter(status=IMAGE_DOWNLOADED).order_by('id').first()
     if post_image is not None:
@@ -116,6 +118,7 @@ def example_messages(example, plugin_version, images_dir, explain=False):
         has_video=example.get('has_video', False),
         parent_is_reply=example.get('parent_is_reply', False),
         thread_text=example.get('thread_text'),
+        by_original_poster=example.get('by_original_poster', False),
     )
     return build_messages(plugin_version, post_description, image_urls, explain)
 

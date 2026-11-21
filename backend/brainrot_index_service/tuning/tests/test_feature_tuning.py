@@ -46,8 +46,7 @@ def schema_names(requests_sent):
 
 
 @override_settings(LOCAL_AUTH_BYPASS=False, ADMIN_EMAIL=OWNER_EMAIL, OPENROUTER_API_KEY='test-key',
-                   INFERENCE_SOURCE='openrouter', OPENROUTER_MODEL='test/model',
-                   TUNING_SYNTHETIC_DATASET='/nonexistent/dataset.jsonl')
+                   INFERENCE_SOURCE='openrouter', OPENROUTER_MODEL='test/model')
 class FeatureTuningTests(TestCase):
     def setUp(self):
         self.owner = create_verified_user(OWNER_EMAIL)
@@ -104,17 +103,17 @@ class FeatureTuningTests(TestCase):
 
         shown = self.owner_client.get(reverse('tuning_feature_experiment', args=[started['id']])).json()
         self.assertEqual(shown['status'], 'done')
-        self.assertEqual(shown['scores']['brainrot']['thumb'], {
+        self.assertEqual(shown['scores']['brainrot'], {
             'cases': 2,
             'draft': {'right': 1, 'missed': 0, 'wrongly_flagged': 1, 'failed': 0},
             'live': {'right': 2, 'missed': 0, 'wrongly_flagged': 0, 'failed': 0},
         })
-        self.assertEqual(shown['scores']['low-effort']['thumb'], {
+        self.assertEqual(shown['scores']['low-effort'], {
             'cases': 3,
             'draft': {'right': 2, 'missed': 0, 'wrongly_flagged': 1, 'failed': 0},
             'live': {'right': 2, 'missed': 1, 'wrongly_flagged': 0, 'failed': 0},
         })
-        self.assertEqual(shown['scores']['rude-or-toxic']['thumb']['draft']['right'], 3)
+        self.assertEqual(shown['scores']['rude-or-toxic']['draft']['right'], 3)
 
         results = {result['post']['text']: result for result in shown['results']}
         self.assertNotIn('crypto scam', results)

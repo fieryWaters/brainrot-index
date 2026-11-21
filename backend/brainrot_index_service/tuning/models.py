@@ -2,8 +2,8 @@
 
 A TuningExperiment is a draft of one filter's rubric (its text, criteria and
 cutoff); a FeatureExperiment is a draft of a feature set, every filter
-composed of scored features. Each is judged on the owner's thumbs, and
-optionally on the synthetic test set, beside the live versions. Nothing here
+composed of scored features. Each is judged on the owner's thumbs beside
+the live versions. Nothing here
 changes live filtering: a draft goes live only when an engineer releases it
 as a new PluginVersion or FeatureSet."""
 
@@ -23,14 +23,6 @@ EXPERIMENT_STATUS_CHOICES = [
     (EXPERIMENT_DONE, 'Done'),
     (EXPERIMENT_FAILED, 'Failed'),
 ]
-
-CASE_THUMB = 'thumb'
-CASE_SYNTHETIC = 'synthetic'
-CASE_SOURCE_CHOICES = [
-    (CASE_THUMB, "The owner's thumbs"),
-    (CASE_SYNTHETIC, 'Synthetic test set'),
-]
-
 
 def allowed_labels(criteria):
     """The label is the met criterion that adds the most points, or none."""
@@ -52,7 +44,6 @@ class TuningExperiment(models.Model):
     criteria = models.JSONField()
     # A post scoring at or above the cutoff is flagged.
     threshold = models.PositiveSmallIntegerField(validators=[MinValueValidator(0), MaxValueValidator(100)])
-    include_synthetic = models.BooleanField(default=False)
     # Without it, only the posts the draft gets wrong or decides differently from the live version are explained.
     explain_every_case = models.BooleanField(default=False)
     model = models.CharField(max_length=200)
@@ -86,21 +77,20 @@ class TuningResult(models.Model):
     same after a thumbs is changed or deleted."""
 
     experiment = models.ForeignKey(TuningExperiment, on_delete=models.CASCADE, related_name='results')
-    # "judgment-12" for a thumbs, the example's id for the synthetic test set.
+    # "judgment-12" for a thumbs.
     case_id = models.CharField(max_length=64)
-    source = models.CharField(max_length=16, choices=CASE_SOURCE_CHOICES)
     # The thumbs, while it exists.
     judgment = models.ForeignKey(PostJudgment, on_delete=models.SET_NULL, null=True, blank=True, related_name='tuning_results')
     # The post as the model read it, context included.
     description = models.TextField()
     # The post as a reader sees it, for the page, as runs.post_as_read gives it.
     post = models.JSONField(default=dict)
-    # Where the post's images are on the web. Empty for the synthetic test set.
+    # Where the post's images are on the web.
     image_urls = models.JSONField(default=list, blank=True)
     post_url = models.TextField(blank=True, default='')
     should_flag = models.BooleanField()
-    # A thumbs: {verdict, shown_action, should_be, plugin, details}, plugin being the filter
-    # it is blocked as, or empty. A synthetic example: {why}.
+    # The thumbs: {verdict, shown_action, should_be, plugin, details}, plugin being the filter
+    # it is blocked as, or empty.
     owner = models.JSONField(default=dict)
     # True for a filter that watches videos, on a post whose video production watched;
     # the draft judges it on its text and images only.
@@ -145,7 +135,6 @@ class FeatureExperiment(models.Model):
     # Each filter's live version and cutoff when the experiment was made:
     # {plugin slug: {version_id, version, threshold}}.
     live = models.JSONField()
-    include_synthetic = models.BooleanField(default=False)
     # Without it, only the posts some filter gets wrong or decides differently from live are explained.
     explain_every_case = models.BooleanField(default=False)
     model = models.CharField(max_length=200)
@@ -168,7 +157,6 @@ class FeatureResult(models.Model):
 
     experiment = models.ForeignKey(FeatureExperiment, on_delete=models.CASCADE, related_name='results')
     case_id = models.CharField(max_length=64)
-    source = models.CharField(max_length=16, choices=CASE_SOURCE_CHOICES)
     judgment = models.ForeignKey(PostJudgment, on_delete=models.SET_NULL, null=True, blank=True,
                                  related_name='feature_results')
     description = models.TextField()

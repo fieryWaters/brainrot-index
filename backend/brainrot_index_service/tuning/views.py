@@ -9,14 +9,15 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.decorators import api_view, authentication_classes, permission_classes, throttle_classes
 from rest_framework.response import Response
 
+from classification.evaluation import owner_judgments
 from classification.features import FORM_PRODUCT, FORM_WEIGHTED_SUM, FORMS, features_prompt, features_used, filter_score
 from classification.inference import configured_model
 from classification.models import SHOULD_BE_CHOICES, SHOULD_BE_SHOWN, FeatureSet, Plugin
 from feedback.views import CanOpenInbox
 
 from .feature_runs import create_experiment, filter_counts
-from .models import CASE_SYNTHETIC, CASE_THUMB, FeatureExperiment, TuningExperiment
-from .runs import decides_to_flag, owner_judgments, owner_judgments_for, synthetic_examples_for
+from .models import FeatureExperiment, TuningExperiment
+from .runs import decides_to_flag, owner_judgments_for
 
 # Names the model's answer already uses, or the label of a post that meets no criterion.
 RESERVED_CRITERION_NAMES = {'reasoning', 'none'}
@@ -61,15 +62,12 @@ def answer_counts(results, answer_field, threshold_of):
 
 def experiment_summary(experiment):
     results = list(experiment.results.all())
-    scores = {}
-    for source in [CASE_THUMB, CASE_SYNTHETIC]:
-        source_results = [result for result in results if result.source == source]
-        if not source_results:
-            continue
-        scores[source] = {
-            'cases': len(source_results),
-            'draft': answer_counts(source_results, 'draft', lambda result: experiment.threshold),
-            'live': answer_counts(source_results, 'live', lambda result: experiment.live_threshold),
+    scores = None
+    if results:
+        scores = {
+            'cases': len(results),
+            'draft': answer_counts(results, 'draft', lambda result: experiment.threshold),
+            'live': answer_counts(results, 'live', lambda result: experiment.live_threshold),
         }
     costs = [result.cost for result in results if result.cost is not None]
     return {
@@ -83,7 +81,6 @@ def experiment_summary(experiment):
         'live_threshold': experiment.live_threshold,
         'started_from': experiment.started_from_id,
         'threshold': experiment.threshold,
-        'include_synthetic': experiment.include_synthetic,
         'explain_every_case': experiment.explain_every_case,
         'model': experiment.model,
         'inference_source': experiment.inference_source,
@@ -99,7 +96,6 @@ def experiment_summary(experiment):
 def result_as_dict(result):
     return {
         'case_id': result.case_id,
-        'source': result.source,
         'judgment_id': result.judgment_id,
         'post': result.post,
         'image_urls': result.image_urls,
@@ -135,7 +131,6 @@ class DraftSerializer(serializers.Serializer):
     rubric_prompt = serializers.CharField()
     criteria = CriterionSerializer(many=True, allow_empty=False)
     threshold = serializers.IntegerField(min_value=0, max_value=100)
-    include_synthetic = serializers.BooleanField(default=False)
     explain_every_case = serializers.BooleanField(default=False)
     started_from = serializers.IntegerField(required=False, allow_null=True)
 
@@ -166,7 +161,6 @@ def list_filters(request):
             'input_kind': plugin.input_kind,
             'live': live_rubric(plugin),
             'thumb_cases': len(owner_judgments_for(plugin)),
-            'synthetic_cases': len(synthetic_examples_for(plugin)),
         })
     return Response({'filters': filters, 'model': configured_model(), 'inference_source': settings.INFERENCE_SOURCE})
 
@@ -187,9 +181,6 @@ def experiments(request):
     plugin = next((plugin for plugin in tunable_plugins() if plugin.slug == draft['plugin']), None)
     if plugin is None:
         return Response({'error': f"No filter {draft['plugin']} to tune."}, status=status.HTTP_400_BAD_REQUEST)
-    if draft['include_synthetic'] and not synthetic_examples_for(plugin):
-        return Response({'error': f"The synthetic test set has no examples for {plugin.slug}."},
-                        status=status.HTTP_400_BAD_REQUEST)
     started_from = None
     if draft.get('started_from') is not None:
         started_from = TuningExperiment.objects.filter(id=draft['started_from']).first()
@@ -202,7 +193,6 @@ def experiments(request):
         rubric_prompt=draft['rubric_prompt'],
         criteria=[dict(criterion) for criterion in draft['criteria']],
         threshold=draft['threshold'],
-        include_synthetic=draft['include_synthetic'],
         explain_every_case=draft['explain_every_case'],
         model=configured_model(),
         inference_source=settings.INFERENCE_SOURCE,
@@ -293,7 +283,6 @@ class FeatureFilterSerializer(serializers.Serializer):
 class FeatureDraftSerializer(serializers.Serializer):
     features = FeatureSerializer(many=True, allow_empty=False)
     filters = FeatureFilterSerializer(many=True, allow_empty=False)
-    include_synthetic = serializers.BooleanField(default=False)
     explain_every_case = serializers.BooleanField(default=False)
     started_from = serializers.IntegerField(required=False, allow_null=True)
     started_from_feature_set = serializers.IntegerField(required=False, allow_null=True)
@@ -327,12 +316,9 @@ def feature_experiment_summary(experiment, results=None):
     scores = {}
     for filter_definition in experiment.filters:
         slug = filter_definition['plugin']
-        scores[slug] = {}
-        for source in [CASE_THUMB, CASE_SYNTHETIC]:
-            counts = filter_counts(filter_definition, experiment.live[slug],
-                                   [result for result in results if result.source == source])
-            if counts['cases'] > 0:
-                scores[slug][source] = counts
+        counts = filter_counts(filter_definition, experiment.live[slug], results)
+        if counts['cases'] > 0:
+            scores[slug] = counts
     costs = [result.cost for result in results if result.cost is not None]
     return {
         'id': experiment.id,
@@ -345,7 +331,6 @@ def feature_experiment_summary(experiment, results=None):
                                      if experiment.started_from_feature_set else None),
         'filters': experiment.filters,
         'live': experiment.live,
-        'include_synthetic': experiment.include_synthetic,
         'explain_every_case': experiment.explain_every_case,
         'model': experiment.model,
         'inference_source': experiment.inference_source,
@@ -367,7 +352,6 @@ def feature_result_as_dict(result, filters):
             filter_scores[slug] = None if result.failed else filter_score(filter_definition, result.scores)
     return {
         'case_id': result.case_id,
-        'source': result.source,
         'judgment_id': result.judgment_id,
         'post': result.post,
         'image_urls': result.image_urls,
@@ -406,7 +390,6 @@ def feature_overview(request):
             'input_kind': plugin.input_kind,
             'live': {'version': live_version.version, 'threshold': plugin.default_threshold},
             'thumb_cases': len(owner_judgments_for(plugin)),
-            'synthetic_cases': len(synthetic_examples_for(plugin)),
         })
     feature_set = FeatureSet.objects.order_by('-version').first()
     experiments_found = (FeatureExperiment.objects.select_related('started_from_feature_set')
@@ -435,7 +418,6 @@ def feature_experiments(request):
     experiment = create_experiment(
         features=[as_plain_data(feature) for feature in draft['features']],
         filters=[as_plain_data(filter_definition) for filter_definition in draft['filters']],
-        include_synthetic=draft['include_synthetic'],
         explain_every_case=draft['explain_every_case'],
         started_from_feature_set=started_from_feature_set,
         started_from=started_from,

@@ -24,7 +24,6 @@ export const RIGHT_CLASS = 'text-glow-300'
 export const WRONG_CLASS = 'text-red-300'
 export const FAILED_CLASS = 'text-amber-300'
 const PLATFORM_NAMES = { reddit: 'Reddit', x: 'X', youtube: 'YouTube' }
-const SOURCE_NAMES = { thumb: 'Your thumbs', synthetic: 'Test set' }
 
 export function formatDateTime(isoDate) {
   return new Date(isoDate).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -112,7 +111,7 @@ function createCriterionRow(criterion, onChange, onRemove) {
     el('td', 'py-1', removeButton))
 }
 
-// draft: { rubric_prompt, criteria, threshold, include_synthetic, explain_every_case, started_from }, edited in place.
+// draft: { rubric_prompt, criteria, threshold, explain_every_case, started_from }, edited in place.
 function createDraftEditor(filter, draft, lastExperiment, onRun) {
   const rubricBox = el('textarea', `${INPUT_CLASS} h-64 font-mono text-xs`)
   rubricBox.value = draft.rubric_prompt
@@ -145,11 +144,6 @@ function createDraftEditor(filter, draft, lastExperiment, onRun) {
   thresholdInput.setAttribute('aria-label', 'Cutoff')
   thresholdInput.addEventListener('input', () => { draft.threshold = Number(thresholdInput.value) })
 
-  const syntheticBox = el('input', '')
-  syntheticBox.type = 'checkbox'
-  syntheticBox.checked = draft.include_synthetic && filter.synthetic_cases > 0
-  syntheticBox.disabled = filter.synthetic_cases === 0
-  syntheticBox.addEventListener('change', () => { draft.include_synthetic = syntheticBox.checked })
   const explainBox = el('input', '')
   explainBox.type = 'checkbox'
   explainBox.checked = draft.explain_every_case
@@ -170,9 +164,6 @@ function createDraftEditor(filter, draft, lastExperiment, onRun) {
   if (lastExperiment) {
     lastCostText = `The last one judged ${lastExperiment.judged_cases} posts for ${costText(lastExperiment.cost)}.`
   }
-  const syntheticText = filter.synthetic_cases > 0
-    ? `Also the test set (${filter.synthetic_cases})`
-    : 'No test set examples for this filter'
 
   return el('div', '',
     el('p', LABEL_CLASS, 'Rubric text'),
@@ -190,7 +181,6 @@ function createDraftEditor(filter, draft, lastExperiment, onRun) {
     el('div', 'mt-1', addButton),
     el('div', 'mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-white/70',
       el('label', 'flex items-center gap-2', 'Cutoff', thresholdInput),
-      el('label', 'flex items-center gap-2', syntheticBox, syntheticText),
       el('label', 'flex items-center gap-2', explainBox, 'Explain every post'),
       runButton,
       el('span', 'text-xs text-white/50', `${filter.thumb_cases} thumbs. ${lastCostText}`)),
@@ -324,9 +314,6 @@ function createLabelChoice(filters, value) {
 
 // Fixing the owner's label: choose it again, note it, or delete it.
 export function createLabelControls(result, filters, pluginSlug) {
-  if (result.source === 'synthetic') {
-    return el('p', 'text-xs text-white/50', `Test set says ${decisionWord(result.should_flag)}: ${result.owner.why}`)
-  }
   if (result.judgment_id === null) {
     return el('p', 'text-xs text-white/40', 'This thumbs was deleted.')
   }
@@ -411,8 +398,7 @@ export function createOpenedPost(result, ...sideParts) {
 }
 
 function ownerPart(result) {
-  const who = result.source === 'synthetic' ? 'Test set' : 'You'
-  return el('span', 'w-24 shrink-0 whitespace-nowrap text-white/70', `${who}: ${decisionWord(result.should_flag)}`)
+  return el('span', 'w-24 shrink-0 whitespace-nowrap text-white/70', `You: ${decisionWord(result.should_flag)}`)
 }
 
 // -- An experiment --
@@ -477,16 +463,13 @@ function createResultsList(experiment, view, filters) {
 }
 
 function createCounts(experiment) {
-  const lines = []
-  for (const source of ['thumb', 'synthetic']) {
-    const score = experiment.scores[source]
-    if (!score) continue
-    lines.push(el('p', 'text-sm',
-      el('span', 'text-white/50', `${SOURCE_NAMES[source]} (${score.cases}): `),
+  const score = experiment.scores
+  if (!score) return el('div', 'mt-3')
+  return el('div', 'mt-3',
+    el('p', 'text-sm',
+      el('span', 'text-white/50', `Your thumbs (${score.cases}): `),
       el('span', 'font-semibold text-white', countsText(score.draft)),
       el('span', 'text-white/40', `. Live v${experiment.live_version}: ${countsText(score.live)}.`)))
-  }
-  return el('div', 'mt-3 space-y-1', ...lines)
 }
 
 function experimentFactsText(experiment) {
@@ -522,8 +505,8 @@ function createExperimentCard(experiment, view, filters) {
 
 // -- The experiments on a filter --
 
-function scoreText(experiment, source) {
-  const score = experiment.scores[source]
+function scoreText(experiment) {
+  const score = experiment.scores
   if (!score) return '-'
   return `${score.draft.right}/${score.cases} (live ${score.live.right})`
 }
@@ -555,8 +538,7 @@ function createExperimentsTable(experiments, shownId) {
       el('td', 'py-1 pr-3', experiment.status),
       el('td', 'py-1 pr-3 whitespace-nowrap', experiment.started_from ? `experiment ${experiment.started_from}` : `live v${experiment.live_version}`),
       el('td', 'py-1 pr-3', String(experiment.threshold)),
-      el('td', 'py-1 pr-3 whitespace-nowrap', scoreText(experiment, 'thumb')),
-      el('td', 'py-1 pr-3 whitespace-nowrap', scoreText(experiment, 'synthetic')),
+      el('td', 'py-1 pr-3 whitespace-nowrap', scoreText(experiment)),
       el('td', 'py-1 whitespace-nowrap', costText(experiment.cost)))
   })
   return el('div', '',
@@ -569,7 +551,6 @@ function createExperimentsTable(experiments, shownId) {
         el('th', 'pb-1 pr-3 font-medium', 'Started from'),
         el('th', 'pb-1 pr-3 font-medium', 'Cutoff'),
         el('th', 'pb-1 pr-3 font-medium', 'Thumbs right'),
-        el('th', 'pb-1 pr-3 font-medium', 'Test set right'),
         el('th', 'pb-1 font-medium', 'Cost'))),
       el('tbody', '', ...rows))),
     el('div', 'mt-2', compareButton))
@@ -582,7 +563,6 @@ function draftFrom(source, startedFrom) {
     rubric_prompt: source.rubric_prompt,
     criteria: source.criteria.map((criterion) => ({ ...criterion })),
     threshold: source.threshold,
-    include_synthetic: Boolean(source.include_synthetic),
     explain_every_case: Boolean(source.explain_every_case),
     started_from: startedFrom,
   }

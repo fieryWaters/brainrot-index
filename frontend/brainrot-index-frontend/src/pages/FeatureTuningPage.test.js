@@ -23,7 +23,7 @@ function liveAnswer(score) {
 
 // Labeled shown; the draft blocks it as brainrot (60) and low-effort (100).
 const LOL = {
-  case_id: 'judgment-1', source: 'thumb', judgment_id: 1, post: post('lol'), image_urls: [], post_url: '',
+  case_id: 'judgment-1', judgment_id: 1, post: post('lol'), image_urls: [], post_url: '',
   expected: { brainrot: false, 'low-effort': false },
   owner: { verdict: 'right', shown_action: 'allow', should_be: 'shown', plugin: '', details: '' },
   video_not_watched: false, scores: { pull: 6, emptiness: 10 }, failed: false,
@@ -43,7 +43,7 @@ function experiment(overrides = {}) {
   return {
     id: 3, created_at: '2026-11-20T10:00:00+00:00', finished_at: '2026-11-20T10:01:00+00:00', status: 'done', error: '',
     started_from: null, started_from_feature_set: 1, filters: FILTERS, live: LIVE, features: FEATURES,
-    include_synthetic: false, explain_every_case: false, model: 'test/model', inference_source: 'openrouter',
+    explain_every_case: false, model: 'test/model', inference_source: 'openrouter',
     total_cases: 2, judged_cases: 2, scores: {}, prompt_tokens: 1800, cached_prompt_tokens: 900, completion_tokens: 40, cost: null,
     system_prompt: 'You rate one social media post...', results: [LOL, FILLER], ...overrides,
   }
@@ -52,8 +52,8 @@ function experiment(overrides = {}) {
 const OVERVIEW = {
   feature_set: { id: 1, version: 1, features: FEATURES, filters: FILTERS },
   filters: [
-    { slug: 'brainrot', name: 'Brainrot', input_kind: 'video', live: { version: 3, threshold: 60 }, thumb_cases: 1, synthetic_cases: 0 },
-    { slug: 'low-effort', name: 'Low effort', input_kind: 'post', live: { version: 3, threshold: 60 }, thumb_cases: 2, synthetic_cases: 0 },
+    { slug: 'brainrot', name: 'Brainrot', input_kind: 'video', live: { version: 3, threshold: 60 }, thumb_cases: 1 },
+    { slug: 'low-effort', name: 'Low effort', input_kind: 'post', live: { version: 3, threshold: 60 }, thumb_cases: 2 },
   ],
   model: 'test/model',
   inference_source: 'openrouter',

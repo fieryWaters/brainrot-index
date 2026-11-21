@@ -12,7 +12,7 @@ const FILTERS = {
   filters: [{
     slug: 'shouting', name: 'Shouting', input_kind: 'post',
     live: { version: 1, rubric_prompt: 'Judge shouting.', criteria: CRITERIA, threshold: 50 },
-    thumb_cases: 2, synthetic_cases: 0,
+    thumb_cases: 2,
   }],
   model: 'test/model',
   inference_source: 'openrouter',
@@ -31,7 +31,7 @@ function post(text, overrides = {}) {
 
 // The owner said allow; the draft allows it too, the live version blocks it.
 const CHEERFUL = {
-  case_id: 'judgment-7', source: 'thumb', judgment_id: 7,
+  case_id: 'judgment-7', judgment_id: 7,
   post: post('GOOD MORNING EVERYONE'),
   image_urls: [], post_url: 'https://x.com/a/status/1', should_flag: false,
   owner: { verdict: 'wrong', shown_action: 'hide', should_be: 'shown', plugin: '', details: 'Just cheerful.' },
@@ -41,7 +41,7 @@ const CHEERFUL = {
 
 // The owner said block, and the draft lets it through.
 const RUDE = {
-  case_id: 'judgment-8', source: 'thumb', judgment_id: 8,
+  case_id: 'judgment-8', judgment_id: 8,
   post: post('you are all wrong and dumb', { kind: 'reply', parent_text: 'What do you think of my cat?' }),
   image_urls: [], post_url: 'https://x.com/a/status/2', should_flag: true,
   owner: { verdict: 'right', shown_action: 'hide', should_be: 'blocked', plugin: 'shouting', details: '' },
@@ -53,9 +53,9 @@ function experiment(overrides = {}) {
   return {
     id: 4, plugin: 'shouting', created_at: '2026-11-20T10:00:00+00:00', finished_at: '2026-11-20T10:01:00+00:00',
     status: 'done', error: '', live_version: 1, live_threshold: 50, started_from: null, threshold: 50,
-    include_synthetic: false, explain_every_case: false, model: 'test/model', inference_source: 'openrouter',
+    explain_every_case: false, model: 'test/model', inference_source: 'openrouter',
     total_cases: 2, judged_cases: 2,
-    scores: { thumb: { cases: 2, draft: { right: 1, missed: 1, wrongly_flagged: 0, failed: 0 }, live: { right: 0, missed: 1, wrongly_flagged: 1, failed: 0 } } },
+    scores: { cases: 2, draft: { right: 1, missed: 1, wrongly_flagged: 0, failed: 0 }, live: { right: 0, missed: 1, wrongly_flagged: 1, failed: 0 } },
     prompt_tokens: 2700, completion_tokens: 180, cost: 0.0004,
     rubric_prompt: 'Judge shouting at people.', criteria: CRITERIA,
     results: [CHEERFUL, RUDE],

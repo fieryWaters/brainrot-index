@@ -1,7 +1,5 @@
 import json
-import tempfile
 from datetime import timedelta
-from pathlib import Path
 from unittest.mock import patch
 
 from django.test import Client, TestCase, override_settings
@@ -50,15 +48,8 @@ def fake_model(requests_sent):
     return answer
 
 
-def write_dataset(directory, examples):
-    dataset_path = Path(directory) / 'dataset.jsonl'
-    dataset_path.write_text(''.join(json.dumps(example) + '\n' for example in examples))
-    return dataset_path
-
-
 @override_settings(LOCAL_AUTH_BYPASS=False, ADMIN_EMAIL=OWNER_EMAIL, OPENROUTER_API_KEY='test-key',
-                   INFERENCE_SOURCE='openrouter', OPENROUTER_MODEL='test/model',
-                   TUNING_SYNTHETIC_DATASET='/nonexistent/dataset.jsonl')
+                   INFERENCE_SOURCE='openrouter', OPENROUTER_MODEL='test/model')
 class TuningTests(TestCase):
     def setUp(self):
         self.owner = create_verified_user(OWNER_EMAIL)
@@ -133,7 +124,6 @@ class TuningTests(TestCase):
         shouting = next(found for found in response.json()['filters'] if found['slug'] == 'shouting')
         self.assertEqual(shouting['live'], {'version': 1, 'rubric_prompt': LIVE_RUBRIC, 'criteria': CRITERIA, 'threshold': 50})
         self.assertEqual(shouting['thumb_cases'], 2)
-        self.assertEqual(shouting['synthetic_cases'], 0)
         self.assertEqual(response.json()['model'], 'test/model')
 
     def test_a_draft_runs_on_the_owners_thumbs_beside_the_live_version(self):
@@ -156,12 +146,11 @@ class TuningTests(TestCase):
         self.assertEqual(response.status_code, 200)
         shown = response.json()
         self.assertEqual(shown['status'], EXPERIMENT_DONE)
-        self.assertEqual(shown['scores']['thumb'], {
+        self.assertEqual(shown['scores'], {
             'cases': 2,
             'draft': {'right': 2, 'missed': 0, 'wrongly_flagged': 0, 'failed': 0},
             'live': {'right': 1, 'missed': 0, 'wrongly_flagged': 1, 'failed': 0},
         })
-        self.assertNotIn('synthetic', shown['scores'])
         self.assertEqual(shown['prompt_tokens'], 5 * 900)
         self.assertEqual(shown['completion_tokens'], 5 * 60)
 
@@ -200,30 +189,6 @@ class TuningTests(TestCase):
         self.assertTrue(all(result.live_reused for result in results))
         self.assertEqual(sorted(result.live['score'] for result in results), [60, 60])
 
-    def test_the_synthetic_test_set_is_judged_when_asked_for(self):
-        examples = [
-            {'id': 'syn-1', 'source': 'synthetic', 'platform': 'x', 'kind': 'post', 'community': '',
-             'text': 'YOU NEVER LISTEN', 'expected': {'shouting': {'flag': True, 'difficulty': 'clear', 'why': 'Shouts at someone.'}}},
-            {'id': 'syn-2', 'source': 'synthetic', 'platform': 'x', 'kind': 'post', 'community': '',
-             'text': 'Hello there', 'expected': {'ragebait': {'flag': False, 'difficulty': 'clear', 'why': 'Calm.'}}},
-        ]
-        with tempfile.TemporaryDirectory() as directory:
-            dataset_path = write_dataset(directory, examples)
-            with self.settings(TUNING_SYNTHETIC_DATASET=str(dataset_path)):
-                shouting = next(found for found in self.owner_client.get(reverse('tuning_filters')).json()['filters']
-                                if found['slug'] == 'shouting')
-                self.assertEqual(shouting['synthetic_cases'], 1)
-                started = self.start_experiment(include_synthetic=True)
-                self.run_worker()
-
-        shown = self.owner_client.get(reverse('tuning_experiment', args=[started['id']])).json()
-        self.assertEqual(shown['total_cases'], 3)
-        self.assertEqual(shown['scores']['synthetic']['cases'], 1)
-        synthetic = next(result for result in shown['results'] if result['case_id'] == 'syn-1')
-        self.assertEqual(synthetic['owner'], {'why': 'Shouts at someone.'})
-        self.assertEqual((synthetic['post']['text'], synthetic['post']['author']), ('YOU NEVER LISTEN', ''))
-        self.assertTrue(synthetic['should_flag'])
-
     def test_a_reply_is_shown_with_the_posts_it_answers(self):
         Post.objects.create(platform='reddit', post_id='t1', kind='post', author='op', text='What do you think?')
         Post.objects.create(platform='reddit', post_id='c1', kind='reply', parent_post_id='t1', author='first',
@@ -235,11 +200,6 @@ class TuningTests(TestCase):
             'quoted_post': {}, 'link_preview': {}, 'parent_text': 'I think yes.', 'parent_is_reply': True,
             'thread_text': 'What do you think?',
         })
-
-    def test_the_synthetic_test_set_is_refused_when_it_has_no_examples_for_the_filter(self):
-        response = self.owner_client.post(reverse('tuning_experiments'), self.draft(include_synthetic=True),
-                                          content_type='application/json')
-        self.assertEqual(response.status_code, 400)
 
     def test_a_draft_with_unusable_criteria_is_refused(self):
         unusable = [
@@ -259,7 +219,7 @@ class TuningTests(TestCase):
         started = self.start_experiment()
         experiment = TuningExperiment.objects.get(id=started['id'])
         TuningResult.objects.create(
-            experiment=experiment, case_id=f"judgment-{self.rude_thumb.id}", source='thumb', description='earlier',
+            experiment=experiment, case_id=f"judgment-{self.rude_thumb.id}", description='earlier',
             should_flag=True, draft={'failed': False, 'score': 60, 'criteria_met': ['caps'], 'reasoning': ''},
             live={'failed': False, 'score': 60, 'criteria_met': ['caps'], 'reasoning': ''})
         experiment.status = EXPERIMENT_RUNNING
@@ -314,5 +274,5 @@ class TuningTests(TestCase):
         listed = self.owner_client.get(reverse('tuning_experiments'), {'plugin': 'shouting'}).json()['experiments']
         self.assertEqual([experiment['id'] for experiment in listed], [second['id'], first['id']])
         self.assertEqual(listed[0]['started_from'], first['id'])
-        self.assertEqual(listed[0]['scores']['thumb']['cases'], 2)
+        self.assertEqual(listed[0]['scores']['cases'], 2)
         self.assertEqual(self.owner_client.get(reverse('tuning_experiments'), {'plugin': 'other'}).json()['experiments'], [])

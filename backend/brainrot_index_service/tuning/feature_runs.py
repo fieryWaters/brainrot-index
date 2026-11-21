@@ -3,8 +3,7 @@ of the draft, then deciding every filter from those ratings, beside each
 filter's live version.
 
 A filter's test set is the owner's thumbs labeled should be shown (should
-allow) and those labeled should be blocked as that filter (should flag),
-and, when asked for, the synthetic test set's examples for that filter. A
+allow) and those labeled should be blocked as that filter (should flag). A
 post is a case once, for every filter whose test set holds it.
 
 The live answer of a filter on a thumbs is production's own stored
@@ -18,12 +17,11 @@ The background worker and the run_feature_experiment command share this code."""
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from django.conf import settings
 from django.utils import timezone
 
-from classification.evaluation import expected_answer, load_examples
+from classification.evaluation import expected_answer, owner_judgments
 from classification.features import ask_feature_scores, features_prompt, filter_score
 from classification.inference import ask_model, build_messages, chat_messages, configured_model
 from classification.models import CLASSIFICATION_DONE, PLUGIN_INPUT_VIDEO, Classification, Plugin, PluginVersion
@@ -34,10 +32,8 @@ from .runs import (
     Usage,
     answer_record,
     claim_next,
-    owner_judgments,
     request_explanations,
     run_or_mark_failed,
-    synthetic_fields,
     thumb_fields,
     video_was_watched,
 )
@@ -57,7 +53,6 @@ class FeatureCase:
     """One post to rate, with what each filter whose test set holds it should decide."""
 
     case_id: str
-    source: str
     expected: dict
     owner: dict
     description: str
@@ -80,7 +75,7 @@ def live_versions(filters):
     return live
 
 
-def create_experiment(features, filters, include_synthetic=False, explain_every_case=False,
+def create_experiment(features, filters, explain_every_case=False,
                       started_from_feature_set=None, started_from=None, status=None):
     """A new experiment with production's model and the filters' live versions
     as they are now. status running keeps the worker from taking it up, for a
@@ -91,7 +86,6 @@ def create_experiment(features, filters, include_synthetic=False, explain_every_
         features=features,
         filters=filters,
         live=live_versions(filters),
-        include_synthetic=include_synthetic,
         explain_every_case=explain_every_case,
         model=configured_model(),
         inference_source=settings.INFERENCE_SOURCE,
@@ -101,16 +95,6 @@ def create_experiment(features, filters, include_synthetic=False, explain_every_
         experiment.heartbeat_at = timezone.now()
     experiment.save()
     return experiment
-
-
-def synthetic_examples_for_any(slugs):
-    """The synthetic test set's examples with an answer for any of these
-    filters; none when the test set is not where the settings say."""
-    dataset_path = Path(settings.TUNING_SYNTHETIC_DATASET)
-    if not dataset_path.exists():
-        return []
-    return [example for example in load_examples(dataset_path)
-            if any(slug in example.get('expected', {}) for slug in slugs)]
 
 
 def thumbs_expected(slugs):
@@ -134,11 +118,6 @@ def experiment_cases(experiment):
     for judgment, expected in thumbs_expected(slugs):
         video_not_watched = bool(watching.intersection(expected)) and video_was_watched(judgment.post)
         cases.append(FeatureCase(expected=expected, video_not_watched=video_not_watched, **thumb_fields(judgment)))
-    if experiment.include_synthetic:
-        for example in synthetic_examples_for_any(slugs):
-            expected = {slug: example['expected'][slug]['flag'] for slug in slugs if slug in example['expected']}
-            why = {slug: example['expected'][slug]['why'] for slug in expected}
-            cases.append(FeatureCase(expected=expected, owner={'why': why}, **synthetic_fields(example)))
     return cases
 
 
@@ -149,8 +128,6 @@ def known_live_answers(experiment, cases):
     same live version and model, on a post that reads the same."""
     known = {}
     for case in cases:
-        if case.judgment is None:
-            continue
         for slug in case.expected:
             classification = Classification.objects.filter(
                 post=case.judgment.post, plugin_version_id=experiment.live[slug]['version_id'],
@@ -241,7 +218,6 @@ def judge_feature_case(experiment, live_plugin_versions, case, known_live):
 
     return {
         'case_id': case.case_id,
-        'source': case.source,
         'judgment': case.judgment,
         'description': case.description,
         'post': case.post,

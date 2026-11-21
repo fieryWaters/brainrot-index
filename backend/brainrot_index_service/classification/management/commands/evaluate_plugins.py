@@ -1,15 +1,13 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Q
 
 from classification.evaluation import (
     classify_example,
-    load_examples,
-    load_results,
+    judged_examples,
+    owner_judgments,
     plugin_summary_lines,
-    results_file_path,
-    save_results,
     worst_misses_lines,
 )
 from classification.inference import INFERENCE_SOURCE_LOCAL, INFERENCE_SOURCE_OPENROUTER
@@ -19,12 +17,11 @@ PROGRESS_EVERY = 50
 
 
 class Command(BaseCommand):
-    help = ("Scores a model and rubric versions against a labeled dataset (eval/dataset.jsonl), "
-            "writing results to eval/results/ and printing a summary. Re-running the same "
-            "configuration resumes it.")
+    help = ("Scores a model and rubric versions against the owner's thumbs and prints a summary. "
+            "A thumbs labeled should be shown is a case for every filter; one labeled should be "
+            "blocked as a filter is a case for that filter only.")
 
     def add_arguments(self, parser):
-        parser.add_argument('--dataset', required=True, help="Path to a JSONL dataset.")
         parser.add_argument('--inference-source', required=True,
                             choices=[INFERENCE_SOURCE_OPENROUTER, INFERENCE_SOURCE_LOCAL])
         parser.add_argument('--model', required=True, help="Model name, such as google/gemini-2.5-flash-lite.")
@@ -36,48 +33,37 @@ class Command(BaseCommand):
                                  "met or not met. The prompt differs from production, so answers can differ too.")
 
     def handle(self, *args, **options):
-        dataset_path = Path(options['dataset'])
-        examples = load_examples(dataset_path)
-        plugin_versions = self.chosen_plugin_versions(examples, options['plugin'], options['rubric_version'])
+        plugin_versions = self.chosen_plugin_versions(options['plugin'], options['rubric_version'])
+        examples = judged_examples([plugin_version.plugin.slug for plugin_version in plugin_versions])
         inference_source = options['inference_source']
         model = options['model']
-
-        explain = options['explain']
-        results_path = results_file_path(dataset_path, inference_source, model, plugin_versions, explain)
-        results = load_results(results_path, dataset_path, inference_source, model, plugin_versions)
-        # Failed answers are asked again; scored ones are kept.
-        results['results'] = [record for record in results['results'] if not record['failed']]
-        scored_keys = {(record['example_id'], record['plugin']) for record in results['results']}
 
         work = []
         for example in examples:
             for plugin_version in plugin_versions:
-                slug = plugin_version.plugin.slug
-                if slug in example.get('expected', {}) and (example['id'], slug) not in scored_keys:
+                if plugin_version.plugin.slug in example['expected']:
                     work.append((example, plugin_version))
 
-        self.stdout.write(f"Results file: {results_path}")
-        self.stdout.write(f"{len(scored_keys)} already scored, {len(work)} to classify with {model}")
-        images_dir = dataset_path.parent / 'images'
+        self.stdout.write(f"{len(examples)} thumbs, {len(work)} to classify with {model}")
+        records = []
         with ThreadPoolExecutor(max_workers=options['concurrency']) as executor:
             futures = [
-                executor.submit(classify_example, example, plugin_version, images_dir, inference_source, model, explain)
+                executor.submit(classify_example, example, plugin_version, inference_source, model, options['explain'])
                 for example, plugin_version in work
             ]
             for finished_count, future in enumerate(as_completed(futures), start=1):
-                results['results'].append(future.result())
-                save_results(results_path, results)
+                records.append(future.result())
                 if finished_count % PROGRESS_EVERY == 0:
                     self.stdout.write(f"{finished_count} of {len(work)} classified")
 
-        records_by_key = {(record['example_id'], record['plugin']): record for record in results['results']}
+        records_by_key = {(record['example_id'], record['plugin']): record for record in records}
         for plugin_version in plugin_versions:
             self.stdout.write('')
             self.stdout.write('\n'.join(plugin_summary_lines(plugin_version, examples, records_by_key)))
         self.stdout.write('')
         self.stdout.write('\n'.join(worst_misses_lines(plugin_versions, examples, records_by_key)))
 
-    def chosen_plugin_versions(self, examples, plugin_slug, rubric_version):
+    def chosen_plugin_versions(self, plugin_slug, rubric_version):
         if rubric_version is not None and plugin_slug is None:
             raise CommandError("--rubric-version needs --plugin.")
 
@@ -92,8 +78,7 @@ class Command(BaseCommand):
                 raise CommandError(f"{plugin_slug} has no version {rubric_version}.")
             return [plugin_version]
 
-        labeled_slugs = set()
-        for example in examples:
-            labeled_slugs.update(example.get('expected', {}))
-        plugins = Plugin.objects.filter(slug__in=labeled_slugs).order_by('id')
+        # Every default filter, and any other filter a thumbs blocks a post as.
+        named_by_thumbs = owner_judgments().values('plugin')
+        plugins = Plugin.objects.filter(Q(is_baseline=True) | Q(id__in=named_by_thumbs)).order_by('id')
         return [plugin.latest_version() for plugin in plugins]

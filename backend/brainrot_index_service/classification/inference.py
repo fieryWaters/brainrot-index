@@ -42,6 +42,8 @@ MAX_THREAD_DEPTH = 50
 MAX_TRANSCRIPT_WORDS = 2000
 REQUEST_TIMEOUT_SECONDS = 60
 MAX_RESPONSE_TOKENS = 500
+# Room for an explanation of every criterion, which only evaluation asks for.
+MAX_EXPLAINED_RESPONSE_TOKENS = 2000
 # An invalid answer is retried once before the classification is marked failed.
 ATTEMPTS_PER_CLASSIFICATION = 2
 
@@ -76,9 +78,9 @@ def inference_endpoint(inference_source):
     return settings.LOCAL_INFERENCE_BASE_URL, ''
 
 
-def system_prompt(plugin_version):
+def system_prompt(plugin_version, explain=False):
     # The rubric comes first and never changes within a version, so providers can cache it.
-    return plugin_version.rubric_prompt + '\n\n' + response_instructions(plugin_version)
+    return plugin_version.rubric_prompt + '\n\n' + response_instructions(plugin_version, explain)
 
 
 def describe_shown_content(text, quoted_post, link_preview):
@@ -149,26 +151,30 @@ def transcript_for_model(post):
     return ' '.join(words)
 
 
-def build_messages(plugin_version, post_description, image_urls):
+def build_messages(plugin_version, post_description, image_urls, explain=False):
     user_content = [{'type': 'text', 'text': post_description}]
     for image_url in image_urls:
         user_content.append({'type': 'image_url', 'image_url': {'url': image_url}})
     return [
-        {'role': 'system', 'content': system_prompt(plugin_version)},
+        {'role': 'system', 'content': system_prompt(plugin_version, explain)},
         {'role': 'user', 'content': user_content},
     ]
 
 
-def request_chat_completion(messages, plugin_version, inference_source, model):
+def request_chat_completion(messages, plugin_version, inference_source, model, explain=False):
     base_url, api_key = inference_endpoint(inference_source)
+    if explain:
+        max_tokens = MAX_EXPLAINED_RESPONSE_TOKENS
+    else:
+        max_tokens = MAX_RESPONSE_TOKENS
     request_body = {
         'model': model,
         'messages': messages,
         'temperature': 0,
-        'max_tokens': MAX_RESPONSE_TOKENS,
+        'max_tokens': max_tokens,
         'response_format': {
             'type': 'json_schema',
-            'json_schema': {'name': 'classification', 'strict': True, 'schema': answer_schema(plugin_version)},
+            'json_schema': {'name': 'classification', 'strict': True, 'schema': answer_schema(plugin_version, explain)},
         },
     }
     if inference_source == INFERENCE_SOURCE_OPENROUTER:
@@ -187,14 +193,15 @@ def request_chat_completion(messages, plugin_version, inference_source, model):
     )
 
 
-def ask_model(messages, plugin_version, inference_source, model):
+def ask_model(messages, plugin_version, inference_source, model, explain=False):
     """Sends the messages to the model, retrying once after a failed request
-    or an invalid answer, and returns a ModelOutcome."""
+    or an invalid answer, and returns a ModelOutcome. explain, for evaluation
+    only, also asks the model to explain its answer on each criterion."""
     outcome = ModelOutcome()
     for attempt in range(1, ATTEMPTS_PER_CLASSIFICATION + 1):
         started_at = time.monotonic()
         try:
-            response = request_chat_completion(messages, plugin_version, inference_source, model)
+            response = request_chat_completion(messages, plugin_version, inference_source, model, explain)
             outcome.latency_ms = round((time.monotonic() - started_at) * 1000)
             outcome.raw_response = response.text
             response.raise_for_status()
@@ -204,7 +211,7 @@ def ask_model(messages, plugin_version, inference_source, model):
             outcome.completion_tokens = usage.get('completion_tokens')
             if usage.get('cost') is not None:
                 outcome.cost = (outcome.cost or 0) + usage['cost']
-            outcome.answer = parse_answer(completion['choices'][0]['message']['content'], plugin_version)
+            outcome.answer = parse_answer(completion['choices'][0]['message']['content'], plugin_version, explain)
         except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as error:
             logger.warning("Model request attempt %s failed: %s", attempt, error)
             continue

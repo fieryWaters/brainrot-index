@@ -31,6 +31,9 @@ class Command(BaseCommand):
         parser.add_argument('--plugin', help="Evaluate only this plugin slug.")
         parser.add_argument('--rubric-version', type=int, help="Rubric version of --plugin; default the latest.")
         parser.add_argument('--concurrency', type=int, default=8, help="Model requests in flight at once.")
+        parser.add_argument('--explain', action='store_true',
+                            help="For debugging: the model also explains, for each criterion, why it judged it "
+                                 "met or not met. The prompt differs from production, so answers can differ too.")
 
     def handle(self, *args, **options):
         dataset_path = Path(options['dataset'])
@@ -39,7 +42,8 @@ class Command(BaseCommand):
         inference_source = options['inference_source']
         model = options['model']
 
-        results_path = results_file_path(dataset_path, inference_source, model, plugin_versions)
+        explain = options['explain']
+        results_path = results_file_path(dataset_path, inference_source, model, plugin_versions, explain)
         results = load_results(results_path, dataset_path, inference_source, model, plugin_versions)
         # Failed answers are asked again; scored ones are kept.
         results['results'] = [record for record in results['results'] if not record['failed']]
@@ -57,7 +61,7 @@ class Command(BaseCommand):
         images_dir = dataset_path.parent / 'images'
         with ThreadPoolExecutor(max_workers=options['concurrency']) as executor:
             futures = [
-                executor.submit(classify_example, example, plugin_version, images_dir, inference_source, model)
+                executor.submit(classify_example, example, plugin_version, images_dir, inference_source, model, explain)
                 for example, plugin_version in work
             ]
             for finished_count, future in enumerate(as_completed(futures), start=1):

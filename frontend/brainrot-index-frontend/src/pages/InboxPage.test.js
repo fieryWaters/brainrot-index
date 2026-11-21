@@ -83,6 +83,20 @@ describe('InboxPage', () => {
     expect(screen.getByText('Contact: Press question').getAttribute('href')).toBe('/inbox/feedback-4')
   })
 
+  it('names the feature set of a filter decided by feature scores, with its ratings', async () => {
+    const featureFilter = {
+      plugin: 'brainrot', version: null, feature_set: 2, threshold: 60, flagged_action: 'hide', classification_id: null,
+      feature_scores_id: 9, status: 'done', score: 63, label: 'pull 6.7, emptiness 6.7', flagged: true,
+      reasoning: 'Ratings: pull 6.7, emptiness 6.7.', model: 'test-model', criteria: [],
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [{ ...JUDGMENT, filters: [featureFilter] }] })))
+    renderElement(mountInboxPage().el)
+
+    expect(await screen.findByText('brainrot (features v2)')).toBeInTheDocument()
+    expect(screen.getByText('63 / 60')).toBeInTheDocument()
+    expect(screen.getByText('Ratings: pull 6.7, emptiness 6.7.')).toBeInTheDocument()
+  })
+
   it('marks an item resolved with the commit and note and drops it from the open list', async () => {
     document.cookie = 'csrftoken=test-csrf'
     const fetchMock = vi.fn(async (url) => {

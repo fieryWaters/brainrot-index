@@ -8,7 +8,9 @@ from classification.features import (
     filter_score,
     features_used,
     parse_scores,
+    ratings_text,
     run_feature_scoring,
+    score_on_threshold_scale,
     scores_schema,
 )
 from classification.models import FeatureSet, Post, PostFeatureScores
@@ -64,6 +66,25 @@ class FilterScoreTests(TestCase):
         self.assertEqual(filter_score(rude, {'hostility': 2, 'humor': 10}), 0)
         self.assertEqual(filter_score({**rude, 'weights': {'hostility': 20}}, {'hostility': 9}), 100)
         self.assertEqual(features_used(rude), ['hostility', 'humor'])
+
+
+class ThresholdScaleTests(TestCase):
+    def test_the_cutoff_lands_on_the_default_threshold_and_the_ends_stay_put(self):
+        brainrot = {'plugin': 'brainrot', 'form': 'product', 'features': ['pull', 'emptiness'], 'cutoff': 40}
+        self.assertEqual(score_on_threshold_scale(brainrot, {'pull': 10, 'emptiness': 4}, 60), 60)
+        self.assertEqual(score_on_threshold_scale(brainrot, {'pull': 0, 'emptiness': 4}, 60), 0)
+        self.assertEqual(score_on_threshold_scale(brainrot, {'pull': 10, 'emptiness': 10}, 60), 100)
+        # Half of the way to the cutoff is half of the way to the threshold, and likewise above it.
+        self.assertEqual(score_on_threshold_scale(brainrot, {'pull': 10, 'emptiness': 2}, 60), 30)
+        self.assertEqual(score_on_threshold_scale(brainrot, {'pull': 10, 'emptiness': 7}, 60), 80)
+
+    def test_a_score_just_short_of_the_cutoff_stays_short_of_the_threshold(self):
+        low_effort = {'plugin': 'low-effort', 'form': 'weighted_sum', 'weights': {'emptiness': 10}, 'cutoff': 80}
+        self.assertEqual(score_on_threshold_scale(low_effort, {'emptiness': 7.99}, 60), 59)
+
+    def test_the_ratings_are_named_as_a_reader_reads_them(self):
+        bait = {'plugin': 'engagement-bait', 'form': 'product', 'features': ['reply_hook', 'emptiness'], 'cutoff': 50}
+        self.assertEqual(ratings_text(bait, {'reply_hook': 10, 'emptiness': 6.666}), 'reply hook 10, emptiness 6.7')
 
 
 class FirstFeatureSetTests(TestCase):

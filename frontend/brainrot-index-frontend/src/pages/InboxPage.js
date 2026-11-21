@@ -118,6 +118,14 @@ function createPostBlock(post) {
   return block
 }
 
+// The filter and what decided it: a rubric version, or the feature set whose ratings it is a formula over.
+export function filterNameText(filter) {
+  if (filter.feature_set) {
+    return `${filter.plugin} (features v${filter.feature_set})`
+  }
+  return `${filter.plugin} v${filter.version}`
+}
+
 function createFiltersTable(filters) {
   const rows = filters.map((filter) => {
     let score = filter.status
@@ -127,7 +135,7 @@ function createFiltersTable(filters) {
     const metCriteria = filter.criteria.filter((criterion) => criterion.met).map((criterion) => criterion.name)
     const decision = filter.flagged ? `flagged, ${filter.flagged_action}` : 'not flagged'
     return el('tr', 'border-t border-white/10 align-top',
-      el('td', 'py-2 pr-3 text-white/90', `${filter.plugin} v${filter.version}`),
+      el('td', 'py-2 pr-3 text-white/90', filterNameText(filter)),
       el('td', 'py-2 pr-3 whitespace-nowrap', score),
       el('td', 'py-2 pr-3 whitespace-nowrap', decision),
       el('td', 'py-2 text-white/60',

@@ -14,7 +14,16 @@ account was deleted is gone from the item; what they said stays."""
 from django.db.models import F, Q
 
 from classification.inference import stored_parent_text
-from classification.models import ACTION_BLUR, ACTION_HIDE, IMAGE_DOWNLOADED, POST_KIND_REPLY, Classification, Post, PostJudgment
+from classification.models import (
+    ACTION_BLUR,
+    ACTION_HIDE,
+    IMAGE_DOWNLOADED,
+    POST_KIND_REPLY,
+    Classification,
+    Post,
+    PostFeatureScores,
+    PostJudgment,
+)
 from classification.views import filter_results_for
 
 from .models import Feedback, JudgmentResolution
@@ -254,9 +263,13 @@ def post_as_dict(post):
 
 def filters_with_criteria(filter_results):
     """Each filter result with what the model said: its reasoning, the model
-    that answered, and every criterion of the rubric with whether the post met it."""
+    that answered, and every criterion of the rubric with whether the post met
+    it. A filter decided by feature scores has no reasoning; its ratings stand
+    in for it."""
     classification_ids = [result['classification_id'] for result in filter_results if result['classification_id']]
     classifications = Classification.objects.select_related('plugin_version').in_bulk(classification_ids)
+    feature_scores_ids = [result['feature_scores_id'] for result in filter_results if result.get('feature_scores_id')]
+    feature_scores = PostFeatureScores.objects.in_bulk(feature_scores_ids)
 
     filters = []
     for result in filter_results:
@@ -264,6 +277,11 @@ def filters_with_criteria(filter_results):
         filter_dict['reasoning'] = ''
         filter_dict['model'] = ''
         filter_dict['criteria'] = []
+        post_feature_scores = feature_scores.get(result.get('feature_scores_id'))
+        if post_feature_scores is not None:
+            filter_dict['model'] = post_feature_scores.model
+            if result['label']:
+                filter_dict['reasoning'] = f"Ratings: {result['label']}."
         classification = classifications.get(result['classification_id'])
         if classification is not None:
             plugin_version = classification.plugin_version

@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from classification.models import (
@@ -21,6 +21,7 @@ def run_worker_until_idle():
 
 
 @patch('classification.views.PENDING_WAIT_SECONDS', 0)
+@override_settings(FEATURE_SCORING=False)
 class ClassifyEndpointTests(TestCase):
     def setUp(self):
         self.user, self.token = create_user_with_token('reader@example.com')

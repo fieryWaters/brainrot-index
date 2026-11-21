@@ -9,10 +9,10 @@ from django.urls import reverse
 
 from billing.models import STATUS_ACTIVE, STATUS_TRIALING, Subscription
 from classification.models import (
-    Classification,
     ExtensionToken,
     Plugin,
     Post,
+    PostFeatureScores,
     PostJudgment,
     PostSubmission,
     UserPlugin,
@@ -188,7 +188,7 @@ class DeleteAccountTests(TestCase):
         for model in (Subscription, UserSettings, UserPlugin, ExtensionToken, Feedback, PostSubmission):
             self.assertFalse(model.objects.filter(user_id=user_id).exists(), model.__name__)
         self.assertTrue(Post.objects.filter(post_id='t3_shared').exists())
-        self.assertTrue(Classification.objects.filter(post__post_id='t3_shared').exists())
+        self.assertTrue(PostFeatureScores.objects.filter(post__post_id='t3_shared').exists())
         self.assertEqual(Client().get(reverse('extension_config'), **bearer(self.token)).status_code, 401)
         self.assertIn(self.client.get(reverse('current_session')).status_code, (401, 403))
 

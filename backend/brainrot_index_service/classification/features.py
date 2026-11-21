@@ -8,9 +8,15 @@ included, so a post between two levels lands between their points.
 
 A filter is a formula over the feature scores, scaled to 0 to 100, with a
 cutoff: a product of features, for a concept that needs all of them (empty
-and stimulating), or a weighted sum, each feature times a multiplier."""
+and stimulating), or a weighted sum, each feature times a multiplier.
+
+While FEATURE_SCORING is on, the latest feature set decides live the filters
+it defines. A post's ratings are cached in PostFeatureScores and shared by
+every reader, as a classification is. A post with a watchable video is rated
+with the video watched (classification.video_judging)."""
 
 import json
+import math
 
 from django.conf import settings
 from django.utils import timezone
@@ -23,7 +29,8 @@ from .inference import (
     describe_stored_post,
     images_for_model,
 )
-from .models import CLASSIFICATION_DONE, CLASSIFICATION_FAILED
+from .models import CLASSIFICATION_DONE, CLASSIFICATION_FAILED, FeatureSet
+from .video_judging import watch_and_answer
 
 LOWEST_RATING = 0
 HIGHEST_RATING = 10
@@ -129,25 +136,46 @@ def features_used(filter_definition):
     return list(filter_definition['weights'])
 
 
-def run_feature_scoring(post_feature_scores):
-    """Calls the model for one pending PostFeatureScores and saves the outcome,
-    as run_classification does for a classification."""
-    features = post_feature_scores.feature_set.features
-    post = post_feature_scores.post
-    images_with_data = images_for_model(post)
-    post_description = describe_stored_post(post, len(images_with_data))
-    system_text = features_prompt(features)
-    messages_to_send = chat_messages(system_text, post_description, [data_url for _, data_url in images_with_data])
-    # The stored prompt points at the stored images instead of repeating their bytes.
-    messages_to_store = chat_messages(
-        system_text, post_description, [f"post_image:{post_image.id}" for post_image, _ in images_with_data])
+def live_feature_set():
+    """The feature set that decides live filtering, the latest version, or
+    None while FEATURE_SCORING is off."""
+    if not settings.FEATURE_SCORING:
+        return None
+    return FeatureSet.objects.order_by('-version').first()
 
-    model = configured_model()
-    outcome = ask_feature_scores(messages_to_send, features, settings.INFERENCE_SOURCE, model)
 
-    post_feature_scores.prompt = messages_to_store
-    post_feature_scores.model = model
-    post_feature_scores.inference_source = settings.INFERENCE_SOURCE
+def filters_by_plugin(feature_set):
+    """{plugin slug: filter definition} of a feature set, empty for None."""
+    if feature_set is None:
+        return {}
+    return {filter_definition['plugin']: filter_definition for filter_definition in feature_set.filters}
+
+
+def score_on_threshold_scale(filter_definition, scores, default_threshold):
+    """A filter's score placed on the scale of a reader's threshold, as a whole
+    number from 0 to 100. The cutoff lands on the plugin's default threshold,
+    and the scores below and above it stretch evenly down to 0 and up to 100.
+    So a reader at the default threshold is filtered exactly when the formula
+    reaches the cutoff, and moving the threshold makes a filter stricter or
+    looser as it did for a rubric's score."""
+    score = filter_score(filter_definition, scores)
+    cutoff = filter_definition['cutoff']
+    if score < cutoff:
+        scaled = score * default_threshold / cutoff
+    else:
+        scaled = default_threshold + (score - cutoff) * (HIGHEST_FILTER_SCORE - default_threshold) / (
+            HIGHEST_FILTER_SCORE - cutoff)
+    # Rounding down keeps every whole threshold exact: the floor reaches it only when the score does.
+    return math.floor(scaled)
+
+
+def ratings_text(filter_definition, scores):
+    """The ratings a filter's score is made of, as a reader reads them: "pull 8, emptiness 6.7"."""
+    return ', '.join(
+        f"{name.replace('_', ' ')} {point_text(scores[name])}" for name in features_used(filter_definition))
+
+
+def save_feature_outcome(post_feature_scores, outcome):
     post_feature_scores.raw_response = outcome.raw_response
     post_feature_scores.latency_ms = outcome.latency_ms
     post_feature_scores.prompt_tokens = outcome.prompt_tokens
@@ -160,3 +188,33 @@ def run_feature_scoring(post_feature_scores):
         post_feature_scores.scores = outcome.answer
     post_feature_scores.completed_at = timezone.now()
     post_feature_scores.save()
+
+
+def run_feature_scoring(post_feature_scores):
+    """Calls the model for one pending PostFeatureScores and saves the outcome,
+    as run_classification does for a classification."""
+    features = post_feature_scores.feature_set.features
+    post = post_feature_scores.post
+    images_with_data = images_for_model(post)
+    post_description = describe_stored_post(post, len(images_with_data))
+    system_text = features_prompt(features)
+    messages_to_send = chat_messages(system_text, post_description, [data_url for _, data_url in images_with_data])
+    # The stored prompt points at the stored images instead of repeating their bytes.
+    post_feature_scores.prompt = chat_messages(
+        system_text, post_description, [f"post_image:{post_image.id}" for post_image, _ in images_with_data])
+    post_feature_scores.model = configured_model()
+    post_feature_scores.inference_source = settings.INFERENCE_SOURCE
+    outcome = ask_feature_scores(
+        messages_to_send, features, post_feature_scores.inference_source, post_feature_scores.model)
+    save_feature_outcome(post_feature_scores, outcome)
+
+
+def run_video_feature_scoring(post_feature_scores, post_video):
+    """Rates a post with its ready video watched, on the same features, for
+    one pending PostFeatureScores, and saves the outcome."""
+    features = post_feature_scores.feature_set.features
+    (outcome, post_feature_scores.model, post_feature_scores.inference_source,
+     post_feature_scores.prompt) = watch_and_answer(
+        post_feature_scores.post, post_video, features_prompt(features), 'feature_scores', scores_schema(features),
+        lambda answer_text: parse_scores(answer_text, features))
+    save_feature_outcome(post_feature_scores, outcome)

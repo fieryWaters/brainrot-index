@@ -9,7 +9,7 @@ import { apiFetch, errorMessageFrom } from '../lib/api.js'
 import { el } from '../lib/dom.js'
 import { createErrorBanner } from '../components/ErrorBanner.js'
 import { QUIET_BUTTON_CLASS } from '../components/styles.js'
-import { labelText, senderText } from './InboxPage.js'
+import { filterNameText, labelText, senderText } from './InboxPage.js'
 
 const VERDICT_TEXT = {
   right: 'up',
@@ -26,7 +26,7 @@ function filterDecisionText(filter) {
     score = `${filter.score}/${filter.threshold}`
   }
   const decision = filter.flagged ? filter.flagged_action : 'allow'
-  return `${filter.plugin} v${filter.version} ${score} ${decision}`
+  return `${filterNameText(filter)} ${score} ${decision}`
 }
 
 // How many thumbs up and down each label has.

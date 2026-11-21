@@ -287,8 +287,9 @@ class FeatureSet(models.Model):
     """An immutable set of scored features and the filters composed of them
     (classification.features). The model scores every feature of a post in
     one call, and each filter's score is a formula over those scores, so one
-    call serves every filter in the set. Not used by live filtering yet: it is
-    measured on the tuning page first.
+    call serves every filter in the set. While FEATURE_SCORING is on, the
+    latest version decides live the filters it defines; other filters keep
+    their rubrics. A new version is measured on the tuning page first.
 
     features: [{name, description, levels: [{text, examples}]}], each
     feature's levels ordered from least to most.
@@ -535,7 +536,9 @@ class PostJudgment(models.Model):
     details = models.TextField(blank=True, default='')
     # What every filter the reader had on decided about the post when it was
     # judged: [{plugin, version, classification_id, status, score, label,
-    # threshold, flagged_action, flagged}].
+    # threshold, flagged_action, flagged}]. A filter decided by feature scores
+    # has version and classification_id None, and also feature_set (its
+    # version) and feature_scores_id.
     filter_results = models.JSONField(default=list, blank=True)
     extension_commit = models.CharField(max_length=64, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)

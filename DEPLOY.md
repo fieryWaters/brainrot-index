@@ -253,6 +253,7 @@ Google at `https://brainrot.jacob-waters.com/login`, then go to `/admin/`.
 - Backend tests: `docker compose exec backend python manage.py test api billing classification feedback`
 - Score a model and the filters' rubrics against the owner's thumbs: `docker compose exec -T backend python manage.py evaluate_plugins --inference-source openrouter --model google/gemini-2.5-flash-lite`. `--plugin <slug>` (and `--rubric-version <n>`) scores one filter only.
 - Run a feature set experiment (every filter composed of scored features, measured on the owner's thumbs beside the live filters; it opens on the site at `/tuning/features/<id>`): `docker compose exec -T backend python manage.py run_feature_experiment`. `--from-experiment <id>` runs a draft edited on the page instead of the saved feature set; `--resume <id>` finishes an interrupted run.
+- Live filtering by feature scores: the four default filters are decided from one rating call per post (`FEATURE_SCORING`, on by default). To go back to one rubric call per filter, set `FEATURE_SCORING=false` in `.env` and run `docker compose up -d backend worker`. Ratings and rubric classifications are cached apart, so switching either way keeps both.
 - Worker logs: `docker compose logs -f worker`
 - Local model logs: `docker compose logs -f inference`
 - nginx checks against the running stack (admin blocked on the public host, www redirect): `bash frontend/brainrot-index-frontend/check-nginx.sh`

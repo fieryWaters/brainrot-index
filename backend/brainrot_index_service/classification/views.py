@@ -21,6 +21,7 @@ from billing.permissions import HasAccess
 from families.permissions import can_change_filters_of, filters_owner
 
 from .authentication import ExtensionTokenAuthentication
+from .features import filters_by_plugin, live_feature_set, ratings_text, score_on_threshold_scale
 from .images import image_url_is_allowed
 from .models import (
     ACTION_ALLOW,
@@ -38,6 +39,7 @@ from .models import (
     ExtensionToken,
     Plugin,
     Post,
+    PostFeatureScores,
     PostImage,
     PostJudgment,
     PostVideo,
@@ -207,22 +209,65 @@ def posts_wanting_transcripts(posts):
     ).values_list('post_id', flat=True))
 
 
-def build_results(posts, plugins_to_apply):
-    """One result per post. plugins_to_apply is a list of (UserPlugin, PluginVersion).
-    A pending video whose transcript is still wanted is marked transcript_wanted."""
-    versions = [version for _, version in plugins_to_apply]
+class FiltersToApply:
+    """The filters a reader has on, split by how they are decided: rubrics,
+    a list of (UserPlugin, PluginVersion), each judged by its own call; and
+    feature_filters, a list of (UserPlugin, filter definition), decided from
+    the post's ratings on feature_set (classification.features)."""
+
+    def __init__(self, user):
+        self.feature_set = live_feature_set()
+        filters_of_feature_set = filters_by_plugin(self.feature_set)
+        self.rubrics = []
+        self.feature_filters = []
+        enabled_plugins = (
+            UserPlugin.objects.filter(user=user, enabled=True).select_related('plugin').order_by('plugin__id'))
+        for user_plugin in enabled_plugins:
+            if user_plugin.plugin.slug in filters_of_feature_set:
+                self.feature_filters.append((user_plugin, filters_of_feature_set[user_plugin.plugin.slug]))
+            else:
+                self.rubrics.append((user_plugin, user_plugin.plugin.latest_version()))
+
+    def versions(self):
+        return [version for _, version in self.rubrics]
+
+    def uses_feature_scores(self):
+        return len(self.feature_filters) > 0
+
+
+def feature_decision(user_plugin, filter_definition, post_feature_scores):
+    """(score, label, flagged) of a filter decided from a post's finished ratings."""
+    scores = post_feature_scores.scores
+    score = score_on_threshold_scale(filter_definition, scores, user_plugin.plugin.default_threshold)
+    label = ratings_text(filter_definition, scores)
+    return score, label, score >= user_plugin.threshold
+
+
+def build_results(posts, filters):
+    """One result per post, for the FiltersToApply. A pending video whose
+    transcript is still wanted is marked transcript_wanted."""
+    versions = filters.versions()
     classifications = {
         (classification.post_id, classification.plugin_version_id): classification
         for classification in Classification.objects.filter(post__in=posts, plugin_version__in=versions)
     }
+    feature_scores = {}
+    if filters.uses_feature_scores():
+        feature_scores = {
+            post_feature_scores.post_id: post_feature_scores
+            for post_feature_scores in PostFeatureScores.objects.filter(post__in=posts, feature_set=filters.feature_set)
+        }
     wanting_transcripts = posts_wanting_transcripts(posts)
 
     results = []
     for post in posts:
         result = {'platform': post.platform, 'post_id': post.post_id}
         post_classifications = [classifications[(post.id, version.id)] for version in versions]
+        post_feature_scores = feature_scores.get(post.id)
 
-        if any(classification.status == CLASSIFICATION_PENDING for classification in post_classifications):
+        rubric_pending = any(classification.status == CLASSIFICATION_PENDING for classification in post_classifications)
+        features_pending = post_feature_scores is not None and post_feature_scores.status == CLASSIFICATION_PENDING
+        if rubric_pending or features_pending:
             result['status'] = 'pending'
             if post.id in wanting_transcripts:
                 result['transcript_wanted'] = True
@@ -234,7 +279,7 @@ def build_results(posts, plugins_to_apply):
         # before blurring was removed.
         action = ACTION_ALLOW
         reasons = []
-        for (user_plugin, _), classification in zip(plugins_to_apply, post_classifications):
+        for (user_plugin, _), classification in zip(filters.rubrics, post_classifications):
             if classification.status != CLASSIFICATION_DONE:
                 continue
             if classification.score < user_plugin.threshold:
@@ -245,6 +290,13 @@ def build_results(posts, plugins_to_apply):
                 'score': classification.score,
             })
             action = ACTION_HIDE
+        if post_feature_scores is not None and post_feature_scores.status == CLASSIFICATION_DONE:
+            for user_plugin, filter_definition in filters.feature_filters:
+                score, label, flagged = feature_decision(user_plugin, filter_definition, post_feature_scores)
+                if not flagged:
+                    continue
+                reasons.append({'plugin': user_plugin.plugin.name, 'label': label, 'score': score})
+                action = ACTION_HIDE
 
         # The extension shows the first reason, so the strongest comes first.
         reasons.sort(key=lambda reason: reason['score'], reverse=True)
@@ -264,19 +316,32 @@ def worth_waiting(results):
     return any(result['status'] == 'pending' for result in results)
 
 
-def seen_posts_needing_classification(seen_posts, versions):
-    """The seen posts that lack a classification for at least one of the versions:
-    the ones that cost new model calls."""
+def seen_posts_needing_classification(seen_posts, filters):
+    """The seen posts that lack a classification for at least one of the
+    rubrics, or lack feature scores the filters need: the ones that cost new
+    model calls."""
+    seen_post_ids = [seen_post['post_id'] for seen_post in seen_posts]
+    versions = filters.versions()
     classification_counts = Counter(
         Classification.objects.filter(
-            post__post_id__in=[seen_post['post_id'] for seen_post in seen_posts],
+            post__post_id__in=seen_post_ids,
             plugin_version__in=versions,
         ).values_list('post__platform', 'post__post_id')
     )
-    return [
-        seen_post for seen_post in seen_posts
-        if classification_counts[(seen_post['platform'], seen_post['post_id'])] < len(versions)
-    ]
+    scored = set()
+    if filters.uses_feature_scores():
+        scored = set(PostFeatureScores.objects.filter(
+            post__post_id__in=seen_post_ids,
+            feature_set=filters.feature_set,
+        ).values_list('post__platform', 'post__post_id'))
+    needing = []
+    for seen_post in seen_posts:
+        key = (seen_post['platform'], seen_post['post_id'])
+        lacks_classification = classification_counts[key] < len(versions)
+        lacks_feature_scores = filters.uses_feature_scores() and key not in scored
+        if lacks_classification or lacks_feature_scores:
+            needing.append(seen_post)
+    return needing
 
 
 def take_from_daily_quota(user, wanted_count):
@@ -349,17 +414,18 @@ def classify(request):
     ExtensionToken.objects.filter(id=request.auth.id).update(last_classify_request_at=timezone.now())
 
     settings_for_user(request.user)
-    enabled_plugins = UserPlugin.objects.filter(user=request.user, enabled=True).select_related('plugin')
-    plugins_to_apply = [(user_plugin, user_plugin.plugin.latest_version()) for user_plugin in enabled_plugins]
-    versions = [version for _, version in plugins_to_apply]
+    filters = FiltersToApply(request.user)
 
     # Posts past the daily quota of new posts are neither stored nor classified.
-    new_seen_posts = seen_posts_needing_classification(seen_posts, versions)
+    new_seen_posts = seen_posts_needing_classification(seen_posts, filters)
     granted_count = take_from_daily_quota(request.user, len(new_seen_posts))
     refused_seen_posts = new_seen_posts[granted_count:]
     refused_keys = {(seen_post['platform'], seen_post['post_id']) for seen_post in refused_seen_posts}
 
-    watches_videos = any(user_plugin.plugin.input_kind == PLUGIN_INPUT_VIDEO for user_plugin, _ in plugins_to_apply)
+    # Feature scores are shared by every filter they decide, so they always
+    # watch a post's video, whichever of those filters the reader has on.
+    watches_videos = filters.uses_feature_scores() or any(
+        user_plugin.plugin.input_kind == PLUGIN_INPUT_VIDEO for user_plugin, _ in filters.rubrics)
     posts = []
     for seen_post in seen_posts:
         if (seen_post['platform'], seen_post['post_id']) in refused_keys:
@@ -372,32 +438,68 @@ def classify(request):
         posts.append(post)
     record_submissions(request.user, request.auth, posts)
 
-    # Queue every missing (post, plugin version) pair; existing rows are the cache.
+    # Queue every missing (post, plugin version) pair and the posts' missing
+    # feature scores; existing rows are the cache.
     Classification.objects.bulk_create(
         [
             Classification(post=post, plugin_version=version)
-            for post in posts for _, version in plugins_to_apply
+            for post in posts for _, version in filters.rubrics
         ],
         ignore_conflicts=True,
     )
+    if filters.uses_feature_scores():
+        PostFeatureScores.objects.bulk_create(
+            [PostFeatureScores(post=post, feature_set=filters.feature_set) for post in posts],
+            ignore_conflicts=True,
+        )
 
     deadline = time.monotonic() + PENDING_WAIT_SECONDS
-    results = build_results(posts, plugins_to_apply)
+    results = build_results(posts, filters)
     while worth_waiting(results) and time.monotonic() < deadline:
         time.sleep(PENDING_RECHECK_SECONDS)
-        results = build_results(posts, plugins_to_apply)
+        results = build_results(posts, filters)
 
     results.extend(daily_limit_result(seen_post) for seen_post in refused_seen_posts)
     return Response({'results': results})
 
 
+def feature_filter_result(user_plugin, filter_definition, feature_set, post_feature_scores):
+    filter_result = {
+        'plugin': user_plugin.plugin.slug,
+        'version': None,
+        'feature_set': feature_set.version,
+        'threshold': user_plugin.threshold,
+        'flagged_action': user_plugin.flagged_action,
+        'classification_id': None,
+        'feature_scores_id': None,
+        'status': 'missing',
+        'score': None,
+        'label': '',
+        'flagged': False,
+    }
+    if post_feature_scores is not None:
+        filter_result['feature_scores_id'] = post_feature_scores.id
+        filter_result['status'] = post_feature_scores.status
+        if post_feature_scores.status == CLASSIFICATION_DONE:
+            score, label, flagged = feature_decision(user_plugin, filter_definition, post_feature_scores)
+            filter_result['score'] = score
+            filter_result['label'] = label
+            filter_result['flagged'] = flagged
+    return filter_result
+
+
 def filter_results_for(user, post):
     """What each filter the user has on decided about the post, as stored with
     a judgment. A filter that never classified the post has status missing."""
+    filters = FiltersToApply(user)
+    # (plugin id, filter result), so the results can be listed in the order of the plugins.
     filter_results = []
-    enabled_plugins = UserPlugin.objects.filter(user=user, enabled=True).select_related('plugin').order_by('plugin__id')
-    for user_plugin in enabled_plugins:
-        version = user_plugin.plugin.latest_version()
+    if filters.uses_feature_scores():
+        post_feature_scores = PostFeatureScores.objects.filter(post=post, feature_set=filters.feature_set).first()
+        for user_plugin, filter_definition in filters.feature_filters:
+            filter_results.append((user_plugin.plugin_id, feature_filter_result(
+                user_plugin, filter_definition, filters.feature_set, post_feature_scores)))
+    for user_plugin, version in filters.rubrics:
         classification = Classification.objects.filter(post=post, plugin_version=version).first()
         filter_result = {
             'plugin': user_plugin.plugin.slug,
@@ -418,8 +520,9 @@ def filter_results_for(user, post):
             filter_result['flagged'] = (
                 classification.status == CLASSIFICATION_DONE and classification.score >= user_plugin.threshold
             )
-        filter_results.append(filter_result)
-    return filter_results
+        filter_results.append((user_plugin.plugin_id, filter_result))
+    filter_results.sort(key=lambda plugin_and_result: plugin_and_result[0])
+    return [filter_result for _, filter_result in filter_results]
 
 
 def strongest_flagging_plugin(filter_results):

@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from classification.models import CLASSIFICATION_DONE, Classification, PostJudgment, UserPlugin
@@ -9,6 +9,7 @@ from .helpers import bearer, create_user_with_token, seen_post
 
 
 @patch('classification.views.PENDING_WAIT_SECONDS', 0)
+@override_settings(FEATURE_SCORING=False)
 class JudgmentTests(TestCase):
     def setUp(self):
         self.user, self.token = create_user_with_token('reader@example.com')

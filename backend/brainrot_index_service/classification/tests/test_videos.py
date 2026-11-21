@@ -114,6 +114,7 @@ def ffmpeg_writing_a_clip(command, **arguments):
 
 @patch('classification.views.PENDING_WAIT_SECONDS', 0)
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp(), VIDEO_MAX_YOUTUBE_SECONDS=180, VIDEO_WATCH_SECONDS=30, GEMINI_API_KEY='')
+@override_settings(FEATURE_SCORING=False)
 class BrainrotWatchesVideosTests(TestCase):
     def setUp(self):
         self.user, self.token = create_user_with_token('reader@example.com')
@@ -350,6 +351,7 @@ class BrainrotWatchesVideosTests(TestCase):
 
 @patch('classification.views.PENDING_WAIT_SECONDS', 0)
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp(), VIDEO_WATCH_SECONDS=15, GEMINI_API_KEY='test-gemini-key')
+@override_settings(FEATURE_SCORING=False)
 class GeminiVideoTests(TestCase):
     def setUp(self):
         self.user, self.token = create_user_with_token('reader@example.com')

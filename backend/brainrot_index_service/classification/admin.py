@@ -6,6 +6,7 @@ from .models import (
     Plugin,
     PluginVersion,
     Post,
+    PostFeatureScores,
     PostImage,
     PostJudgment,
     PostSubmission,
@@ -149,6 +150,18 @@ class ClassificationAdmin(admin.ModelAdmin):
     ]
     list_filter = ['status', 'plugin_version__plugin', 'label', 'model', 'inference_source']
     search_fields = ['post__post_id', 'post__text', 'reasoning']
+    date_hierarchy = 'created_at'
+    raw_id_fields = ['post']
+
+
+@admin.register(PostFeatureScores)
+class PostFeatureScoresAdmin(admin.ModelAdmin):
+    list_display = [
+        'id', 'post', 'feature_set', 'status', 'scores', 'model', 'latency_ms',
+        'prompt_tokens', 'cached_prompt_tokens', 'completion_tokens', 'created_at',
+    ]
+    list_filter = ['status', 'feature_set', 'model', 'inference_source']
+    search_fields = ['post__post_id', 'post__text']
     date_hierarchy = 'created_at'
     raw_id_fields = ['post']
 

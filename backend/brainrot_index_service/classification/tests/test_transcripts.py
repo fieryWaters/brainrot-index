@@ -158,6 +158,7 @@ def run_worker_until_idle():
 
 @override_settings(INFERENCE_SOURCE='openrouter', OPENROUTER_MODEL='test/model', YOUTUBE_SERVER_TRANSCRIPTS=False)
 @patch('classification.views.PENDING_WAIT_SECONDS', 0)
+@override_settings(FEATURE_SCORING=False)
 class NoTranscriptTests(TestCase):
     def setUp(self):
         self.user, self.token = create_user_with_token('reader@example.com')

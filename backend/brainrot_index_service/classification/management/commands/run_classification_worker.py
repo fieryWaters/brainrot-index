@@ -10,6 +10,7 @@ from classification.worker import (
     classify_next_pending,
     download_next_pending_image,
     download_next_pending_video,
+    score_next_pending_features,
     settle_next_transcripts,
 )
 from tuning.feature_runs import run_next_feature_experiment
@@ -28,13 +29,14 @@ HEARTBEAT_PATH = Path('/tmp/classification-worker-heartbeat')
 def work_forever():
     while True:
         try:
-            # A video's classifications wait for its transcript, and those of a plugin
-            # that watches videos for the video itself, so those come first. Archiving an original never
+            # A video's classifications and feature scores wait for its transcript, and
+            # those that watch videos for the video itself, so those come first. Archiving an original never
             # delays a post, and the owner's tuning experiments run only when no post waits.
             found_work = (
                 settle_next_transcripts()
                 or download_next_pending_video()
                 or classify_next_pending()
+                or score_next_pending_features()
                 or run_next_tuning_experiment()
                 or run_next_feature_experiment()
                 or download_next_pending_image()
@@ -51,8 +53,8 @@ def work_forever():
 
 
 class Command(BaseCommand):
-    help = ("Settles video transcripts and videos, runs pending classifications and tuning experiments, "
-            "then archives post images, 48 at a time.")
+    help = ("Settles video transcripts and videos, runs pending classifications, feature scorings and "
+            "tuning experiments, then archives post images, 48 at a time.")
 
     def handle(self, *args, **options):
         threads = [threading.Thread(target=work_forever, daemon=True) for _ in range(WORKER_THREADS)]

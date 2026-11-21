@@ -122,6 +122,11 @@ OPENROUTER_MODEL = config('OPENROUTER_MODEL', default='google/gemini-2.5-flash-l
 LOCAL_INFERENCE_BASE_URL = config('LOCAL_INFERENCE_BASE_URL', default='').strip().rstrip('/')
 LOCAL_INFERENCE_MODEL = config('LOCAL_INFERENCE_MODEL', default='').strip()
 
+# true: the filters the latest feature set defines (the four default filters)
+# are decided from one feature scoring call per post (classification.features).
+# false: every filter is judged by its own rubric, one call per filter.
+FEATURE_SCORING = config('FEATURE_SCORING', default=True, cast=bool)
+
 # Brainrot watches a post's video itself, frames and audio, with Gemini, the only
 # model that fetches YouTube videos by URL: straight through the Gemini API
 # when GEMINI_API_KEY is set, which can clip a YouTube video to its opening,

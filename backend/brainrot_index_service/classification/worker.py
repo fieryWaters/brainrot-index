@@ -10,7 +10,9 @@ import time
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 
+from .features import run_feature_scoring, run_video_feature_scoring
 from .images import download_image
 from .inference import run_classification
 from .models import (
@@ -21,6 +23,7 @@ from .models import (
     VIDEO_PENDING,
     VIDEO_READY,
     Classification,
+    PostFeatureScores,
     PostImage,
     PostVideo,
     VideoTranscript,
@@ -73,12 +76,14 @@ video_download_locks = {platform: threading.Lock() for platform in DOWNLOADED_PL
 
 def download_next_pending_video():
     """Downloads the opening of one pending Reddit or X video that a plugin
-    that watches videos is waiting on, from a site that may be asked now.
-    Returns False when there was none."""
-    waiting_post_ids = Classification.objects.filter(
+    that watches videos, or a feature scoring, is waiting on, from a site
+    that may be asked now. Returns False when there was none."""
+    waiting_for_classification = Classification.objects.filter(
         status=CLASSIFICATION_PENDING,
         plugin_version__plugin__input_kind=PLUGIN_INPUT_VIDEO,
     ).values('post_id')
+    waiting_for_feature_scores = PostFeatureScores.objects.filter(status=CLASSIFICATION_PENDING).values('post_id')
+    waiting = Q(post_id__in=waiting_for_classification) | Q(post_id__in=waiting_for_feature_scores)
     for platform in DOWNLOADED_PLATFORMS:
         download_lock = video_download_locks[platform]
         if not download_lock.acquire(blocking=False):
@@ -90,7 +95,7 @@ def download_next_pending_video():
                 post_video = (
                     PostVideo.objects
                     .select_for_update(skip_locked=True, of=('self',))
-                    .filter(status=VIDEO_PENDING, post__platform=platform, post_id__in=waiting_post_ids)
+                    .filter(waiting, status=VIDEO_PENDING, post__platform=platform)
                     .select_related('post')
                     .order_by('id')
                     .first()
@@ -144,4 +149,31 @@ def classify_next_pending():
             run_video_classification(classification, post_video)
         else:
             run_classification(classification)
+    return True
+
+
+def score_next_pending_features():
+    """Runs one pending feature scoring. Returns False when there was none. A
+    YouTube video waits until its transcript has been fetched or found
+    missing, and any post with a video until the video has been settled. A
+    ready video is watched; one that cannot be watched leaves the post rated
+    without it."""
+    with transaction.atomic():
+        post_feature_scores = (
+            PostFeatureScores.objects
+            .select_for_update(skip_locked=True, of=('self',))
+            .filter(status=CLASSIFICATION_PENDING)
+            .exclude(post__transcript__status=TRANSCRIPT_PENDING)
+            .exclude(post__video__status=VIDEO_PENDING)
+            .select_related('post', 'feature_set')
+            .order_by('id')
+            .first()
+        )
+        if post_feature_scores is None:
+            return False
+        post_video = PostVideo.objects.filter(post=post_feature_scores.post, status=VIDEO_READY).first()
+        if post_video is not None:
+            run_video_feature_scoring(post_feature_scores, post_video)
+        else:
+            run_feature_scoring(post_feature_scores)
     return True

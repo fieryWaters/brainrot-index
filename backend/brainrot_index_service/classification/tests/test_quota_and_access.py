@@ -19,6 +19,7 @@ User = get_user_model()
 
 @patch('classification.views.PENDING_WAIT_SECONDS', 0)
 @override_settings(DAILY_NEW_POST_QUOTA=2)
+@override_settings(FEATURE_SCORING=False)
 class DailyQuotaTests(TestCase):
     def setUp(self):
         cache.clear()

@@ -1,6 +1,7 @@
 """The /tuning page's API, open only to the owner, as the inbox is: pick a
-filter, run a draft of its rubric as an experiment, read past experiments,
-and clean up the owner's thumbs. Nothing here changes live filtering."""
+filter, run a draft of its rubric as an experiment, or a draft of a feature
+set for every filter at once, read past experiments, and clean up the
+owner's thumbs. Nothing here changes live filtering."""
 
 from django.conf import settings
 from rest_framework import serializers, status
@@ -8,11 +9,13 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.decorators import api_view, authentication_classes, permission_classes, throttle_classes
 from rest_framework.response import Response
 
+from classification.features import FORM_PRODUCT, FORM_WEIGHTED_SUM, FORMS, features_prompt, features_used, filter_score
 from classification.inference import configured_model
-from classification.models import SHOULD_BE_CHOICES, SHOULD_BE_SHOWN, Plugin
+from classification.models import SHOULD_BE_CHOICES, SHOULD_BE_SHOWN, FeatureSet, Plugin
 from feedback.views import CanOpenInbox
 
-from .models import CASE_SYNTHETIC, CASE_THUMB, TuningExperiment
+from .feature_runs import create_experiment, filter_counts
+from .models import CASE_SYNTHETIC, CASE_THUMB, FeatureExperiment, TuningExperiment
 from .runs import decides_to_flag, owner_judgments, owner_judgments_for, synthetic_examples_for
 
 # Names the model's answer already uses, or the label of a post that meets no criterion.
@@ -250,3 +253,209 @@ def thumb_detail(request, judgment_id):
         setattr(judgment, field_name, value)
     judgment.save()
     return Response(thumb_as_dict(judgment))
+
+
+# -- Feature set experiments --
+
+class FeatureLevelSerializer(serializers.Serializer):
+    text = serializers.CharField()
+    # One or two short invented examples, never posts from the owner's thumbs, which are the test set.
+    examples = serializers.ListField(child=serializers.CharField(), max_length=2, default=list)
+
+
+class FeatureSerializer(serializers.Serializer):
+    # The name is a field of the model's JSON answer.
+    name = serializers.RegexField(r'^[a-z][a-z0-9_]*$', max_length=60,
+                                  error_messages={'invalid': 'A feature name is lowercase letters, digits and underscores.'})
+    description = serializers.CharField()
+    levels = FeatureLevelSerializer(many=True, min_length=2)
+
+
+class FeatureFilterSerializer(serializers.Serializer):
+    plugin = serializers.SlugField()
+    form = serializers.ChoiceField(choices=FORMS)
+    # For a product.
+    features = serializers.ListField(child=serializers.CharField(), required=False)
+    # For a weighted sum: {feature name: multiplier}.
+    weights = serializers.DictField(child=serializers.FloatField(), required=False)
+    cutoff = serializers.IntegerField(min_value=0, max_value=100)
+
+    def validate(self, attrs):
+        if attrs['form'] == FORM_PRODUCT:
+            if not attrs.get('features'):
+                raise serializers.ValidationError(f"{attrs['plugin']}: a product needs at least one feature.")
+            return {'plugin': attrs['plugin'], 'form': FORM_PRODUCT, 'features': attrs['features'], 'cutoff': attrs['cutoff']}
+        if not attrs.get('weights'):
+            raise serializers.ValidationError(f"{attrs['plugin']}: a weighted sum needs at least one feature.")
+        return {'plugin': attrs['plugin'], 'form': FORM_WEIGHTED_SUM, 'weights': attrs['weights'], 'cutoff': attrs['cutoff']}
+
+
+class FeatureDraftSerializer(serializers.Serializer):
+    features = FeatureSerializer(many=True, allow_empty=False)
+    filters = FeatureFilterSerializer(many=True, allow_empty=False)
+    include_synthetic = serializers.BooleanField(default=False)
+    explain_every_case = serializers.BooleanField(default=False)
+    started_from = serializers.IntegerField(required=False, allow_null=True)
+    started_from_feature_set = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        names = [feature['name'] for feature in attrs['features']]
+        if len(set(names)) != len(names):
+            raise serializers.ValidationError('Two features have the same name.')
+        tunable_slugs = {plugin.slug for plugin in tunable_plugins()}
+        plugin_slugs = [filter_definition['plugin'] for filter_definition in attrs['filters']]
+        if len(set(plugin_slugs)) != len(plugin_slugs):
+            raise serializers.ValidationError('Two filters replace the same live filter.')
+        for filter_definition in attrs['filters']:
+            if filter_definition['plugin'] not in tunable_slugs:
+                raise serializers.ValidationError(f"No live filter {filter_definition['plugin']} to compare with.")
+            unknown = set(features_used(filter_definition)) - set(names)
+            if unknown:
+                raise serializers.ValidationError(
+                    f"{filter_definition['plugin']} uses features that are not defined: {', '.join(sorted(unknown))}.")
+        return attrs
+
+
+def feature_set_as_dict(feature_set):
+    return {'id': feature_set.id, 'version': feature_set.version,
+            'features': feature_set.features, 'filters': feature_set.filters}
+
+
+def feature_experiment_summary(experiment, results=None):
+    if results is None:
+        results = list(experiment.results.all())
+    scores = {}
+    for filter_definition in experiment.filters:
+        slug = filter_definition['plugin']
+        scores[slug] = {}
+        for source in [CASE_THUMB, CASE_SYNTHETIC]:
+            counts = filter_counts(filter_definition, experiment.live[slug],
+                                   [result for result in results if result.source == source])
+            if counts['cases'] > 0:
+                scores[slug][source] = counts
+    costs = [result.cost for result in results if result.cost is not None]
+    return {
+        'id': experiment.id,
+        'created_at': experiment.created_at.isoformat(),
+        'finished_at': experiment.finished_at.isoformat() if experiment.finished_at else None,
+        'status': experiment.status,
+        'error': experiment.error,
+        'started_from': experiment.started_from_id,
+        'started_from_feature_set': (experiment.started_from_feature_set.version
+                                     if experiment.started_from_feature_set else None),
+        'filters': experiment.filters,
+        'live': experiment.live,
+        'include_synthetic': experiment.include_synthetic,
+        'explain_every_case': experiment.explain_every_case,
+        'model': experiment.model,
+        'inference_source': experiment.inference_source,
+        'total_cases': experiment.total_cases,
+        'judged_cases': len(results),
+        'scores': scores,
+        'prompt_tokens': sum(result.prompt_tokens for result in results),
+        'cached_prompt_tokens': sum(result.cached_prompt_tokens for result in results),
+        'completion_tokens': sum(result.completion_tokens for result in results),
+        'cost': sum(costs) if costs else None,
+    }
+
+
+def feature_result_as_dict(result, filters):
+    filter_scores = {}
+    for filter_definition in filters:
+        slug = filter_definition['plugin']
+        if slug in result.expected:
+            filter_scores[slug] = None if result.failed else filter_score(filter_definition, result.scores)
+    return {
+        'case_id': result.case_id,
+        'source': result.source,
+        'judgment_id': result.judgment_id,
+        'post': result.post,
+        'image_urls': result.image_urls,
+        'post_url': result.post_url,
+        'expected': result.expected,
+        'owner': result.owner,
+        'video_not_watched': result.video_not_watched,
+        'scores': result.scores,
+        'failed': result.failed,
+        'reasons': result.reasons,
+        'live': result.live,
+        'filter_scores': filter_scores,
+    }
+
+
+def feature_experiment_as_dict(experiment):
+    results = list(experiment.results.order_by('id'))
+    experiment_dict = feature_experiment_summary(experiment, results)
+    experiment_dict['features'] = experiment.features
+    experiment_dict['system_prompt'] = features_prompt(experiment.features)
+    experiment_dict['results'] = [feature_result_as_dict(result, experiment.filters) for result in results]
+    return experiment_dict
+
+
+@api_view(['GET'])
+@owner_only
+def feature_overview(request):
+    """The saved feature set to start a draft from, the live filters a draft
+    can replace with their test set sizes, and the past experiments."""
+    filters = []
+    for plugin in tunable_plugins():
+        live_version = plugin.latest_version()
+        filters.append({
+            'slug': plugin.slug,
+            'name': plugin.name,
+            'input_kind': plugin.input_kind,
+            'live': {'version': live_version.version, 'threshold': plugin.default_threshold},
+            'thumb_cases': len(owner_judgments_for(plugin)),
+            'synthetic_cases': len(synthetic_examples_for(plugin)),
+        })
+    feature_set = FeatureSet.objects.order_by('-version').first()
+    experiments_found = (FeatureExperiment.objects.select_related('started_from_feature_set')
+                         .prefetch_related('results').order_by('-id'))
+    return Response({
+        'feature_set': feature_set_as_dict(feature_set) if feature_set else None,
+        'filters': filters,
+        'model': configured_model(),
+        'inference_source': settings.INFERENCE_SOURCE,
+        'experiments': [feature_experiment_summary(experiment) for experiment in experiments_found],
+    })
+
+
+@api_view(['POST'])
+@owner_only
+def feature_experiments(request):
+    serializer = FeatureDraftSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    draft = serializer.validated_data
+    started_from = None
+    if draft.get('started_from') is not None:
+        started_from = FeatureExperiment.objects.filter(id=draft['started_from']).first()
+    started_from_feature_set = None
+    if draft.get('started_from_feature_set') is not None:
+        started_from_feature_set = FeatureSet.objects.filter(id=draft['started_from_feature_set']).first()
+    experiment = create_experiment(
+        features=[as_plain_data(feature) for feature in draft['features']],
+        filters=[as_plain_data(filter_definition) for filter_definition in draft['filters']],
+        include_synthetic=draft['include_synthetic'],
+        explain_every_case=draft['explain_every_case'],
+        started_from_feature_set=started_from_feature_set,
+        started_from=started_from,
+    )
+    return Response(feature_experiment_as_dict(experiment), status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@owner_only
+def feature_experiment_detail(request, experiment_id):
+    experiment = FeatureExperiment.objects.select_related('started_from_feature_set').filter(id=experiment_id).first()
+    if experiment is None:
+        return Response({'error': f"No feature experiment {experiment_id}."}, status=status.HTTP_404_NOT_FOUND)
+    return Response(feature_experiment_as_dict(experiment))
+
+
+def as_plain_data(value):
+    """Validated data as plain dicts and lists, for a JSON field."""
+    if isinstance(value, dict):
+        return {key: as_plain_data(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [as_plain_data(item) for item in value]
+    return value

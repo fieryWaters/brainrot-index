@@ -252,6 +252,7 @@ Google at `https://brainrot.jacob-waters.com/login`, then go to `/admin/`.
 - Logs: `docker compose logs -f web backend`
 - Backend tests: `docker compose exec backend python manage.py test api billing classification feedback`
 - Evaluate a model against `eval/dataset.jsonl` (the folder is mounted, not built in; see `eval/README.md`): `docker compose run --rm --no-deps --user "$(id -u):$(id -g)" -v "$PWD/eval:/app/eval" --entrypoint python backend manage.py evaluate_plugins --dataset /app/eval/dataset.jsonl --inference-source openrouter --model google/gemini-2.5-flash-lite`
+- Run a feature set experiment (every filter composed of scored features, measured on the owner's thumbs and the synthetic test set beside the live filters; it opens on the site at `/tuning/features/<id>`): `docker compose exec -T backend python manage.py run_feature_experiment`. `--from-experiment <id>` runs a draft edited on the page instead of the saved feature set; `--resume <id>` finishes an interrupted run.
 - Worker logs: `docker compose logs -f worker`
 - Local model logs: `docker compose logs -f inference`
 - nginx checks against the running stack (admin blocked on the public host, www redirect): `bash frontend/brainrot-index-frontend/check-nginx.sh`

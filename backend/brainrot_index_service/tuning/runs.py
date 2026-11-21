@@ -142,50 +142,59 @@ def example_as_read(example):
     }
 
 
-def thumb_case(judgment, expected, plugin):
-    """A thumbs as a case, described exactly as the production worker describes its post."""
+def thumb_fields(judgment):
+    """What a case of a thumbs holds, its post described exactly as the
+    production worker describes it, as Case fields."""
     post = judgment.post
     images_with_data = images_for_model(post)
-    video_not_watched = (plugin.input_kind == PLUGIN_INPUT_VIDEO
-                         and PostVideo.objects.filter(post=post, status=VIDEO_READY).exists())
     if judgment.plugin is not None:
         plugin_named = judgment.plugin.slug
     else:
         plugin_named = ''
-    return Case(
-        case_id=f"judgment-{judgment.id}",
-        source=CASE_THUMB,
-        should_flag=expected['flag'],
-        owner={
+    return {
+        'case_id': f"judgment-{judgment.id}",
+        'source': CASE_THUMB,
+        'owner': {
             'verdict': judgment.verdict,
             'shown_action': judgment.shown_action,
             'should_be': judgment.should_be,
             'plugin': plugin_named,
             'details': judgment.details,
         },
-        description=describe_stored_post(post, len(images_with_data)),
-        post=post_as_read(post),
-        image_data_urls=[data_url for _, data_url in images_with_data],
-        image_urls=[post_image.source_url for post_image, _ in images_with_data],
-        post_url=post.url,
-        judgment=judgment,
-        video_not_watched=video_not_watched,
-    )
+        'description': describe_stored_post(post, len(images_with_data)),
+        'post': post_as_read(post),
+        'image_data_urls': [data_url for _, data_url in images_with_data],
+        'image_urls': [post_image.source_url for post_image, _ in images_with_data],
+        'post_url': post.url,
+        'judgment': judgment,
+    }
+
+
+def video_was_watched(post):
+    return PostVideo.objects.filter(post=post, status=VIDEO_READY).exists()
+
+
+def thumb_case(judgment, expected, plugin):
+    video_not_watched = plugin.input_kind == PLUGIN_INPUT_VIDEO and video_was_watched(judgment.post)
+    return Case(should_flag=expected['flag'], video_not_watched=video_not_watched, **thumb_fields(judgment))
+
+
+def synthetic_fields(example):
+    """What a case of a synthetic test set example holds, as Case fields; the owner part is for one filter."""
+    images_dir = Path(settings.TUNING_SYNTHETIC_DATASET).parent / 'images'
+    description, image_data_urls = example_description_and_images(example, images_dir)
+    return {
+        'case_id': example['id'],
+        'source': CASE_SYNTHETIC,
+        'description': description,
+        'post': example_as_read(example),
+        'image_data_urls': image_data_urls,
+    }
 
 
 def synthetic_case(example, plugin):
-    images_dir = Path(settings.TUNING_SYNTHETIC_DATASET).parent / 'images'
-    description, image_data_urls = example_description_and_images(example, images_dir)
     expected = example['expected'][plugin.slug]
-    return Case(
-        case_id=example['id'],
-        source=CASE_SYNTHETIC,
-        should_flag=expected['flag'],
-        owner={'why': expected['why']},
-        description=description,
-        post=example_as_read(example),
-        image_data_urls=image_data_urls,
-    )
+    return Case(should_flag=expected['flag'], owner={'why': expected['why']}, **synthetic_fields(example))
 
 
 def experiment_cases(experiment):
@@ -211,30 +220,27 @@ def decides_to_flag(answer, threshold):
     return not answer['failed'] and answer['score'] >= threshold
 
 
-def explanation_schema(criteria):
-    properties = {criterion['name']: {'type': 'string'} for criterion in criteria}
+def explanation_schema(names):
+    properties = {name: {'type': 'string'} for name in names}
     return {'type': 'object', 'properties': properties, 'required': list(properties), 'additionalProperties': False}
 
 
-def request_explanations(messages, answer, plugin_version, inference_source, model):
-    """Asks the model, after its answer, why it judged each criterion as it
-    did. Returns a ModelOutcome whose answer is {criterion name: explanation},
-    or None when the request failed. Tried once: an explanation is a help, not a result."""
-    criteria = plugin_version.criteria
-    answer_given = {'reasoning': answer['reasoning']}
-    for criterion in criteria:
-        answer_given[criterion['name']] = criterion['name'] in answer['criteria_met']
+def request_explanations(messages, answer_given, names, explanation_request, inference_source, model):
+    """Asks the model, after its answer (answer_given, as it was sent), why it
+    answered each named field as it did. Returns a ModelOutcome whose answer
+    is {name: explanation}, or None when the request failed. Tried once: an
+    explanation is a help, not a result."""
     request_body = {
         'model': model,
         'messages': messages + [
             {'role': 'assistant', 'content': json.dumps(answer_given)},
-            {'role': 'user', 'content': EXPLANATION_REQUEST},
+            {'role': 'user', 'content': explanation_request},
         ],
         'temperature': 0,
         'max_tokens': MAX_EXPLANATION_TOKENS,
         'response_format': {
             'type': 'json_schema',
-            'json_schema': {'name': 'explanations', 'strict': True, 'schema': explanation_schema(criteria)},
+            'json_schema': {'name': 'explanations', 'strict': True, 'schema': explanation_schema(names)},
         },
     }
     if inference_source == INFERENCE_SOURCE_OPENROUTER:
@@ -252,15 +258,26 @@ def request_explanations(messages, answer, plugin_version, inference_source, mod
         completion = response.json()
         usage = completion.get('usage') or {}
         outcome.prompt_tokens = usage.get('prompt_tokens')
+        outcome.cached_prompt_tokens = (usage.get('prompt_tokens_details') or {}).get('cached_tokens')
         outcome.completion_tokens = usage.get('completion_tokens')
         outcome.cost = usage.get('cost')
         explanations = json.loads(completion['choices'][0]['message']['content'])
     except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as error:
         logger.warning("Explanation request failed: %s", error)
         return outcome
-    if isinstance(explanations, dict) and all(isinstance(explanations.get(c['name']), str) for c in criteria):
-        outcome.answer = {criterion['name']: explanations[criterion['name']] for criterion in criteria}
+    if isinstance(explanations, dict) and all(isinstance(explanations.get(name), str) for name in names):
+        outcome.answer = {name: explanations[name] for name in names}
     return outcome
+
+
+def criteria_explanations(messages, answer, plugin_version, inference_source, model):
+    """Why the draft's answer judged each criterion met or not met."""
+    criteria = plugin_version.criteria
+    answer_given = {'reasoning': answer['reasoning']}
+    for criterion in criteria:
+        answer_given[criterion['name']] = criterion['name'] in answer['criteria_met']
+    names = [criterion['name'] for criterion in criteria]
+    return request_explanations(messages, answer_given, names, EXPLANATION_REQUEST, inference_source, model)
 
 
 @dataclass
@@ -268,11 +285,13 @@ class Usage:
     """The tokens and cost of every model call made for one case."""
 
     prompt_tokens: int = 0
+    cached_prompt_tokens: int = 0
     completion_tokens: int = 0
     cost: float | None = None
 
     def add(self, outcome):
         self.prompt_tokens += outcome.prompt_tokens or 0
+        self.cached_prompt_tokens += outcome.cached_prompt_tokens or 0
         self.completion_tokens += outcome.completion_tokens or 0
         if outcome.cost is not None:
             self.cost = (self.cost or 0) + outcome.cost
@@ -300,7 +319,7 @@ def judge_case(experiment, draft_version, live_version, case, reused_live_answer
     differs_from_live = draft_flags != decides_to_flag(live, experiment.live_threshold)
     explanations = {}
     if not draft['failed'] and (experiment.explain_every_case or draft_is_wrong or differs_from_live):
-        explanation_outcome = request_explanations(
+        explanation_outcome = criteria_explanations(
             draft_messages, draft, draft_version, experiment.inference_source, experiment.model)
         usage.add(explanation_outcome)
         if explanation_outcome.answer is not None:
@@ -348,16 +367,15 @@ def reusable_live_answers(experiment, cases):
     return reusable
 
 
-def claim_next_experiment():
-    """Marks the oldest waiting experiment running and returns it, or None.
-    A running experiment that stalled is waiting again."""
+def claim_next(experiments):
+    """Marks the oldest waiting experiment of a queryset running and returns
+    it, or None. A running experiment that stalled is waiting again."""
     with transaction.atomic():
         stalled = Q(status=EXPERIMENT_RUNNING, heartbeat_at__lt=timezone.now() - STALLED_AFTER)
         experiment = (
-            TuningExperiment.objects
+            experiments
             .select_for_update(skip_locked=True, of=('self',))
             .filter(Q(status=EXPERIMENT_PENDING) | stalled)
-            .select_related('plugin', 'live_version')
             .order_by('id')
             .first()
         )
@@ -367,6 +385,19 @@ def claim_next_experiment():
         experiment.heartbeat_at = timezone.now()
         experiment.save(update_fields=['status', 'heartbeat_at'])
     return experiment
+
+
+def run_or_mark_failed(experiment, run):
+    try:
+        run(experiment)
+    except Exception as error:
+        # A run that cannot finish, such as one whose synthetic test set is unreadable, is marked failed
+        # rather than taken up again and again.
+        logger.exception("Experiment %s failed", experiment)
+        experiment.status = EXPERIMENT_FAILED
+        experiment.error = str(error)
+        experiment.finished_at = timezone.now()
+        experiment.save(update_fields=['status', 'error', 'finished_at'])
 
 
 def run_experiment(experiment):
@@ -397,17 +428,8 @@ def run_experiment(experiment):
 
 def run_next_tuning_experiment():
     """Runs one waiting experiment. Returns False when there was none."""
-    experiment = claim_next_experiment()
+    experiment = claim_next(TuningExperiment.objects.select_related('plugin', 'live_version'))
     if experiment is None:
         return False
-    try:
-        run_experiment(experiment)
-    except Exception as error:
-        # A run that cannot finish, such as one whose synthetic test set is unreadable, is marked failed
-        # rather than taken up again and again.
-        logger.exception("Tuning experiment %s failed", experiment.id)
-        experiment.status = EXPERIMENT_FAILED
-        experiment.error = str(error)
-        experiment.finished_at = timezone.now()
-        experiment.save(update_fields=['status', 'error', 'finished_at'])
+    run_or_mark_failed(experiment, run_experiment)
     return True

@@ -7,7 +7,9 @@
 // away behind "Edit draft": every run is saved as an experiment, judged by the
 // background worker with the production prompt and model.
 // /tuning/compare/<id>/<id> lists the posts two experiments decide
-// differently. Nothing here changes live filtering. The server refuses
+// differently. Feature set drafts have their own page (FeatureTuningPage.js),
+// which shares the post rows and label controls here. Nothing here changes
+// live filtering. The server refuses
 // everyone but the owner (the account the admin lets in).
 
 import { apiFetch, errorMessageFrom } from '../lib/api.js'
@@ -17,14 +19,14 @@ import { createErrorBanner } from '../components/ErrorBanner.js'
 import { ACCENT_BUTTON_CLASS, CARD_CLASS, INPUT_CLASS, LABEL_CLASS, QUIET_BUTTON_CLASS, SELECT_CLASS } from '../components/styles.js'
 
 const POLL_MILLISECONDS = 2000
-const SMALL_BUTTON_CLASS = 'px-2 py-0.5 rounded text-xs text-white/60 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-60'
-const RIGHT_CLASS = 'text-glow-300'
-const WRONG_CLASS = 'text-red-300'
-const FAILED_CLASS = 'text-amber-300'
+export const SMALL_BUTTON_CLASS = 'px-2 py-0.5 rounded text-xs text-white/60 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-60'
+export const RIGHT_CLASS = 'text-glow-300'
+export const WRONG_CLASS = 'text-red-300'
+export const FAILED_CLASS = 'text-amber-300'
 const PLATFORM_NAMES = { reddit: 'Reddit', x: 'X', youtube: 'YouTube' }
 const SOURCE_NAMES = { thumb: 'Your thumbs', synthetic: 'Test set' }
 
-function formatDateTime(isoDate) {
+export function formatDateTime(isoDate) {
   return new Date(isoDate).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
@@ -37,7 +39,7 @@ function flags(answer, threshold) {
   return !answer.failed && answer.score >= threshold
 }
 
-function decisionWord(blocks) {
+export function decisionWord(blocks) {
   if (blocks) return 'block'
   return 'allow'
 }
@@ -321,7 +323,7 @@ function createLabelChoice(filters, value) {
 }
 
 // Fixing the owner's label: choose it again, note it, or delete it.
-function createLabelControls(result, filters, pluginSlug) {
+export function createLabelControls(result, filters, pluginSlug) {
   if (result.source === 'synthetic') {
     return el('p', 'text-xs text-white/50', `Test set says ${decisionWord(result.should_flag)}: ${result.owner.why}`)
   }
@@ -374,7 +376,7 @@ function createLabelControls(result, filters, pluginSlug) {
 }
 
 // One post on one line; a click opens it below, made by createOpened.
-function createPostRow(result, mark, lineParts, rowClass, createOpened) {
+export function createPostRow(result, mark, lineParts, rowClass, createOpened) {
   const thumbnailSlot = el('span', 'h-7 w-7 shrink-0')
   if (result.image_urls.length > 0) {
     thumbnailSlot.appendChild(createImage(result.image_urls[0], 'h-7 w-7 rounded object-cover'))
@@ -402,7 +404,7 @@ function createPostRow(result, mark, lineParts, rowClass, createOpened) {
   return row
 }
 
-function createOpenedPost(result, ...sideParts) {
+export function createOpenedPost(result, ...sideParts) {
   return el('div', 'grid gap-4 px-3 pb-4 pt-1 sm:pl-12 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]',
     el('div', 'min-w-0', createContext(result.post), createPostCard(result)),
     el('div', 'min-w-0 space-y-3', ...sideParts))
@@ -586,20 +588,22 @@ function draftFrom(source, startedFrom) {
   }
 }
 
-function refusalText(response, data, what) {
+export function refusalText(response, data, what) {
   if (response.status === 403) return 'The tuning page is only for the site owner, signed in with Google.'
   return errorMessageFrom(data, `${what} could not load: error ${response.status}.`)
 }
 
-function createHeader(title) {
+export function createHeader(title) {
   const inboxLink = el('a', QUIET_BUTTON_CLASS, 'Inbox')
   inboxLink.href = '/inbox'
   const thumbsLink = el('a', QUIET_BUTTON_CLASS, 'Post thumbs')
   thumbsLink.href = '/inbox/thumbs'
   const tuningLink = el('a', QUIET_BUTTON_CLASS, 'Tuning')
   tuningLink.href = '/tuning'
+  const featuresLink = el('a', QUIET_BUTTON_CLASS, 'Features')
+  featuresLink.href = '/tuning/features'
   return el('div', 'flex flex-wrap items-center justify-between gap-4 mb-6',
-    el('h1', 'text-3xl font-bold text-white', title), el('div', 'flex gap-2', tuningLink, inboxLink, thumbsLink))
+    el('h1', 'text-3xl font-bold text-white', title), el('div', 'flex gap-2', tuningLink, featuresLink, inboxLink, thumbsLink))
 }
 
 export function mountTuningPage({ experimentId } = {}) {

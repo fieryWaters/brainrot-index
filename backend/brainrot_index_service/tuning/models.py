@@ -1,14 +1,16 @@
-"""The owner's experiments with a filter's rubric, from the /tuning page.
+"""The owner's experiments with filters, from the /tuning page.
 
-An experiment is a draft of a filter's rubric (its text, criteria and cutoff)
-judged on the owner's thumbs, and optionally on the synthetic test set, beside
-the live version. Nothing here changes live filtering: a draft goes live only
-when an engineer releases it as a new PluginVersion."""
+A TuningExperiment is a draft of one filter's rubric (its text, criteria and
+cutoff); a FeatureExperiment is a draft of a feature set, every filter
+composed of scored features. Each is judged on the owner's thumbs, and
+optionally on the synthetic test set, beside the live versions. Nothing here
+changes live filtering: a draft goes live only when an engineer releases it
+as a new PluginVersion or FeatureSet."""
 
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
-from classification.models import Plugin, PluginVersion, PostJudgment
+from classification.models import FeatureSet, Plugin, PluginVersion, PostJudgment
 from classification.scoring import LABEL_NO_CRITERION_MET
 
 EXPERIMENT_PENDING = 'pending'
@@ -119,6 +121,82 @@ class TuningResult(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=['experiment', 'case_id'], name='unique_tuning_case_per_experiment'),
+        ]
+
+    def __str__(self):
+        return f"{self.case_id} in {self.experiment}"
+
+
+class FeatureExperiment(models.Model):
+    """One run of a feature set draft (classification.features): its features,
+    their levels and examples, and the filters composed of them, each with its
+    cutoff. Each post is scored once, and every filter is measured on its own
+    test set beside its live version. Its model and inference source are those
+    production used when it ran."""
+
+    # The saved feature set or the experiment the draft was edited from; both
+    # empty when it was written from scratch.
+    started_from_feature_set = models.ForeignKey(FeatureSet, on_delete=models.PROTECT, null=True, blank=True,
+                                                 related_name='experiments')
+    started_from = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True)
+    # As FeatureSet.features and FeatureSet.filters.
+    features = models.JSONField()
+    filters = models.JSONField()
+    # Each filter's live version and cutoff when the experiment was made:
+    # {plugin slug: {version_id, version, threshold}}.
+    live = models.JSONField()
+    include_synthetic = models.BooleanField(default=False)
+    # Without it, only the posts some filter gets wrong or decides differently from live are explained.
+    explain_every_case = models.BooleanField(default=False)
+    model = models.CharField(max_length=200)
+    inference_source = models.CharField(max_length=32)
+    status = models.CharField(max_length=16, choices=EXPERIMENT_STATUS_CHOICES, default=EXPERIMENT_PENDING)
+    error = models.TextField(blank=True, default='')
+    total_cases = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    heartbeat_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"feature experiment {self.id}"
+
+
+class FeatureResult(models.Model):
+    """The draft's feature scores on one post, and each live filter's answer
+    on it. What the post showed and what the owner said are copied in, as in
+    TuningResult."""
+
+    experiment = models.ForeignKey(FeatureExperiment, on_delete=models.CASCADE, related_name='results')
+    case_id = models.CharField(max_length=64)
+    source = models.CharField(max_length=16, choices=CASE_SOURCE_CHOICES)
+    judgment = models.ForeignKey(PostJudgment, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='feature_results')
+    description = models.TextField()
+    post = models.JSONField(default=dict)
+    image_urls = models.JSONField(default=list, blank=True)
+    post_url = models.TextField(blank=True, default='')
+    # What each filter whose test set holds this post should decide: {plugin slug: should flag}.
+    expected = models.JSONField()
+    # As TuningResult.owner.
+    owner = models.JSONField(default=dict)
+    # The post has a video production's Brainrot watched; the draft rated it on its text and images only.
+    video_not_watched = models.BooleanField(default=False)
+    # {feature name: 0 to 10}; empty when the model gave no usable answer.
+    scores = models.JSONField(default=dict)
+    failed = models.BooleanField(default=False)
+    # Why the model gave each rating: {feature name: explanation}.
+    reasons = models.JSONField(default=dict, blank=True)
+    # Each live filter's answer, {plugin slug: {failed, score, criteria_met, reasoning}}, for the filters in expected.
+    live = models.JSONField(default=dict)
+    # Every model call made for this post in this experiment.
+    prompt_tokens = models.PositiveIntegerField(default=0)
+    cached_prompt_tokens = models.PositiveIntegerField(default=0)
+    completion_tokens = models.PositiveIntegerField(default=0)
+    cost = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['experiment', 'case_id'], name='unique_feature_case_per_experiment'),
         ]
 
     def __str__(self):

@@ -22,6 +22,7 @@ import { mountTermsPage } from './pages/TermsPage.js'
 import { mountContactPage } from './pages/ContactPage.js'
 import { mountInboxPage } from './pages/InboxPage.js'
 import { mountThumbsPage } from './pages/ThumbsPage.js'
+import { mountFeatureTuningPage } from './pages/FeatureTuningPage.js'
 import { mountTuningPage, mountTuningComparePage } from './pages/TuningPage.js'
 import { mountNotFoundPage } from './pages/NotFoundPage.js'
 
@@ -61,6 +62,9 @@ register('/inbox/:itemId', mountInboxPage, { requiresAuth: true, title: 'Inbox' 
 // The owner's tuning page for filter rubrics; the server refuses everyone else.
 register('/tuning', mountTuningPage, { requiresAuth: true, title: 'Tuning' })
 register('/tuning/compare/:first/:second', mountTuningComparePage, { requiresAuth: true, title: 'Tuning' })
+// Drafts of a feature set, every filter composed of scored features.
+register('/tuning/features', mountFeatureTuningPage, { requiresAuth: true, title: 'Feature tuning' })
+register('/tuning/features/:experimentId', mountFeatureTuningPage, { requiresAuth: true, title: 'Feature tuning' })
 register('/tuning/:experimentId', mountTuningPage, { requiresAuth: true, title: 'Tuning' })
 
 // Centralized auth gate: protected routes redirect to '/' when there's no

@@ -12,6 +12,7 @@ from classification.worker import (
     download_next_pending_video,
     settle_next_transcripts,
 )
+from tuning.feature_runs import run_next_feature_experiment
 from tuning.runs import run_next_tuning_experiment
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ def work_forever():
                 or download_next_pending_video()
                 or classify_next_pending()
                 or run_next_tuning_experiment()
+                or run_next_feature_experiment()
                 or download_next_pending_image()
             )
             HEARTBEAT_PATH.touch()

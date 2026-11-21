@@ -54,12 +54,15 @@ PLATFORM_NAMES = {'reddit': 'Reddit', 'x': 'X', 'youtube': 'YouTube'}
 class ModelOutcome:
     """What the model answered for one classification. answer is None when
     every attempt failed; the measurements are those of the last attempt,
-    except cost, which adds up every attempt the provider reported a cost for."""
+    except cost, which adds up every attempt the provider reported a cost for.
+    cached_prompt_tokens is the part of the prompt the provider read from its
+    cache, None when it does not say."""
 
     answer: dict | None = None
     raw_response: str = ''
     latency_ms: int | None = None
     prompt_tokens: int | None = None
+    cached_prompt_tokens: int | None = None
     completion_tokens: int | None = None
     cost: float | None = None
 
@@ -162,22 +165,23 @@ def transcript_for_model(post):
     return ' '.join(words)
 
 
-def build_messages(plugin_version, post_description, image_urls, explain=False):
+def chat_messages(system_text, post_description, image_urls):
+    """The fixed instructions first, so providers can cache them, and the post last."""
     user_content = [{'type': 'text', 'text': post_description}]
     for image_url in image_urls:
         user_content.append({'type': 'image_url', 'image_url': {'url': image_url}})
     return [
-        {'role': 'system', 'content': system_prompt(plugin_version, explain)},
+        {'role': 'system', 'content': system_text},
         {'role': 'user', 'content': user_content},
     ]
 
 
-def request_chat_completion(messages, plugin_version, inference_source, model, explain=False):
+def build_messages(plugin_version, post_description, image_urls, explain=False):
+    return chat_messages(system_prompt(plugin_version, explain), post_description, image_urls)
+
+
+def request_chat_completion(messages, schema_name, schema, inference_source, model, max_tokens):
     base_url, api_key = inference_endpoint(inference_source)
-    if explain:
-        max_tokens = MAX_EXPLAINED_RESPONSE_TOKENS
-    else:
-        max_tokens = MAX_RESPONSE_TOKENS
     request_body = {
         'model': model,
         'messages': messages,
@@ -185,7 +189,7 @@ def request_chat_completion(messages, plugin_version, inference_source, model, e
         'max_tokens': max_tokens,
         'response_format': {
             'type': 'json_schema',
-            'json_schema': {'name': 'classification', 'strict': True, 'schema': answer_schema(plugin_version, explain)},
+            'json_schema': {'name': schema_name, 'strict': True, 'schema': schema},
         },
     }
     if inference_source == INFERENCE_SOURCE_OPENROUTER:
@@ -204,25 +208,26 @@ def request_chat_completion(messages, plugin_version, inference_source, model, e
     )
 
 
-def ask_model(messages, plugin_version, inference_source, model, explain=False):
+def ask_for_answer(messages, schema_name, schema, parse, inference_source, model, max_tokens):
     """Sends the messages to the model, retrying once after a failed request
-    or an invalid answer, and returns a ModelOutcome. explain, for evaluation
-    only, also asks the model to explain its answer on each criterion."""
+    or an answer parse rejects, and returns a ModelOutcome whose answer is
+    what parse made of the model's text."""
     outcome = ModelOutcome()
     for attempt in range(1, ATTEMPTS_PER_CLASSIFICATION + 1):
         started_at = time.monotonic()
         try:
-            response = request_chat_completion(messages, plugin_version, inference_source, model, explain)
+            response = request_chat_completion(messages, schema_name, schema, inference_source, model, max_tokens)
             outcome.latency_ms = round((time.monotonic() - started_at) * 1000)
             outcome.raw_response = response.text
             response.raise_for_status()
             completion = response.json()
             usage = completion.get('usage') or {}
             outcome.prompt_tokens = usage.get('prompt_tokens')
+            outcome.cached_prompt_tokens = (usage.get('prompt_tokens_details') or {}).get('cached_tokens')
             outcome.completion_tokens = usage.get('completion_tokens')
             if usage.get('cost') is not None:
                 outcome.cost = (outcome.cost or 0) + usage['cost']
-            outcome.answer = parse_answer(completion['choices'][0]['message']['content'], plugin_version, explain)
+            outcome.answer = parse(completion['choices'][0]['message']['content'])
         except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as error:
             logger.warning("Model request attempt %s failed: %s", attempt, error)
             continue
@@ -230,6 +235,20 @@ def ask_model(messages, plugin_version, inference_source, model, explain=False):
             break
         logger.warning("Model request attempt %s gave an invalid answer", attempt)
     return outcome
+
+
+def ask_model(messages, plugin_version, inference_source, model, explain=False):
+    """Asks the model for a plugin version's answer and returns a ModelOutcome.
+    explain, for evaluation only, also asks the model to explain its answer
+    on each criterion."""
+    if explain:
+        max_tokens = MAX_EXPLAINED_RESPONSE_TOKENS
+    else:
+        max_tokens = MAX_RESPONSE_TOKENS
+    return ask_for_answer(
+        messages, 'classification', answer_schema(plugin_version, explain),
+        lambda answer_text: parse_answer(answer_text, plugin_version, explain),
+        inference_source, model, max_tokens)
 
 
 def stored_parent_text(post):

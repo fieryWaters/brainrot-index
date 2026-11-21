@@ -283,6 +283,67 @@ class PluginVersion(models.Model):
         return f"{self.plugin.name} v{self.version}"
 
 
+class FeatureSet(models.Model):
+    """An immutable set of scored features and the filters composed of them
+    (classification.features). The model scores every feature of a post in
+    one call, and each filter's score is a formula over those scores, so one
+    call serves every filter in the set. Not used by live filtering yet: it is
+    measured on the tuning page first.
+
+    features: [{name, description, levels: [{text, examples}]}], each
+    feature's levels ordered from least to most.
+    filters: [{plugin, form, features or weights, cutoff}], plugin being the
+    slug of the filter it would replace (features.filter_score)."""
+
+    version = models.PositiveIntegerField(unique=True)
+    features = models.JSONField()
+    filters = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            raise ValueError('A feature set is immutable; save a new version instead.')
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"feature set v{self.version}"
+
+
+class PostFeatureScores(models.Model):
+    """A post's score on every feature of one feature set version: the shared
+    cache, so each post costs one model call per feature set across all users."""
+
+    post = models.ForeignKey(Post, on_delete=models.PROTECT, related_name='feature_scores')
+    feature_set = models.ForeignKey(FeatureSet, on_delete=models.PROTECT, related_name='post_scores')
+    status = models.CharField(max_length=16, choices=CLASSIFICATION_STATUS_CHOICES, default=CLASSIFICATION_PENDING)
+    # {feature name: 0 to 10}. Empty until done.
+    scores = models.JSONField(default=dict, blank=True)
+    # The chat messages sent, with each image replaced by "post_image:<PostImage id>".
+    prompt = models.JSONField(null=True, blank=True)
+    raw_response = models.TextField(blank=True, default='')
+    model = models.CharField(max_length=200, blank=True, default='')
+    inference_source = models.CharField(max_length=32, blank=True, default='')
+    prompt_tokens = models.PositiveIntegerField(null=True, blank=True)
+    # The part of the prompt the provider read from its cache, when it says.
+    cached_prompt_tokens = models.PositiveIntegerField(null=True, blank=True)
+    completion_tokens = models.PositiveIntegerField(null=True, blank=True)
+    latency_ms = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'post feature scores'
+        constraints = [
+            models.UniqueConstraint(fields=['post', 'feature_set'], name='unique_feature_scores'),
+        ]
+        indexes = [
+            models.Index(fields=['id'], condition=models.Q(status=CLASSIFICATION_PENDING), name='pending_feature_scores'),
+        ]
+
+    def __str__(self):
+        return f"{self.feature_set} on {self.post} ({self.status})"
+
+
 class Classification(models.Model):
     """The result of applying one plugin version to one post: the shared cache,
     so each post costs one model call per plugin version across all users."""

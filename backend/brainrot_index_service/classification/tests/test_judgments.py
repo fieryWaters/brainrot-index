@@ -67,9 +67,21 @@ class JudgmentTests(TestCase):
         self.assertEqual(judgment.severity, 'high')
         self.assertEqual(judgment.details, 'Reply-bot filler.')
 
+    def test_thumbs_down_on_a_shown_post_can_say_no_filter_covers_it(self):
+        self.set_score('rude-or-toxic', 0)
+        judgment_id = self.judge('wrong', shown_action='allow').json()['id']
+
+        response = self.add_details(judgment_id, {'no_filter_covers': True, 'details': 'Crypto giveaway scam.'})
+
+        self.assertEqual(response.status_code, 200)
+        judgment = PostJudgment.objects.get(id=judgment_id)
+        self.assertTrue(judgment.no_filter_covers)
+        self.assertIsNone(judgment.plugin)
+        self.assertEqual(judgment.details, 'Crypto giveaway scam.')
+
     def test_judging_again_replaces_the_judgment_and_its_details(self):
         judgment_id = self.judge('right').json()['id']
-        self.add_details(judgment_id, {'severity': 'low', 'details': 'Fine either way.'})
+        self.add_details(judgment_id, {'severity': 'low', 'details': 'Fine either way.', 'no_filter_covers': True})
 
         response = self.judge('wrong')
 
@@ -79,6 +91,7 @@ class JudgmentTests(TestCase):
         self.assertEqual(judgment.verdict, 'wrong')
         self.assertEqual(judgment.severity, '')
         self.assertEqual(judgment.details, '')
+        self.assertFalse(judgment.no_filter_covers)
         self.assertEqual(PostJudgment.objects.count(), 1)
 
     def test_only_filters_turned_on_are_recorded(self):

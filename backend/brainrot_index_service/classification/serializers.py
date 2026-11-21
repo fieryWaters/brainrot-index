@@ -111,10 +111,11 @@ class JudgmentSerializer(serializers.Serializer):
 
 
 class JudgmentDetailsSerializer(serializers.ModelSerializer):
-    """What the reader adds after the click: a severity, details, and the filter it is about."""
+    """What the reader adds after the click: a severity, details, and the filter it is about, or that
+    no filter covers it."""
 
     plugin = serializers.SlugRelatedField(slug_field='slug', queryset=Plugin.objects.all(), allow_null=True)
 
     class Meta:
         model = PostJudgment
-        fields = ['severity', 'details', 'plugin']
+        fields = ['severity', 'details', 'plugin', 'no_filter_covers']

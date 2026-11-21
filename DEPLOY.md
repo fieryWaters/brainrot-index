@@ -126,7 +126,8 @@ The `web` image packs `extension/` with `scripts/package-extension.mjs` while
 it builds (compose passes `extension/` and `scripts/` as named build contexts)
 and serves it at `/downloads/brainrot-index-extension.zip` (always the newest)
 and `/downloads/brainrot-index-extension-<version>.zip`. The version is the one
-in `extension/manifest.json`; bump it by hand when the extension changes. The
+in `extension/manifest.json`; bump it by hand when the extension changes, as
+`extension/README.md` describes (Version numbers). The
 packed manifest grants only `https://brainrotindex.com`.
 
 `/install` explains Load unpacked from that zip. Once the Chrome Web Store

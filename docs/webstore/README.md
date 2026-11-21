@@ -24,7 +24,7 @@ The dashboard's own wording wins where it differs from this file.
 | `../../extension/icons/icon128.png` | Store icon (also inside the zip) |
 
 The zip is not committed (`dist/` is ignored). Build it from a clean checkout of the commit being
-submitted: `node scripts/package-extension.mjs` writes `dist/brainrot-index-extension-1.0.0.zip`.
+submitted: `node scripts/package-extension.mjs` writes `dist/brainrot-index-extension-0.0.1.zip`.
 Upload that zip, never a zip of the `extension/` folder made by hand: the script takes the
 development addresses (localhost, 127.0.0.1, brainrot.jacob-waters.com) out of the manifest, so the
 published copy asks for access to https://brainrotindex.com only.
@@ -69,7 +69,8 @@ made-up posts, which each picture says in a footnote.
     again, it is the package already approved). To make the site
     offer the store button, put the listing's address in `.env` as `WEBSTORE_URL=` and redeploy.
 11. **Every later upload** needs a higher `version` in `extension/manifest.json`; bump it in the
-    commit that changes the extension, then build the zip again.
+    commit that changes the extension (which number to raise is in `extension/README.md`, Version
+    numbers), then build the zip again.
 
 ## Store listing
 
@@ -138,8 +139,8 @@ What each screenshot shows:
 
 The images made before blurring was removed still show blurred posts and the Blur or Hide choice;
 they need to be made again before the next upload.
-5. "Tell it when it is wrong": the thumbs-down details box, and the toolbar popup (with its Disconnect
-   link).
+5. "Tell it when it is wrong": the thumbs-down details box, and the toolbar popup. The current
+   picture still shows the popup's Disconnect link, since removed; redraw it with the others.
 
 The consent screen is not among them: the store takes five screenshots at most, and the five above
 show what the extension does. Reviewers see the consent screen when they install it (Test
@@ -193,14 +194,14 @@ requires it.
 
 Fill in the reviewer account from step 4 (`grant_comp` gives it permanent free access, so the
 trial cannot run out during review), and paste this into the additional instructions box, which
-takes 500 characters at most (this is 482). Reddit and YouTube work without signing in to
+takes 500 characters at most (this is 488). Reddit and YouTube work without signing in to
 those sites, so the reviewer needs no account there; X does need one, so it is not mentioned.
 
     Account has permanent free access; no payment.
     1. Install. A BrainRot Index tab opens: press "Agree and continue". Nothing is sent before that.
     2. Sign in at https://brainrotindex.com/login, open /dashboard, press "Connect extension".
     3. Open https://www.reddit.com/r/popular/ or https://www.youtube.com/ (no sign-in to those sites needed). Flagged posts are replaced by a line reading "Hidden"; hovering it names the filter, and "Show" reveals the post.
-    4. Toolbar button: "Disconnect" withdraws the agreement.
+    4. Toolbar button: on/off switch.
 
 ## Things a reviewer may question
 
@@ -212,8 +213,8 @@ Ordered from most to least likely to cause trouble.
    agrees in the product first. The extension's consent screen (`extension/consent/`) opens on
    install and again on Connect extension, says in one paragraph what is sent and why, links the
    Privacy Policy, and has "Agree and continue" and "Not now". Nothing goes to the server before
-   the user agrees; "Not now" leaves the extension doing nothing; Disconnect in the popup withdraws
-   it. The server records each agreement and withdrawal with the wording's version
+   the user agrees; "Not now" leaves the extension doing nothing; turning the extension off or
+   removing it stops it. The server records each agreement with the wording's version
    (`ExtensionDataConsent`), and a change of wording (`DATA_SHARING_DISCLOSURE_VERSION` in
    `background.js`) asks again. Keep the screen, the Privacy tab answers and the Privacy Policy in
    step when any of them changes.

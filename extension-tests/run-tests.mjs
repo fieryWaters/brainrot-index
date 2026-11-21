@@ -1709,6 +1709,30 @@ async function judgeShownPostAsMissed(page, judgmentCalls, control, platform, po
   check(await waitUntil(async () => (await detailsBox.count()) === 0, 3000), "the box closes once the details are saved");
 }
 
+// Thumbs down on a shown post, then Other in the box: no filter covers it, and the details say why.
+async function judgeShownPostAsMissedByEveryFilter(page, judgmentCalls, control, platform, postId) {
+  const callsBefore = judgmentCalls.length;
+  await control.locator('.brainrot-index-judge-button[data-verdict="wrong"]').click();
+  await waitUntil(() => judgmentCalls.length > callsBefore, 5000);
+  checkJudgmentCall(judgmentCalls[callsBefore], { platform: platform, post_id: postId, verdict: "wrong", shown_action: "allow" });
+  const detailsBox = page.locator(".brainrot-index-details");
+  await waitUntil(async () => (await detailsBox.locator(".brainrot-index-details-status").textContent()).endsWith("saved"), 3000);
+  const otherChip = detailsBox.locator(".brainrot-index-chip", { hasText: "Other" });
+  check(await otherChip.count() === 1, "the box offers Other after the reader's filters");
+  await otherChip.click();
+  await detailsBox.locator(".brainrot-index-details-save").click();
+  check(await detailsBox.locator(".brainrot-index-details-status").textContent() === "Say why it should have been caught",
+    "Other asks for details before saving");
+  check(judgmentCalls.length === callsBefore + 1, "and sends nothing without them");
+  await detailsBox.locator(".brainrot-index-details-input").fill("automated test: a crypto scam");
+  await detailsBox.locator(".brainrot-index-details-save").click();
+  await waitUntil(() => judgmentCalls.length > callsBefore + 1, 5000);
+  const detailsCall = judgmentCalls[callsBefore + 1];
+  check(JSON.stringify(detailsCall?.body) === JSON.stringify({ no_filter_covers: true, details: "automated test: a crypto scam" }),
+    "with no filter named and the text: " + JSON.stringify(detailsCall?.body));
+  check(await waitUntil(async () => (await detailsBox.count()) === 0, 3000), "the box closes once the details are saved");
+}
+
 async function testThumbsInXActionRow(page, judgmentCalls) {
   await openStandInPage(page, STAND_IN_URLS.x, 2);
   const shownTweet = SAMPLE_X_TWEETS[0];
@@ -1891,7 +1915,7 @@ async function testThumbsInYouTubeTile(page, judgmentCalls) {
   const menuBox = await tile.locator('[aria-label="More actions"]').boundingBox();
   check((await control.boundingBox()).y >= menuBox.y + menuBox.height - 1, "under the More actions button");
   const urlBefore = page.url();
-  await judgeShownPostAsMissed(page, judgmentCalls, control, "youtube", video.id);
+  await judgeShownPostAsMissedByEveryFilter(page, judgmentCalls, control, "youtube", video.id);
   check(page.url() === urlBefore, "judging did not open the video");
 }
 
@@ -2131,7 +2155,8 @@ async function runCaptureGroup() {
 }
 
 // The consent group runs on the stand-in sites and the mock server. Nothing may reach the server
-// before the reader presses "Agree and continue", and Disconnect withdraws the agreement.
+// before the reader presses "Agree and continue". The popup offers no Disconnect: a reader who wants
+// it to stop turns the extension off.
 
 function recordConsentCalls(context) {
   const consentCalls = [];
@@ -2217,18 +2242,13 @@ async function testAgreeStartsFiltering(context, extensionId, serviceWorker, cla
   check(consentCalls.length === 1, "the agreement is recorded once");
 }
 
-async function testDisconnectWithdraws(context, extensionId, serviceWorker, consentCalls) {
+async function testPopupHasNoDisconnect(context, extensionId) {
   const popupPage = await context.newPage();
   await popupPage.goto(`chrome-extension://${extensionId}/popup/popup.html`);
   await popupPage.waitForTimeout(1500);
-  await popupPage.click("#disconnect-button");
-  check(await waitUntil(async () => consentCalls.some((call) => call.method === "DELETE" && call.status === 204), 5000),
-    "the server is told the agreement was withdrawn");
-  check(await waitUntil(async () => (await popupPage.textContent("#account-status")).startsWith("Nothing is sent until you agree"), 3000),
-    "the popup says nothing is sent any more");
+  check(await popupPage.textContent("#account-status") === "Connected to your account", "the popup says it is connected");
+  check(await popupPage.locator("button", { hasText: "Disconnect" }).count() === 0, "the popup offers no Disconnect");
   await popupPage.close();
-  const stored = await serviceWorker.evaluate(() => chrome.storage.local.get(["token", "dataSharingConsent"]));
-  check(stored.token === undefined && stored.dataSharingConsent === undefined, "the token and the agreement are forgotten");
 }
 
 async function runConsentGroup() {
@@ -2242,8 +2262,8 @@ async function runConsentGroup() {
       testNotNowSendsNothing(context, extensionId, serviceWorker, classifyCalls));
     await runTest("12c. consent: agreeing records it on the server and starts filtering", () =>
       testAgreeStartsFiltering(context, extensionId, serviceWorker, classifyCalls, consentCalls));
-    await runTest("12d. consent: Disconnect withdraws the agreement", () =>
-      testDisconnectWithdraws(context, extensionId, serviceWorker, consentCalls));
+    await runTest("12d. consent: the popup offers no Disconnect", () =>
+      testPopupHasNoDisconnect(context, extensionId));
   });
 }
 

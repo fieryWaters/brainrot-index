@@ -80,10 +80,6 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
     startConnection().then(sendResponse);
     return true;
   }
-  if (message.type === "disconnect") {
-    disconnect().then(sendResponse);
-    return true;
-  }
   if (message.type === "get-extension-commit") {
     extensionCommit().then(sendResponse);
     return true;
@@ -188,22 +184,6 @@ async function recordConsentOnServer() {
   if (response.ok) {
     await extensionApi.storage.local.set({ consentRecordedOnServer: true });
   }
-}
-
-// Withdraws the reader's agreement: tells the server, then forgets the token, the agreement and the
-// answers kept for this session, so nothing more is sent until the reader agrees and connects again.
-async function disconnect() {
-  const { token } = await extensionApi.storage.local.get("token");
-  if (token !== undefined) {
-    try {
-      await callServer("DELETE", "/api/extension/consent/");
-    } catch (networkError) {
-      // The agreement is withdrawn in the browser all the same.
-    }
-  }
-  await extensionApi.storage.local.remove(["token", "dataSharingConsent", "consentRecordedOnServer"]);
-  await extensionApi.storage.session.clear();
-  return { disconnected: true };
 }
 
 // Answers { state, config }. state is "consent-needed", "connected", "not-connected",

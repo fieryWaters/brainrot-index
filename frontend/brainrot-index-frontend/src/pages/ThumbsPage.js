@@ -45,6 +45,13 @@ function createCountsLine(thumbs) {
   return el('p', 'mb-4 text-xs text-white/60', `${thumbs.length} thumbs. ${parts.join('; ')}`)
 }
 
+// The filter the verdict is about, Other when the reader said none covers the post, or a dash.
+function filterNamedText(thumb) {
+  if (thumb.plugin) return thumb.plugin
+  if (thumb.no_filter_covers) return 'Other'
+  return '-'
+}
+
 function createThumbRow(thumb) {
   const idLink = el('a', 'text-glow-400 hover:text-glow-300', thumb.id)
   idLink.href = `/inbox/${thumb.id}`
@@ -58,7 +65,7 @@ function createThumbRow(thumb) {
     el('td', 'py-1.5 pr-3 whitespace-nowrap', idLink, el('div', 'text-white/40', formatDate(thumb.received_at))),
     el('td', `py-1.5 pr-3 whitespace-nowrap ${verdictClass}`, VERDICT_TEXT[thumb.verdict]),
     el('td', 'py-1.5 pr-3 whitespace-nowrap', thumb.shown_action),
-    el('td', 'py-1.5 pr-3 whitespace-nowrap', thumb.plugin || '-'),
+    el('td', 'py-1.5 pr-3 whitespace-nowrap', filterNamedText(thumb)),
     el('td', 'py-1.5 pr-3 max-w-xs', postLink, el('div', 'text-white/40', `${thumb.post.platform} ${thumb.post.kind}`)),
     el('td', 'py-1.5 pr-3 whitespace-nowrap',
       ...thumb.filters.map((filter) => el('div', '', filterDecisionText(filter)))),

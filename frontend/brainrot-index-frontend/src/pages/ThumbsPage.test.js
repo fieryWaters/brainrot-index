@@ -48,6 +48,15 @@ describe('ThumbsPage', () => {
     expect(screen.getByText('Deleted account')).toBeInTheDocument()
   })
 
+  it('shows Other for a thumbs down that no filter covers', async () => {
+    const reader = { email: 'reader@example.com', signed_in: true, name: '' }
+    const missed = { ...thumb('judgment-3', 'wrong', '', reader), no_filter_covers: true }
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ thumbs: [missed] })))
+    renderElement(mountThumbsPage().el)
+
+    expect(await screen.findByText('Other')).toBeInTheDocument()
+  })
+
   it('tells everyone but the owner that the thumbs are not for them', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ detail: 'You do not have permission.' }, 403)))
     renderElement(mountThumbsPage().el)

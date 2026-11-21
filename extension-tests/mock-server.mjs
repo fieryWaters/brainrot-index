@@ -18,7 +18,7 @@
 // PATCH /api/judgments/<id>/ (its details) answers 200 with what it was sent; DELETE (the thumb taken
 // back) answers 204.
 // POST /api/extension/consent/ (the reader agreed on the consent screen) checks its fields and answers
-// 201; DELETE /api/extension/consent/ (the reader disconnected) answers 204.
+// 201.
 //
 // Run on its own with `node mock-server.mjs` (port 8787), or import startMockServer from tests.
 import http from "node:http";
@@ -184,11 +184,6 @@ export function startMockServer(port) {
         return;
       }
       sendJson(response, 201, { recorded_at: new Date().toISOString() });
-      return;
-    }
-    if (path === "/api/extension/consent/" && request.method === "DELETE") {
-      response.writeHead(204);
-      response.end();
       return;
     }
     sendJson(response, 404, { error: "not found" });

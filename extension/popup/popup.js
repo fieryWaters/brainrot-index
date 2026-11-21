@@ -21,21 +21,11 @@ async function showAccountStatus() {
   if (status.state === "consent-needed") {
     document.getElementById("consent-row").hidden = false;
   }
-  const { token } = await extensionApi.storage.local.get("token");
-  if (status.state !== "consent-needed" && token !== undefined) {
-    document.getElementById("disconnect-row").hidden = false;
-  }
 }
 
-function setUpConsentAndDisconnectButtons() {
+function setUpConsentButton() {
   document.getElementById("consent-button").addEventListener("click", () => {
     extensionApi.tabs.create({ url: extensionApi.runtime.getURL("consent/consent.html") });
-  });
-  document.getElementById("disconnect-button").addEventListener("click", async () => {
-    await extensionApi.runtime.sendMessage({ type: "disconnect" });
-    document.getElementById("disconnect-row").hidden = true;
-    await showAccountStatus();
-    await showSessionCounts();
   });
 }
 
@@ -94,7 +84,7 @@ async function showExtensionCommit() {
 
 setUpSwitchAndLink();
 setUpFeedbackForm();
-setUpConsentAndDisconnectButtons();
+setUpConsentButton();
 showExtensionCommit();
 showAccountStatus();
 showSessionCounts();

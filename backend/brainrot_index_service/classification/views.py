@@ -449,6 +449,7 @@ def create_judgment(request):
             'verdict': judged['verdict'],
             'shown_action': judged['shown_action'],
             'plugin': strongest_flagging_plugin(filter_results),
+            'no_filter_covers': False,
             'severity': '',
             'details': '',
             'filter_results': filter_results,

@@ -51,9 +51,10 @@ describe('AccountPage', () => {
     })
   })
 
-  it('says what deleting removes and keeps', () => {
+  it('says briefly what deleting removes and keeps', () => {
     renderElement(mountAccountPage().el)
-    expect(screen.getByText('your plugin ratings and reports')).toBeInTheDocument()
+    expect(screen.getByText(/This cannot be undone/)).toBeInTheDocument()
+    expect(screen.getByText(/subscription is canceled/)).toBeInTheDocument()
     expect(screen.getByText(/stay in the shared cache/)).toBeInTheDocument()
   })
 

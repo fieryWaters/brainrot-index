@@ -25,6 +25,9 @@ const JUDGE_CLASS = "brainrot-index-judge";
 const JUDGE_ROOT_ATTRIBUTE = "data-brainrot-index-judge-root";
 const SHOWN_ACTION_WORDS = { allow: "Shown", hide: "Hidden" };
 const SEVERITY_WORDS = { low: "Low", medium: "Medium", high: "High" };
+// The Filter choice for a post that should have been caught for a reason none of the reader's filters
+// covers. Parentheses cannot appear in a filter's slug, so it is never mistaken for one.
+const NO_FILTER_COVERS_CHOICE = "(other)";
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 // Outlines from Feather icons (MIT licence), drawn in the current text colour.
@@ -277,8 +280,8 @@ function openBox(control, statusText) {
   return box;
 }
 
-// The box after a thumb: that it was saved, and optionally which filter should have caught the post,
-// a severity and details.
+// The box after a thumb: that it was saved, and optionally which filter should have caught the post
+// (or Other, with details saying why), a severity and details.
 function openDetailsBox(control, shownAction, verdict, judgment) {
   const box = openBox(control, verdictMeaning(shownAction, verdict) + " · saving");
 
@@ -286,18 +289,26 @@ function openDetailsBox(control, shownAction, verdict, judgment) {
   fields.className = "brainrot-index-details-fields";
   fields.hidden = true;
   const chosen = { plugin: null, severity: null };
-  if (shownAction === "allow" && verdict === "wrong" && judgment.plugins.length > 0) {
-    fields.append(makeChoiceRow("Filter", judgment.plugins.map((plugin) => [plugin.slug, plugin.name]),
-      (slug) => { chosen.plugin = slug; }));
-  }
-  fields.append(makeChoiceRow("Severity", Object.entries(SEVERITY_WORDS), (severity) => { chosen.severity = severity; }));
-  const detailsRow = document.createElement("div");
-  detailsRow.className = "brainrot-index-details-row";
   const detailsInput = document.createElement("input");
   detailsInput.type = "text";
   detailsInput.className = "brainrot-index-details-input";
   detailsInput.placeholder = "Details (optional)";
   detailsInput.setAttribute("aria-label", "Details (optional)");
+  if (shownAction === "allow" && verdict === "wrong") {
+    const filterChoices = judgment.plugins.map((plugin) => [plugin.slug, plugin.name]);
+    filterChoices.push([NO_FILTER_COVERS_CHOICE, "Other"]);
+    fields.append(makeChoiceRow("Filter", filterChoices, (slug) => {
+      chosen.plugin = slug;
+      if (slug === NO_FILTER_COVERS_CHOICE) {
+        detailsInput.placeholder = "Why should it have been caught?";
+      } else {
+        detailsInput.placeholder = "Details (optional)";
+      }
+    }));
+  }
+  fields.append(makeChoiceRow("Severity", Object.entries(SEVERITY_WORDS), (severity) => { chosen.severity = severity; }));
+  const detailsRow = document.createElement("div");
+  detailsRow.className = "brainrot-index-details-row";
   const saveButton = document.createElement("button");
   saveButton.type = "submit";
   saveButton.className = "brainrot-index-details-save";
@@ -309,7 +320,14 @@ function openDetailsBox(control, shownAction, verdict, judgment) {
   box.addEventListener("submit", async (event) => {
     event.preventDefault();
     const details = {};
-    if (chosen.plugin !== null) {
+    if (chosen.plugin === NO_FILTER_COVERS_CHOICE) {
+      if (detailsInput.value.trim() === "") {
+        box.setStatus("Say why it should have been caught");
+        detailsInput.focus();
+        return;
+      }
+      details.no_filter_covers = true;
+    } else if (chosen.plugin !== null) {
       details.plugin = chosen.plugin;
     }
     if (chosen.severity !== null) {

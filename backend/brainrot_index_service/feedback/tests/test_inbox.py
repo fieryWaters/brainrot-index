@@ -98,6 +98,7 @@ class InboxTests(TestCase):
         self.assertEqual(item['sender'], {'email': 'reader@example.com', 'signed_in': True, 'name': ''})
         self.assertEqual(item['verdict'], 'wrong')
         self.assertEqual(item['details'], 'This is fine, just loud.')
+        self.assertFalse(item['no_filter_covers'])
         self.assertEqual(item['extension_commit'], 'ext2')
         self.assertEqual(item['post']['text'], 'STOP SCROLLING')
         self.assertEqual(item['post']['url'], 'https://x.com/someone/status/185')

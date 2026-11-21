@@ -13,6 +13,19 @@ image builds it the same way. The packed manifest grants only `https://brainroti
 `--all-addresses` to keep the development addresses. The version comes from `manifest.json` and is
 only ever changed by hand. The Web Store listing is described in `docs/webstore/README.md`.
 
+### Version numbers
+
+The version in `manifest.json` has three numbers, major.minor.patch, and goes up with every change
+to the extension that is released:
+
+- the first number for a major release (1.0.0 is kept for when the owner declares the extension out
+  of beta);
+- the second for a somewhat major refactor or a new feature;
+- the third for a small bug fix.
+
+Bump it in the commit that makes the change. The Chrome Web Store refuses an upload whose version is
+not higher than the one before.
+
 To work on the extension from a checkout:
 
 1. In `extension-tests/`, run `npm install` once, then `node stamp-build-info.mjs`. This writes
@@ -31,8 +44,9 @@ On install the extension opens its consent screen (`consent/consent.html`), whic
 and links the Privacy Policy. Until the reader presses "Agree and continue" it sends nothing to the
 server; "Not now" leaves it idle, and the popup offers the screen again. The agreement is kept with
 the wording's version (`DATA_SHARING_DISCLOSURE_VERSION` in `background.js`): change the wording,
-change the version, and every reader is asked again. The server records each agreement and each
-withdrawal. "Disconnect and stop sending posts" in the popup withdraws it and forgets the token.
+change the version, and every reader is asked again. The server records each agreement. A reader
+who wants it to stop sending posts turns the extension off or removes it in the browser's extensions
+page.
 
 ## Connect it to your account
 

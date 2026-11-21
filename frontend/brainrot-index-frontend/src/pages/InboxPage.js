@@ -66,6 +66,7 @@ function detailLines(item) {
   if (item.kind === 'judgment') {
     lines.push(`Shown as: ${item.shown_action}`)
     if (item.plugin) lines.push(`About filter: ${item.plugin}`)
+    if (item.no_filter_covers) lines.push('About filter: Other (no filter covers it)')
     if (item.severity) lines.push(`Severity: ${item.severity}`)
   } else {
     if (item.shown_action || item.expected_action) {

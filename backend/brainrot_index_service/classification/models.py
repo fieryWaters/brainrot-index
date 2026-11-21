@@ -445,6 +445,9 @@ class PostJudgment(models.Model):
     # or, for a shown post that should have been caught, the one the reader
     # names. Empty when the reader names none.
     plugin = models.ForeignKey(Plugin, on_delete=models.PROTECT, null=True, blank=True, related_name='judgments')
+    # True when the reader chose Other: a shown post that should have been
+    # caught for a reason none of their filters covers. details says why.
+    no_filter_covers = models.BooleanField(default=False)
     # How much the verdict matters to the reader. Blank until the reader says.
     severity = models.CharField(max_length=16, choices=SEVERITY_CHOICES, blank=True, default='')
     details = models.TextField(blank=True, default='')

@@ -165,6 +165,7 @@ def judgment_item(judgment):
         'verdict': judgment.verdict,
         'shown_action': shown_as(judgment.shown_action),
         'plugin': judgment_plugin_slug(judgment),
+        'no_filter_covers': judgment.no_filter_covers,
         'severity': judgment.severity,
         'details': judgment.details,
         'extension_commit': judgment.extension_commit,
@@ -190,6 +191,7 @@ def thumb_rows():
             'verdict': judgment.verdict,
             'shown_action': shown_as(judgment.shown_action),
             'plugin': judgment_plugin_slug(judgment),
+            'no_filter_covers': judgment.no_filter_covers,
             'severity': judgment.severity,
             'details': judgment.details,
             'post': {

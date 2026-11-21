@@ -187,17 +187,8 @@ function createDeleteCard(email, onDeleted) {
 
   return el('div', 'rounded-2xl border border-red-500/30 bg-red-500/5 p-6 mb-6',
     el('h2', 'text-lg font-semibold text-red-300 mb-2', 'Delete your account'),
-    el('p', 'text-sm text-white/70', 'This cannot be undone. Deleting removes:'),
-    el('ul', 'mt-2 ml-5 list-disc text-sm text-white/70 space-y-1',
-      el('li', '', 'your account, email address and password'),
-      el('li', '', 'your settings and the filters you installed'),
-      el('li', '', 'every extension connection (each extension stops filtering)'),
-      el('li', '', 'your plugin ratings and reports'),
-      el('li', '', 'your place in your family (if you are its only admin and others are in it, make someone else an admin first)'),
-      el('li', '', 'your name on plugins you published (the plugins stay for the people who installed them)'),
-      el('li', '', 'your subscription, which is canceled at once with no further charges')),
-    el('p', 'mt-3 text-sm text-white/70',
-      "Posts the extension sent us, and the filters' verdicts on them, stay in the shared cache. Their link to your account is removed. The reports, feedback and thumbs on posts you sent us also stay, without your name or email address. Stripe, our payment processor, keeps its own records of past payments."),
+    el('p', 'text-sm text-white/70',
+      'This cannot be undone. Your account, settings and extension connections are removed, and your subscription is canceled. Feedback and thumbs you sent stay without your name or email, and posts stay in the shared cache, no longer linked to you.'),
     el('p', 'mt-4 text-sm text-white/70', 'To confirm, type your email address:'),
     el('div', 'mt-2 flex flex-col sm:flex-row gap-3', confirmInput, deleteButton),
     status)
@@ -215,7 +206,7 @@ export function mountAccountPage() {
     homeLink.href = '/'
     container.replaceChildren(
       el('h1', 'text-3xl font-bold mb-3 text-white', 'Your account is deleted'),
-      el('p', 'text-white/60', 'Everything listed on the previous screen has been removed. You can remove the extension from your browser too: open its extensions page and click Remove on the BrainRot Index card.'),
+      el('p', 'text-white/60', 'You can remove the extension from your browser too: open its extensions page and click Remove on the BrainRot Index card.'),
       homeLink)
     logout()
   }

@@ -18,7 +18,7 @@ Chrome ignores `--load-extension`.
     npm test -- youtube   # YouTube only: watch page, home, search, reveal, feedback, navigation, dark theme
     npm test -- transcripts  # the extension asks YouTube for no captions, on a stand-in for youtube.com (no real YouTube)
     npm test -- judgments    # thumbs and details box, on stand-ins for X, Reddit and YouTube (no real site)
-    npm test -- consent      # consent screen: nothing sent before agreeing, Not now, Agree, Disconnect (no real site)
+    npm test -- consent      # consent screen: nothing sent before agreeing, Not now, Agree, no Disconnect (no real site)
     npm test -- capture      # what is sent for tweets and Reddit posts saved from the real sites (no real site)
 
 `BRAINROT_BROWSER=<path to a Chromium build>` runs the tests in that browser instead of Brave, for

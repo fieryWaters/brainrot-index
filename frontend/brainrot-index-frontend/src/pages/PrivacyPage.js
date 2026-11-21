@@ -42,7 +42,7 @@ Limited Use requirements.</p>
 <h2>Your choices</h2>
 <ul>
   <li>The extension sends nothing until you agree on its consent screen.</li>
-  <li>You can switch filtering off at any time, or press "Disconnect" in the extension's toolbar button to withdraw your agreement.</li>
+  <li>You can switch filtering off at any time with the extension's toolbar button, or turn the extension off or remove it in your browser so it sends nothing more.</li>
   <li>You can download your data or delete your account on the Account page.</li>
   <li>Children under 13 may not create their own account.</li>
 </ul>

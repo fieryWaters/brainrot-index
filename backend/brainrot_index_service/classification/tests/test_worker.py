@@ -104,9 +104,9 @@ class WorkerTests(TestCase):
         classification = self.queue(seen_post('p1'), plugin_slug='rude-or-toxic')
         answer = {
             'reasoning': 'A reply calling everyone on the other side idiots.',
-            'demeans_people': True,
-            'us_against_them': True,
-            'hostile_tone': False,
+            'delivers_hostility': True,
+            'contempt_for_people': True,
+            'raw_hostility': False,
             'makes_readers_laugh': False,
         }
 
@@ -116,13 +116,13 @@ class WorkerTests(TestCase):
         classification.refresh_from_db()
         self.assertEqual(classification.status, CLASSIFICATION_DONE)
         self.assertEqual(classification.score, 80)
-        self.assertEqual(classification.label, 'demeans_people')
-        self.assertEqual(classification.criteria_met, ['demeans_people', 'us_against_them'])
+        self.assertEqual(classification.label, 'delivers_hostility')
+        self.assertEqual(classification.criteria_met, ['delivers_hostility', 'contempt_for_people'])
 
         request = model_call.call_args.kwargs['json']
         schema = request['response_format']['json_schema']['schema']
         self.assertEqual(schema['required'], [
-            'reasoning', 'demeans_people', 'us_against_them', 'hostile_tone', 'makes_readers_laugh'])
+            'reasoning', 'delivers_hostility', 'contempt_for_people', 'raw_hostility', 'makes_readers_laugh'])
         system_prompt = request['messages'][0]['content']
         for criterion in classification.plugin_version.criteria:
             self.assertIn(f"- {criterion['name']}: {criterion['question']}", system_prompt)
@@ -132,7 +132,7 @@ class WorkerTests(TestCase):
     def test_criteria_answer_missing_a_criterion_is_invalid(self):
         classification = self.queue(seen_post('p1'), plugin_slug='rude-or-toxic')
         incomplete = model_response(
-            {'reasoning': 'x', 'demeans_people': True, 'us_against_them': False})
+            {'reasoning': 'x', 'delivers_hostility': True, 'contempt_for_people': False})
 
         with patch('classification.inference.requests.post', return_value=incomplete):
             classify_next_pending()
@@ -144,9 +144,9 @@ class WorkerTests(TestCase):
         classification = self.queue(seen_post('p1'), plugin_slug='rude-or-toxic')
         answer = {
             'reasoning': 'A crude joke at a fictional person.',
-            'demeans_people': True,
-            'us_against_them': False,
-            'hostile_tone': False,
+            'delivers_hostility': True,
+            'contempt_for_people': False,
+            'raw_hostility': False,
             'makes_readers_laugh': True,
         }
 
@@ -155,16 +155,16 @@ class WorkerTests(TestCase):
 
         classification.refresh_from_db()
         self.assertEqual(classification.score, 0)
-        self.assertEqual(classification.label, 'demeans_people')
-        self.assertEqual(classification.criteria_met, ['demeans_people', 'makes_readers_laugh'])
+        self.assertEqual(classification.label, 'delivers_hostility')
+        self.assertEqual(classification.criteria_met, ['delivers_hostility', 'makes_readers_laugh'])
 
     def test_no_criterion_met_scores_0_with_label_none(self):
         classification = self.queue(seen_post('p1'), plugin_slug='rude-or-toxic')
         answer = {
             'reasoning': 'A garden photo.',
-            'demeans_people': False,
-            'us_against_them': False,
-            'hostile_tone': False,
+            'delivers_hostility': False,
+            'contempt_for_people': False,
+            'raw_hostility': False,
             'makes_readers_laugh': False,
         }
 
@@ -249,10 +249,12 @@ class WorkerTests(TestCase):
         self.assertIn('We just shipped version 2', post_description)
 
     def test_a_nested_reply_is_read_with_the_reply_it_answers_and_the_thread_post(self):
-        store_post(seen_post('t3_post', text='AAA wants me to return the company car 70 miles away on my last day.'))
-        store_post(seen_post('t1_question', kind='reply', parent_post_id='t3_post',
+        store_post(seen_post('t3_post', author='driver',
+                             text='AAA wants me to return the company car 70 miles away on my last day.'))
+        store_post(seen_post('t1_question', kind='reply', author='asker', parent_post_id='t3_post',
                              text='Will you be paid for the drive back?'))
-        classification = self.queue(seen_post('t1_answer', kind='reply', parent_post_id='t1_question', text='yes we will.'))
+        classification = self.queue(seen_post('t1_answer', kind='reply', author='manager',
+                                              parent_post_id='t1_question', text='yes we will.'))
 
         with patch('classification.inference.requests.post', side_effect=fake_model_scoring(10)):
             classify_next_pending()
@@ -261,9 +263,26 @@ class WorkerTests(TestCase):
         post_description = classification.prompt[1]['content'][0]['text']
         self.assertIn(
             'Kind: reply\n'
-            'In the thread of this post: AAA wants me to return the company car 70 miles away on my last day.\n'
-            'Replying to this reply: Will you be paid for the drive back?',
+            'CONTEXT, only to help read the reply below; it is not being judged:\n'
+            "The thread's post: AAA wants me to return the company car 70 miles away on my last day.\n"
+            'The reply it answers: Will you be paid for the drive back?\n'
+            'THE REPLY BEING JUDGED:\n',
             post_description)
+
+    def test_a_reply_by_the_author_of_the_thread_post_says_so(self):
+        store_post(seen_post('t3_question', author='asker', text='My camera disconnects every day at noon. Why?'))
+        store_post(seen_post('t1_advice', kind='reply', author='helper', parent_post_id='t3_question',
+                             text='Check the router lease time.'))
+        classification = self.queue(seen_post('t1_thanks', kind='reply', author='asker',
+                                              parent_post_id='t1_advice', text='Thanks!'))
+
+        with patch('classification.inference.requests.post', side_effect=fake_model_scoring(10)):
+            classify_next_pending()
+
+        classification.refresh_from_db()
+        post_description = classification.prompt[1]['content'][0]['text']
+        self.assertIn("THE REPLY BEING JUDGED, written by the author of the thread's post:\nImages attached: 0\nText:\nThanks!",
+                      post_description)
 
     def test_model_http_error_counts_as_an_invalid_answer(self):
         classification = self.queue(seen_post('p1'))

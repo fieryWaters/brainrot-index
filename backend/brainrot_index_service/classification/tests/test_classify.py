@@ -90,7 +90,7 @@ class ClassifyEndpointTests(TestCase):
         self.classify([seen_post('p1')])
         versions = set(Classification.objects.filter(post__post_id='p1').values_list(
             'plugin_version__plugin__slug', 'plugin_version__version'))
-        self.assertEqual(versions, {('engagement-bait', 4), ('brainrot', 3), ('rude-or-toxic', 2), ('low-effort', 2)})
+        self.assertEqual(versions, {('engagement-bait', 4), ('brainrot', 3), ('rude-or-toxic', 3), ('low-effort', 3)})
 
     def test_second_user_seeing_the_same_post_triggers_no_new_inference(self):
         self.classify([seen_post('p1')])

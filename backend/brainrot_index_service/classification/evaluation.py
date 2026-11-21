@@ -30,11 +30,15 @@ def load_examples(dataset_path):
     return examples
 
 
-def results_file_path(dataset_path, inference_source, model, plugin_versions):
-    """One file per configuration, so re-running a configuration resumes it."""
+def results_file_path(dataset_path, inference_source, model, plugin_versions, explain=False):
+    """One file per configuration, so re-running a configuration resumes it.
+    Explained runs have their own file, since their prompt differs."""
     rubric_part = '_'.join(f"{plugin_version.plugin.slug}-v{plugin_version.version}" for plugin_version in plugin_versions)
     model_part = model.replace('/', '_').replace(':', '_')
-    file_name = f"{Path(dataset_path).stem}__{inference_source}__{model_part}__{rubric_part}.json"
+    file_name = f"{Path(dataset_path).stem}__{inference_source}__{model_part}__{rubric_part}"
+    if explain:
+        file_name += '__explained'
+    file_name += '.json'
     return Path(dataset_path).parent / 'results' / file_name
 
 
@@ -69,13 +73,15 @@ def example_from_post(example_id, source, post, images_dir):
     if post.video_url:
         example['has_video'] = True
     if post.kind == POST_KIND_REPLY:
-        parent_text, parent_is_reply, thread_text = stored_reply_context(post)
+        parent_text, parent_is_reply, thread_text, by_original_poster = stored_reply_context(post)
         if parent_text is not None:
             example['parent_text'] = parent_text
         if parent_is_reply:
             example['parent_is_reply'] = True
         if thread_text is not None:
             example['thread_text'] = thread_text
+        if by_original_poster:
+            example['by_original_poster'] = True
 
     post_image = post.images.filter(status=IMAGE_DOWNLOADED).order_by('id').first()
     if post_image is not None:
@@ -96,7 +102,7 @@ def save_results(results_path, results):
     os.replace(temporary_path, results_path)
 
 
-def example_messages(example, plugin_version, images_dir):
+def example_messages(example, plugin_version, images_dir, explain=False):
     image_urls = []
     if example.get('image'):
         image_urls.append(image_file_data_url(images_dir / example['image']))
@@ -112,14 +118,16 @@ def example_messages(example, plugin_version, images_dir):
         has_video=example.get('has_video', False),
         parent_is_reply=example.get('parent_is_reply', False),
         thread_text=example.get('thread_text'),
+        by_original_poster=example.get('by_original_poster', False),
     )
-    return build_messages(plugin_version, post_description, image_urls)
+    return build_messages(plugin_version, post_description, image_urls, explain)
 
 
-def classify_example(example, plugin_version, images_dir, inference_source, model):
-    """One result record: the model's answer for one example and one plugin."""
-    messages = example_messages(example, plugin_version, images_dir)
-    outcome = ask_model(messages, plugin_version, inference_source, model)
+def classify_example(example, plugin_version, images_dir, inference_source, model, explain=False):
+    """One result record: the model's answer for one example and one plugin.
+    With explain, it also holds the model's explanation of each criterion."""
+    messages = example_messages(example, plugin_version, images_dir, explain)
+    outcome = ask_model(messages, plugin_version, inference_source, model, explain)
     record = {
         'example_id': example['id'],
         'plugin': plugin_version.plugin.slug,
@@ -140,6 +148,8 @@ def classify_example(example, plugin_version, images_dir, inference_source, mode
         record['label'] = outcome.answer['label']
         record['reasoning'] = outcome.answer['reasoning']
         record['criteria_met'] = outcome.answer['criteria_met']
+        if 'criteria_explanations' in outcome.answer:
+            record['criteria_explanations'] = outcome.answer['criteria_explanations']
     return record
 
 
@@ -288,4 +298,6 @@ def worst_misses_lines(plugin_versions, examples, records_by_key):
         lines.append(f"  text: {example['text'][:200]}")
         lines.append(f"  expected because: {expected['why']}")
         lines.append(f"  model said: {record['reasoning']}")
+        for name, explanation in record.get('criteria_explanations', {}).items():
+            lines.append(f"    {name}: {explanation}")
     return lines

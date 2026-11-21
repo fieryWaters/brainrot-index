@@ -42,6 +42,8 @@ MAX_THREAD_DEPTH = 50
 MAX_TRANSCRIPT_WORDS = 2000
 REQUEST_TIMEOUT_SECONDS = 60
 MAX_RESPONSE_TOKENS = 500
+# Room for an explanation of every criterion, which only evaluation asks for.
+MAX_EXPLAINED_RESPONSE_TOKENS = 2000
 # An invalid answer is retried once before the classification is marked failed.
 ATTEMPTS_PER_CLASSIFICATION = 2
 
@@ -76,9 +78,9 @@ def inference_endpoint(inference_source):
     return settings.LOCAL_INFERENCE_BASE_URL, ''
 
 
-def system_prompt(plugin_version):
+def system_prompt(plugin_version, explain=False):
     # The rubric comes first and never changes within a version, so providers can cache it.
-    return plugin_version.rubric_prompt + '\n\n' + response_instructions(plugin_version)
+    return plugin_version.rubric_prompt + '\n\n' + response_instructions(plugin_version, explain)
 
 
 def describe_shown_content(text, quoted_post, link_preview):
@@ -100,28 +102,39 @@ def describe_shown_content(text, quoted_post, link_preview):
 
 def describe_post(platform, community, kind, text, parent_text, image_count, transcript=None,
                   quoted_post=None, link_preview=None, has_video=False, parent_is_reply=False, thread_text=None,
-                  video_shown=None):
+                  video_shown=None, by_original_poster=False):
     """The post as the model reads it. parent_text is the text of what a reply
     answers, None when that was never seen; parent_is_reply says it is another
     reply, whose thread starts with the post of thread_text (None when unseen).
     transcript is None for a post that is not a video.
     has_video says the post shows a video or GIF. video_shown says how much of
     it is attached for the model to watch, or is None when it is not attached
-    and the images include only its thumbnail."""
+    and the images include only its thumbnail. by_original_poster says a reply
+    is written by the author of the thread's post.
+
+    A reply's thread and parent come first, marked as context, so the model
+    never mistakes them for the reply it judges."""
     lines = [f"Platform: {PLATFORM_NAMES[platform]}"]
     if community:
         lines.append(f"Community: {community}")
 
     if kind == POST_KIND_REPLY:
         lines.append("Kind: reply")
+        if thread_text is not None or parent_text is not None:
+            lines.append("CONTEXT, only to help read the reply below; it is not being judged:")
         if thread_text is not None:
-            lines.append(f"In the thread of this post: {thread_text[:MAX_PARENT_TEXT_CHARACTERS]}")
+            lines.append(f"The thread's post: {thread_text[:MAX_PARENT_TEXT_CHARACTERS]}")
         if parent_text is not None and parent_is_reply:
-            lines.append(f"Replying to this reply: {parent_text[:MAX_PARENT_TEXT_CHARACTERS]}")
+            lines.append(f"The reply it answers: {parent_text[:MAX_PARENT_TEXT_CHARACTERS]}")
         elif parent_text is not None:
-            lines.append(f"Replying to this post: {parent_text[:MAX_PARENT_TEXT_CHARACTERS]}")
+            lines.append(f"The post it answers: {parent_text[:MAX_PARENT_TEXT_CHARACTERS]}")
+        if by_original_poster:
+            lines.append("THE REPLY BEING JUDGED, written by the author of the thread's post:")
+        else:
+            lines.append("THE REPLY BEING JUDGED:")
     else:
         lines.append("Kind: post")
+        lines.append("THE POST BEING JUDGED:")
 
     lines.append(f"Images attached: {image_count}")
     if video_shown is not None:
@@ -149,26 +162,30 @@ def transcript_for_model(post):
     return ' '.join(words)
 
 
-def build_messages(plugin_version, post_description, image_urls):
+def build_messages(plugin_version, post_description, image_urls, explain=False):
     user_content = [{'type': 'text', 'text': post_description}]
     for image_url in image_urls:
         user_content.append({'type': 'image_url', 'image_url': {'url': image_url}})
     return [
-        {'role': 'system', 'content': system_prompt(plugin_version)},
+        {'role': 'system', 'content': system_prompt(plugin_version, explain)},
         {'role': 'user', 'content': user_content},
     ]
 
 
-def request_chat_completion(messages, plugin_version, inference_source, model):
+def request_chat_completion(messages, plugin_version, inference_source, model, explain=False):
     base_url, api_key = inference_endpoint(inference_source)
+    if explain:
+        max_tokens = MAX_EXPLAINED_RESPONSE_TOKENS
+    else:
+        max_tokens = MAX_RESPONSE_TOKENS
     request_body = {
         'model': model,
         'messages': messages,
         'temperature': 0,
-        'max_tokens': MAX_RESPONSE_TOKENS,
+        'max_tokens': max_tokens,
         'response_format': {
             'type': 'json_schema',
-            'json_schema': {'name': 'classification', 'strict': True, 'schema': answer_schema(plugin_version)},
+            'json_schema': {'name': 'classification', 'strict': True, 'schema': answer_schema(plugin_version, explain)},
         },
     }
     if inference_source == INFERENCE_SOURCE_OPENROUTER:
@@ -187,14 +204,15 @@ def request_chat_completion(messages, plugin_version, inference_source, model):
     )
 
 
-def ask_model(messages, plugin_version, inference_source, model):
+def ask_model(messages, plugin_version, inference_source, model, explain=False):
     """Sends the messages to the model, retrying once after a failed request
-    or an invalid answer, and returns a ModelOutcome."""
+    or an invalid answer, and returns a ModelOutcome. explain, for evaluation
+    only, also asks the model to explain its answer on each criterion."""
     outcome = ModelOutcome()
     for attempt in range(1, ATTEMPTS_PER_CLASSIFICATION + 1):
         started_at = time.monotonic()
         try:
-            response = request_chat_completion(messages, plugin_version, inference_source, model)
+            response = request_chat_completion(messages, plugin_version, inference_source, model, explain)
             outcome.latency_ms = round((time.monotonic() - started_at) * 1000)
             outcome.raw_response = response.text
             response.raise_for_status()
@@ -204,7 +222,7 @@ def ask_model(messages, plugin_version, inference_source, model):
             outcome.completion_tokens = usage.get('completion_tokens')
             if usage.get('cost') is not None:
                 outcome.cost = (outcome.cost or 0) + usage['cost']
-            outcome.answer = parse_answer(completion['choices'][0]['message']['content'], plugin_version)
+            outcome.answer = parse_answer(completion['choices'][0]['message']['content'], plugin_version, explain)
         except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as error:
             logger.warning("Model request attempt %s failed: %s", attempt, error)
             continue
@@ -223,22 +241,29 @@ def stored_parent_text(post):
 
 
 def stored_reply_context(post):
-    """(parent_text, parent_is_reply, thread_text) of a reply, as describe_post
-    takes them. A reply's parent is what it answers, a post or another reply;
-    the parents of replies lead up to the thread's post."""
+    """(parent_text, parent_is_reply, thread_text, by_original_poster) of a
+    reply, as describe_post takes them. A reply's parent is what it answers, a
+    post or another reply; the parents of replies lead up to the thread's post.
+    by_original_poster is known only when the thread's post is stored."""
     parent_post = Post.objects.filter(platform=post.platform, post_id=post.parent_post_id).first()
     if parent_post is None:
-        return None, False, None
+        return None, False, None, False
     if parent_post.kind != POST_KIND_REPLY:
-        return parent_post.text, False, None
+        return parent_post.text, False, None, written_by_same_author(post, parent_post)
     ancestor = parent_post
     for _ in range(MAX_THREAD_DEPTH):
         ancestor = Post.objects.filter(platform=post.platform, post_id=ancestor.parent_post_id).first()
         if ancestor is None:
-            return parent_post.text, True, None
+            return parent_post.text, True, None, False
         if ancestor.kind != POST_KIND_REPLY:
-            return parent_post.text, True, ancestor.text
-    return parent_post.text, True, None
+            return parent_post.text, True, ancestor.text, written_by_same_author(post, ancestor)
+    return parent_post.text, True, None, False
+
+
+def written_by_same_author(post, other_post):
+    if post.author == '':
+        return False
+    return post.author == other_post.author
 
 
 def images_for_model(post):
@@ -252,13 +277,13 @@ def images_for_model(post):
 
 
 def describe_stored_post(post, image_count, video_shown=None):
-    parent_text, parent_is_reply, thread_text = None, False, None
+    parent_text, parent_is_reply, thread_text, by_original_poster = None, False, None, False
     if post.kind == POST_KIND_REPLY:
-        parent_text, parent_is_reply, thread_text = stored_reply_context(post)
+        parent_text, parent_is_reply, thread_text, by_original_poster = stored_reply_context(post)
     return describe_post(
         post.platform, post.community, post.kind, post.text, parent_text, image_count,
         transcript_for_model(post), post.quoted_post, post.link_preview, post.video_url != '',
-        parent_is_reply, thread_text, video_shown)
+        parent_is_reply, thread_text, video_shown, by_original_poster)
 
 
 def save_outcome(classification, outcome):

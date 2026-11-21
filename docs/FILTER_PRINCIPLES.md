@@ -84,6 +84,10 @@ About a reply that called people who "adopted the trans lifestyle" maniacs:
 
 > yeah maybe youre right on this one. This would be a good example of something that a less sensitive classifier wouldn't flag vs a more sensitive one would.
 
+Revised later the same day, after discussing it:
+
+> no youre right I take back my classification, it should be blocked. Im reacting to my perceived bias in models but that one is actually toxic. Its pretty rude especially if you are a trans sympathizer it could enrage you
+
 ## Parents and children
 
 > parents may choose this for children ... and if they create a filter to limit what kinds of content they can see, theres a sort of double edged sword here where on one hand they should have some control over their childs media diet as their parent but also a child should have autonomy. But maybe "turn down gender ideology" is more acceptable than "turn down for/against gender ideology posts (forcing child into filter bubble)" so filters get applied evenly to both sides of a topic. This is important. I think it strikes the right balance of valuing the parents role without smothering the child in a biased manner.

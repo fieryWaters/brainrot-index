@@ -12,7 +12,7 @@ const DEFAULT_SERVER_ADDRESS = "https://brainrotindex.com";
 const MISSED_POST_MENU_ITEM_ID = "should-have-been-filtered";
 // The date the consent screen's wording last changed. A reader who agreed to an older wording is
 // asked again, and nothing is sent until they agree to this one.
-const DATA_SHARING_DISCLOSURE_VERSION = "2026-11-17";
+const DATA_SHARING_DISCLOSURE_VERSION = "2026-11-23";
 
 extensionApi.runtime.onInstalled.addListener(async () => {
   extensionApi.contextMenus.create({

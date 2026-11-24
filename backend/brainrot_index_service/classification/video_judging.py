@@ -95,7 +95,7 @@ def send_to_openrouter(messages, schema_name, schema, model):
                 'type': 'json_schema',
                 'json_schema': {'name': schema_name, 'strict': True, 'schema': schema},
             },
-            'provider': {'only': [VIDEO_PROVIDER], 'require_parameters': True},
+            'provider': {'only': [VIDEO_PROVIDER], 'require_parameters': True, 'data_collection': 'deny'},
         },
         headers={'Authorization': f"Bearer {settings.OPENROUTER_API_KEY}"},
         timeout=REQUEST_TIMEOUT_SECONDS,

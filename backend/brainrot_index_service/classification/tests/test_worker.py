@@ -63,7 +63,7 @@ class WorkerTests(TestCase):
         self.assertIsNotNone(classification.completed_at)
 
         request = model_call.call_args.kwargs['json']
-        self.assertEqual(request['provider'], {'require_parameters': True})
+        self.assertEqual(request['provider'], {'require_parameters': True, 'data_collection': 'deny'})
         self.assertEqual(request['response_format']['type'], 'json_schema')
         self.assertTrue(request['messages'][0]['content'].startswith(classification.plugin_version.rubric_prompt))
         self.assertIn('A photo of my garden', request['messages'][1]['content'][0]['text'])

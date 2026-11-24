@@ -2205,7 +2205,7 @@ function openConsentPages(context) {
 async function testNothingSentBeforeAgreeing(context, serviceWorker, extensionId, classifyCalls, consentCalls) {
   check(await waitUntil(async () => openConsentPages(context).length === 1, 5000), "installing opens the consent screen");
   const consentPage = openConsentPages(context)[0];
-  check((await consentPage.textContent("#disclosure-text")).startsWith("To classify posts, BrainRot Index sends the posts you see"),
+  check((await consentPage.textContent("#disclosure-text")).startsWith("To decide which posts to hide, BrainRot Index sends the posts you see"),
     "the consent screen says what is sent");
   await consentPage.close();
 

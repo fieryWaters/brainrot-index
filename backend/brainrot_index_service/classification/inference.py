@@ -193,8 +193,9 @@ def request_chat_completion(messages, schema_name, schema, inference_source, mod
         },
     }
     if inference_source == INFERENCE_SOURCE_OPENROUTER:
-        # Never fall back to a provider that would ignore the JSON schema.
-        request_body['provider'] = {'require_parameters': True}
+        # Never fall back to a provider that would ignore the JSON schema,
+        # and use only providers that neither store nor train on the posts sent.
+        request_body['provider'] = {'require_parameters': True, 'data_collection': 'deny'}
 
     headers = {}
     if api_key:

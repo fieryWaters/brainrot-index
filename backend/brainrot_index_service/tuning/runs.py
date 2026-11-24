@@ -187,7 +187,7 @@ def request_explanations(messages, answer_given, names, explanation_request, inf
         },
     }
     if inference_source == INFERENCE_SOURCE_OPENROUTER:
-        request_body['provider'] = {'require_parameters': True}
+        request_body['provider'] = {'require_parameters': True, 'data_collection': 'deny'}
     base_url, api_key = inference_endpoint(inference_source)
     headers = {}
     if api_key:

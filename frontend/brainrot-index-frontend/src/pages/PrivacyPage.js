@@ -42,8 +42,7 @@ Limited Use requirements.</p>
 <ul>
   <li>The extension sends nothing until you agree on its consent screen.</li>
   <li>You can switch filtering off at any time with the extension's toolbar button, or turn the extension off or remove it in your browser so it sends nothing more.</li>
-  <li>You can download your data or delete your account on the Account page. We keep posts to improve our filters. Deleting your
-  account deletes your account and its link to the posts you sent. Feedback and thumbs you sent stay, without your account.</li>
+  <li>You can download your data or delete your account on the Account page.</li>
   <li>Children under 13 may not create their own account.</li>
 </ul>
 

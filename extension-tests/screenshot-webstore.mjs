@@ -9,7 +9,7 @@ import { chromium } from "playwright-core";
 import fs from "node:fs";
 import path from "node:path";
 import { EXTENSION_DIR, TESTS_DIR, makeFreshProfileDir } from "./browser.mjs";
-import { startMockServer, MOCK_TOKEN, MOCK_CONFIG } from "./mock-server.mjs";
+import { startMockServer, MOCK_TOKEN, MOCK_CONFIG, MOCK_HIDING_FILTERS } from "./mock-server.mjs";
 import { SAMPLE_REDDIT_POSTS, SAMPLE_X_TWEETS, SAMPLE_YOUTUBE_VIDEOS, STAND_IN_URLS, samplePages, serveStandInPages } from "./stand-in-pages.mjs";
 
 const BRAVE_BINARY = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
@@ -32,13 +32,27 @@ const GLOW_200 = "#d2ffff";
 const GLOW_300 = "#9eeef5";
 const GLOW_400 = "#4cbbe1";
 
-// -- The dashboard's API, answered with one signed-in adult account on its free trial --
+// -- The filters a new account has, and the dashboard's API, answered with one signed-in adult account on
+// its free trial --
+
+const DEFAULT_FILTERS = [
+  { slug: "brainrot", name: "Brainrot" },
+  { slug: "engagement-bait", name: "Engagement bait" },
+  { slug: "low-effort", name: "Low Effort" },
+  { slug: "rude-or-toxic", name: "Rude or Toxic" },
+];
+
+// Hidden posts give the feature ratings behind the filter's score, as the real server does.
+const HIDING_FILTERS = {
+  first: { slug: "engagement-bait", reason: { plugin: "Engagement bait", label: "reply hook 8, emptiness 6.5", score: 84 } },
+  second: { slug: "brainrot", reason: { plugin: "Brainrot", label: "pull 8, emptiness 7", score: 78 } },
+};
 
 const DASHBOARD_PLUGINS = [
-  { slug: "engagement-bait", name: "Engagement bait", description: "Posts made to farm replies, likes and shares.", enabled: true, threshold: 70, flagged_action: "hide" },
-  { slug: "ragebait", name: "Ragebait", description: "Posts built to make you angry.", enabled: true, threshold: 60, flagged_action: "blur" },
-  { slug: "brainrot", name: "Brainrot", description: "Attention sinks with nothing inside.", enabled: true, threshold: 50, flagged_action: "hide" },
-  { slug: "ai-slop", name: "AI slop", description: "Mass-produced generated content and reply-guy promotion.", enabled: false, threshold: 65, flagged_action: "hide" },
+  { slug: "brainrot", name: "Brainrot", description: "Meaningless attention-sink content: meme-slang loops, low-effort shitposts, absurd image macros.", enabled: true, threshold: 60 },
+  { slug: "engagement-bait", name: "Engagement bait", description: "Hides posts built to draw replies, votes, and shares rather than to give you something. Sincere questions stay.", enabled: true, threshold: 60 },
+  { slug: "low-effort", name: "Low Effort", description: "Hides inane, generic, or mass-produced posts that give you nothing. Short posts with a real point stay.", enabled: true, threshold: 70 },
+  { slug: "rude-or-toxic", name: "Rude or Toxic", description: "Hides posts written to insult, demean, or pour contempt on people or groups. Disagreement and jokes stay.", enabled: true, threshold: 60 },
 ];
 
 const DASHBOARD_ANSWERS = {
@@ -72,7 +86,7 @@ async function serveSiteBuild(context) {
 
 // -- Pictures of the extension --
 
-// Answers that arrive while a post is on screen blur it; drawn again, a hidden post collapses.
+// Opens a stand-in feed, waits for the answers, and draws it again so the hidden posts are folded.
 async function openAnsweredFeed(page, url) {
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => document.querySelectorAll(".brainrot-index-judge").length >= 2, null, { timeout: 15000 });
@@ -169,29 +183,30 @@ async function takePictures(context, serviceWorker, extensionId) {
   const page = context.pages()[0] ?? (await context.newPage());
   await page.setViewportSize({ width: 1280, height: 900 });
 
-  // A feed: a hidden post's line hovered, so its reason and Show button appear, and a blurred post.
+  // A feed: a hidden post's line hovered, so its reason and Show button appear.
   await openAnsweredFeed(page, STAND_IN_URLS.x);
   let stopHovering = await forceHover(page,
     `.brainrot-index-notice:has(+ article [href="/${SAMPLE_X_TWEETS[1].handle}/status/${SAMPLE_X_TWEETS[1].id}"])`);
   pictures.feed = { dataUrl: await pictureDataUrl(page, { x: 320, y: 0, width: 640, height: 470 }), width: 640 * 1.1, height: 470 * 1.1 };
   await stopHovering();
 
-  // A thread: a hidden reply among replies that are shown, and a blurred post above them.
+  // A thread: a hidden post and a hidden reply among replies that are shown.
   await openAnsweredFeed(page, STAND_IN_URLS.reddit);
   stopHovering = await forceHover(page, `shreddit-post#${SAMPLE_REDDIT_POSTS[2].id}`);
   pictures.thread = { dataUrl: await pictureDataUrl(page, { x: 270, y: 0, width: 740, height: 660 }), width: 740 * 0.92, height: 660 * 0.92 };
   await stopHovering();
 
-  // Videos: one hidden, one blurred, the rest shown.
+  // Videos: some hidden, the rest shown.
   await openAnsweredFeed(page, STAND_IN_URLS.youtube);
   pictures.videos = { dataUrl: await pictureDataUrl(page, { x: 0, y: 0, width: 1160, height: 760 }), width: 1160 * 0.66, height: 760 * 0.66 };
 
-  // Thumbs down on a shown post, with the details box it opens.
+  // Thumbs down on a shown post, with the details box it opens and a filter picked in it.
   await openAnsweredFeed(page, STAND_IN_URLS.reddit);
   const shownPost = `shreddit-post#${SAMPLE_REDDIT_POSTS[0].id}`;
   await hover(page, shownPost, { x: 120, y: 30 });
   await page.locator(`${shownPost} .brainrot-index-judge-button[data-verdict="wrong"]`).first().click();
   await page.waitForFunction(() => document.querySelector(".brainrot-index-details-status")?.textContent.endsWith("saved"));
+  await page.locator('.brainrot-index-details .brainrot-index-chip[data-value="low-effort"]').click();
   await page.locator('.brainrot-index-details .brainrot-index-chip[data-value="medium"]').click();
   await page.waitForTimeout(300);
   pictures.thumbs = { dataUrl: await pictureDataUrl(page, { x: 270, y: 0, width: 740, height: 420 }), width: 740 * 0.7, height: 420 * 0.7 };
@@ -199,13 +214,13 @@ async function takePictures(context, serviceWorker, extensionId) {
 
   // The toolbar popup, opened as a page of its own, after the feeds above were checked.
   const popupPage = await context.newPage();
-  await popupPage.setViewportSize({ width: 284, height: 600 });
+  await popupPage.setViewportSize({ width: 328, height: 600 });
   await popupPage.goto(`chrome-extension://${extensionId}/popup/popup.html`);
   await popupPage.waitForFunction(() => document.getElementById("account-status").textContent !== "Checking account...");
   await popupPage.waitForTimeout(300);
   const popupBox = await popupPage.locator("body").boundingBox();
   const popupHeight = Math.ceil(popupBox.height + 24);
-  pictures.popup = { dataUrl: await pictureDataUrl(popupPage, { x: 0, y: 0, width: 284, height: popupHeight }), width: 284 * 0.85, height: popupHeight * 0.85 };
+  pictures.popup = { dataUrl: await pictureDataUrl(popupPage, { x: 0, y: 0, width: 328, height: popupHeight }), width: 328 * 0.85, height: popupHeight * 0.85 };
   await popupPage.close();
 
   // The dashboard's plugin settings.
@@ -216,7 +231,7 @@ async function takePictures(context, serviceWorker, extensionId) {
   await sitePage.goto(SITE_ORIGIN + "/dashboard");
   const pluginsCard = sitePage.locator("div", { has: sitePage.getByRole("heading", { name: "My plugins" }) }).last();
   await pluginsCard.waitFor();
-  await sitePage.getByRole("checkbox", { name: "Ragebait on" }).waitFor();
+  await sitePage.getByRole("checkbox", { name: "Rude or Toxic on" }).waitFor();
   await sitePage.waitForTimeout(400);
   const cardBox = await pluginsCard.boundingBox();
   const cardHeight = Math.min(cardBox.height, 700);
@@ -230,6 +245,8 @@ async function takePictures(context, serviceWorker, extensionId) {
 
 fs.mkdirSync(outputDir, { recursive: true });
 MOCK_CONFIG.pending_action = "allow"; // as for an adult account on the real server
+MOCK_CONFIG.plugins = DEFAULT_FILTERS;
+Object.assign(MOCK_HIDING_FILTERS, HIDING_FILTERS);
 const markDataUrl = "data:image/png;base64," + fs.readFileSync(MARK_FILE).toString("base64");
 const mockServer = await startMockServer(MOCK_PORT);
 try {
@@ -261,19 +278,19 @@ try {
 
   const slides = [
     { headline: "The algorithm that works for you",
-      text: "Your feeds are tuned to keep you scrolling. BrainRot Index is tuned by you: posts your filters flag are blurred or folded into one line that says why.",
+      text: "Your feeds are tuned to keep you scrolling. BrainRot Index is tuned by you: posts your filters flag are folded into one line. Hover it to see which filter caught the post and why.",
       pictures: [pictures.feed], footnote: MADE_UP },
     { headline: "Every post and reply, checked as you scroll",
       text: "AI reads each post with its text and images. Replies in a thread are checked too, and one click shows anything that was filtered.",
       pictures: [pictures.thread], footnote: MADE_UP },
     { headline: "Videos too",
-      text: "Suggested and searched videos are judged by their title, thumbnail and channel.",
+      text: "Suggested and searched videos are judged too: AI watches the video itself, not only its title.",
       pictures: [pictures.videos], footnote: MADE_UP },
     { headline: "You choose what goes",
-      text: "Turn each filter on or off, set how strict it is, and choose whether flagged posts are blurred or hidden.",
+      text: "Turn each filter on or off and set how strict it is. The plugin store has more filters.",
       pictures: [pictures.dashboard] },
     { headline: "Tell it when it is wrong",
-      text: "Thumbs up or down on any post teaches the filters. The toolbar button switches filtering off and shows what was checked.",
+      text: "Thumbs up or down on any post teaches the filters, and you can pick which filter should have caught it. The toolbar button switches filtering off and shows what was checked.",
       pictures: [{ ...pictures.thumbs, style: "align-self:center" }, pictures.popup], footnote: MADE_UP },
   ];
   const browser = await chromium.launch({ executablePath: BRAVE_BINARY, headless: true });

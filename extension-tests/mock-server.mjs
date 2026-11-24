@@ -8,6 +8,7 @@
 //   hide  "Engagement bait" when the text contains "AITA" or the post id's character sum leaves 0 mod 3.
 //   hide  "Ragebait"        when the text is longer than 400 characters or that sum leaves 1 mod 3.
 //   allow                   otherwise.
+// The two hiding filters can be changed through MOCK_HIDING_FILTERS.
 // The post id rule exists so that any live feed yields about a third of each action.
 //   YouTube: the first "pending" answer for a video carries transcript_wanted, as the real server's
 //   does for a video it never classified; the extension sends no transcript. An id starting "known" is
@@ -73,18 +74,25 @@ function postIdCharacterSum(postId) {
   return sum;
 }
 
+// The filter that hides each of the two kinds of hidden post in the rules above, and its reason.
+// Changed by a caller that wants other filters named, as the store screenshots do.
+export const MOCK_HIDING_FILTERS = {
+  first: { slug: "engagement-bait", reason: { plugin: "Engagement bait", label: "Asks for engagement", score: 90 } },
+  second: { slug: "ragebait", reason: { plugin: "Ragebait", label: "Written to anger", score: 75 } },
+};
+
 // The slug of the filter that hid each post: post_id -> slug.
 const hidingPluginByPostId = new Map();
 
 function chooseAnswer(post) {
   const postIdGroup = postIdCharacterSum(post.post_id) % 3;
   if (post.text.includes("AITA") || postIdGroup === 0) {
-    hidingPluginByPostId.set(post.post_id, "engagement-bait");
-    return { action: "hide", reasons: [{ plugin: "Engagement bait", label: "Asks for engagement", score: 90 }] };
+    hidingPluginByPostId.set(post.post_id, MOCK_HIDING_FILTERS.first.slug);
+    return { action: "hide", reasons: [MOCK_HIDING_FILTERS.first.reason] };
   }
   if (post.text.length > 400 || postIdGroup === 1) {
-    hidingPluginByPostId.set(post.post_id, "ragebait");
-    return { action: "hide", reasons: [{ plugin: "Ragebait", label: "Written to anger", score: 75 }] };
+    hidingPluginByPostId.set(post.post_id, MOCK_HIDING_FILTERS.second.slug);
+    return { action: "hide", reasons: [MOCK_HIDING_FILTERS.second.reason] };
   }
   return { action: "allow", reasons: [] };
 }

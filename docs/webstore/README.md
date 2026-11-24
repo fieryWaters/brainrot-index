@@ -1,7 +1,7 @@
 # Chrome Web Store submission kit
 
 Everything the Chrome Web Store Developer Dashboard asks for, checked against the code on
-2026-11-23 at extension version 0.1.0 (`extension/manifest.json`, `background.js`, `consent/`, `content/`,
+2026-11-23 at extension version 0.1.1 (`extension/manifest.json`, `background.js`, `consent/`, `content/`,
 `sites/`, `popup/`, `options/`, and the backend's `classification/` app) and against the live Privacy
 Policy at https://brainrotindex.com/privacy. Copy each block into the
 field of the same name. Brave installs extensions from the Chrome Web Store, so one listing covers
@@ -25,7 +25,7 @@ The dashboard's own wording wins where it differs from this file.
 | `../../extension/icons/icon128.png` | Store icon (also inside the zip) |
 
 The zip is not committed (`dist/` is ignored). Build it from a clean checkout of the commit being
-submitted: `node scripts/package-extension.mjs` writes `dist/brainrot-index-extension-0.1.0.zip`.
+submitted: `node scripts/package-extension.mjs` writes `dist/brainrot-index-extension-0.1.1.zip`.
 Upload that zip, never a zip of the `extension/` folder made by hand: the script takes the
 development addresses (localhost, 127.0.0.1, brainrot.jacob-waters.com) out of the manifest, so the
 published copy asks for access to https://brainrotindex.com only.
@@ -110,7 +110,7 @@ made-up posts, which each picture says in a footnote.
     An account is required. After the free trial BrainRot Index costs $5 a month, paid on the website.
 
     PRIVACY
-    Before it sends anything, the extension asks for your agreement. Once you agree, it sends the posts you see on supported sites (text, images, video, and who posted them) to the BrainRot Index service, which classifies them with AI models from our service providers. They are also used to improve the service and to detect fraud and abuse. We don't sell your data. Details: https://brainrotindex.com/privacy
+    Before it sends anything, the extension asks for your agreement. To decide which posts to hide, BrainRot Index sends the posts you see on supported sites to our server, where our service judges them with AI from our service providers. We don't sell your data. Details: https://brainrotindex.com/privacy
 
 **Category**: Lifestyle, Well-being. (Second choice: Social Networking.)
 
@@ -131,29 +131,24 @@ made-up posts, which each picture says in a footnote.
 | Small promo tile | 440 x 280 | no, but listings without it rank lower | `promo-tile-440x280.png` |
 | Marquee promo tile | 1400 x 560 | only for being featured | not made |
 
-What each screenshot is meant to show:
+What each screenshot shows, with its caption:
 
-1. "The algorithm that works for you": a dark feed with a hidden post's line (filter, ratings and
-   score on hover, Show, thumbs).
-2. "Every post and reply, checked as you scroll": a light thread with a hidden post and a hidden reply.
-3. "Videos too": a dark video grid with hidden videos.
-4. "You choose what goes": the dashboard's My plugins card with strictness sliders.
-5. "Tell it when it is wrong": the thumbs box with its label picker, and the toolbar popup.
-
-**All five committed pictures are out of date and must be redrawn before upload.** They were made
-before version 0.1.0 and show things the extension no longer does:
-
-- 1, 2, 3 and 5 show blurred posts ("Blurred · Ragebait"); there is no blur any more.
-- 1 and 2 show the old hover text (a rubric label such as "Asks for engagement"); it now shows the
-  feature ratings, such as "pull 8, emptiness 6.7".
-- 1's caption says posts are "blurred or folded into one line"; 3's caption says videos are judged by
-  "title, thumbnail and channel" (the video itself is now watched); 4's caption and picture show the
-  Blur or Hide choice.
-- 4 and 5 show Ragebait as a filter the user has by default; the defaults are now Brainrot,
-  Engagement bait, Low Effort and Rude or Toxic.
-- 5 shows the old details box (Filter, Severity), not the label picker ("Should be" / "Or blocked
-  as"), and a popup with a "Disconnect and stop sending posts" link and a "Blurred or hidden" count,
-  both since changed.
+1. "The algorithm that works for you": a dark feed with a hidden post's line hovered, showing the
+   filter, the ratings behind its score and the score ("Engagement bait · reply hook 8, emptiness
+   6.5 · 84/100"), Show, and thumbs. Caption: posts your filters flag are folded into one line; hover
+   it to see which filter caught the post and why.
+2. "Every post and reply, checked as you scroll": a light thread with a hidden post and a hidden
+   reply. Caption: AI reads each post with its text and images, replies are checked too, and one
+   click shows anything filtered.
+3. "Videos too": a dark video grid with hidden videos. Caption: suggested and searched videos are
+   judged too; AI watches the video itself, not only its title.
+4. "You choose what goes": the dashboard's My plugins card with the four default filters (Brainrot,
+   Engagement bait, Low Effort, Rude or Toxic) and their strictness sliders. Caption: turn each
+   filter on or off and set how strict it is; the plugin store has more filters.
+5. "Tell it when it is wrong": the thumbs box with its label picker ("Should be" / "Or blocked as",
+   Low Effort picked) and the toolbar popup. Caption: thumbs teach the filters, you can pick which
+   filter should have caught a post, and the toolbar button switches filtering off and shows what
+   was checked.
 
 The consent screen is not among them: the store takes five screenshots at most, and the five above
 show what the extension does. Reviewers see the consent screen when they install it (Test
@@ -238,8 +233,9 @@ Ordered from most to least likely to cause trouble.
    empty, low with the reviewer account from step 4. Reviewers reject items they cannot try.
 3. **Video sent to an AI provider.** Risk: low. Every post with a video, on any of the default
    filters, has its video watched by a Google Gemini model; for Reddit and X the server downloads
-   and keeps the opening seconds. This is covered by "video" in the consent screen, the listing and
-   the Privacy tab, and by "AI providers" in the Privacy Policy.
+   and keeps the opening seconds. This is covered by "the posts you see" and "AI from our service
+   providers" in the consent screen and the listing, by "video" in the Privacy tab and the Privacy
+   Policy, and by "AI providers" in the Privacy Policy.
 4. **Host access to three big sites.** Risk: low. The install prompt reads roughly "Read and change
    your data on brainrotindex.com, www.reddit.com, www.youtube.com and x.com". Named sites, not all
    sites, but any content-script access means a longer, partly manual review.

@@ -328,7 +328,7 @@ class BillingTests(TestCase):
         self.assertTrue(account_has_access(self.user))
 
 
-@override_settings(STRIPE_SECRET_KEY='sk_test_fake')
+@override_settings(STRIPE_SECRET_KEY='sk_test_fake', STRIPE_LIVE_MODE=False)
 class SetupStripeTests(TestCase):
     def test_creates_price_and_portal_only_when_missing(self):
         client = MagicMock()

@@ -6,14 +6,13 @@ from .models import Feedback
 class FeedbackSerializer(serializers.ModelSerializer):
     class Meta:
         model = Feedback
-        fields = [
-            'source', 'rating', 'text', 'page_url', 'reply_email', 'extension_commit',
-            'platform', 'post_id', 'shown_action', 'expected_action',
-        ]
+        # Older feedback also holds platform, post_id, shown_action and expected_action, sent by
+        # the extension's right-click report before thumbs replaced it.
+        fields = ['source', 'rating', 'text', 'page_url', 'reply_email', 'extension_commit']
 
     def validate(self, data):
-        if not data.get('text', '').strip() and not data.get('expected_action') and not data.get('rating'):
-            raise serializers.ValidationError('Give a rating, text, an expected_action, or more than one.')
+        if not data.get('text', '').strip() and not data.get('rating'):
+            raise serializers.ValidationError('Give a rating, text, or both.')
         return data
 
 

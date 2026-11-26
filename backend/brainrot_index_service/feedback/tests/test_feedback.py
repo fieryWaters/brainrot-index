@@ -22,10 +22,8 @@ class FeedbackEndpointTests(TestCase):
             {
                 'source': 'extension',
                 'extension_commit': 'ext9999',
-                'platform': 'x',
-                'post_id': '1850000000000000000',
-                'shown_action': 'allow',
-                'expected_action': 'hide',
+                'text': 'Too many ads in my feed.',
+                'page_url': 'https://x.com/home',
             },
             content_type='application/json',
             **bearer(self.token),
@@ -36,7 +34,7 @@ class FeedbackEndpointTests(TestCase):
         self.assertEqual(feedback.user, self.user)
         self.assertEqual(feedback.site_commit, 'abc1234')
         self.assertEqual(feedback.extension_commit, 'ext9999')
-        self.assertEqual(feedback.expected_action, 'hide')
+        self.assertEqual(feedback.page_url, 'https://x.com/home')
 
     def test_site_sends_feedback_with_session_and_csrf(self):
         client = Client(enforce_csrf_checks=True)
@@ -68,22 +66,13 @@ class FeedbackEndpointTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(Feedback.objects.count(), 0)
 
-    def test_missed_post_report_needs_only_page_and_expected_action(self):
-        response = self.client.post(
-            reverse('create_feedback'),
-            {'source': 'extension', 'page_url': 'https://x.com/home', 'expected_action': 'hide'},
-            content_type='application/json',
-            **bearer(self.token),
-        )
-        self.assertEqual(response.status_code, 201)
-
     def test_a_rating_alone_is_enough(self):
         response = self.client.post(
             reverse('create_feedback'), {'source': 'site', 'rating': 'down'}, content_type='application/json')
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Feedback.objects.get(id=response.json()['id']).rating, 'down')
 
-    def test_rating_text_or_expected_action_is_required(self):
+    def test_rating_or_text_is_required(self):
         response = self.client.post(
             reverse('create_feedback'), {'source': 'extension'}, content_type='application/json', **bearer(self.token))
         self.assertEqual(response.status_code, 400)
@@ -122,7 +111,7 @@ class FeedbackAlertTests(TestCase):
     def test_reports_are_not_emailed_since_the_owner_reads_them_in_the_inbox(self):
         user, token = create_user_with_token('reader@example.com')
         extension_response = self.send(
-            {'source': 'extension', 'platform': 'x', 'post_id': '185', 'expected_action': 'hide', 'text': 'Missed this one'},
+            {'source': 'extension', 'text': 'Missed this one'},
             **bearer(token))
         site_response = self.send({'source': 'site', 'rating': 'up'})
 

@@ -64,7 +64,7 @@ def change_password(request):
 @throttle_classes([AccountChangeThrottle])
 def sign_out_everywhere(request):
     """Ends every session of the account, this one included, and disconnects
-    every extension, so each must press Connect extension again."""
+    every extension, so each connects again only once its browser signs in."""
     user_id = request.user.id
     ExtensionToken.objects.filter(user=request.user).delete()
     _delete_sessions_for_user(user_id)

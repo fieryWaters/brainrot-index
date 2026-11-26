@@ -2,6 +2,7 @@ import './index.css'
 import { register, navigate, resolve, setOutlet, setAuthGuard, setNotFoundHandler } from './lib/router.js'
 import { refreshSession, getState } from './lib/auth.js'
 import { createLayout } from './components/Layout.js'
+import { connectExtensionAutomatically } from './lib/extension.js'
 import { mountLandingPage } from './pages/LandingPage.js'
 import { mountLoginPage } from './pages/LoginPage.js'
 import { mountSignupPage } from './pages/SignupPage.js'
@@ -87,6 +88,9 @@ document.addEventListener('click', (event) => {
   event.preventDefault()
   navigate(href)
 })
+
+// The extension in this browser connects to whoever signs in here.
+connectExtensionAutomatically()
 
 // Learn who is logged in before mounting the initial page.
 refreshSession().then(() => resolve())

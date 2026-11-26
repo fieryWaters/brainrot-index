@@ -72,8 +72,8 @@ export function createOnboardingChecklist() {
         el('p', '', 'Add BrainRot Index to Brave or Chrome. ', link('Show me how', '/install'))),
       stepRow(status.extension_connected, 'Connect the extension',
         el('p', '', installed
-          ? 'Press Connect extension in the Browser extension card below.'
-          : 'Once it is installed, press Connect extension in the Browser extension card below.')),
+          ? 'It connects by itself on this page once you agree to the notice the extension showed when it was installed.'
+          : 'Once it is installed and you agree to its notice, it connects by itself while you are signed in here.')),
       stepRow(status.feed_opened, 'Open your feed',
         el('p', '', 'Open a supported site in this browser and scroll. Posts your filters flag are hidden as you go. ',
           link('Which sites?', '/#faq'))),

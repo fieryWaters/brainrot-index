@@ -136,7 +136,7 @@ function createSignOutEverywhereCard() {
       el('div', '',
         el('h2', 'text-lg font-semibold text-white mb-1', 'Signed-in browsers'),
         el('p', 'text-sm text-white/60',
-          'Signs this account out of every browser, this one too, and disconnects every extension. Each extension then needs Connect extension pressed again.')),
+          'Signs this account out of every browser, this one too, and disconnects every extension. Each one connects again by itself the next time you sign in here in that browser.')),
       button),
     status)
 }

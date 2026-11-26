@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { screen, fireEvent, waitFor } from '@testing-library/dom'
 import { renderElement } from '../test-utils.js'
-import { mountDashboardPage, TOKEN_MESSAGE_TYPE, CONNECTED_MESSAGE_TYPE, CONSENT_NEEDED_MESSAGE_TYPE, EXTENSION_ANSWER_TIMEOUT_MS } from './DashboardPage.js'
+import { mountDashboardPage, EXTENSION_ANSWER_TIMEOUT_MS } from './DashboardPage.js'
+import { TOKEN_MESSAGE_TYPE, CONNECTED_MESSAGE_TYPE, CONSENT_NEEDED_MESSAGE_TYPE, PRESENT_MESSAGE_TYPE } from '../lib/extension.js'
 
 const PLUGINS = [
   { slug: 'ragebait', name: 'Ragebait', description: 'Made to make you angry.', enabled: true, threshold: 60, flagged_action: 'hide' },
@@ -35,6 +36,14 @@ beforeEach(() => {
     return jsonResponse({})
   }))
 })
+
+// An extension older than 0.2.0 announces itself without an account state.
+function announceExtension(accountState) {
+  window.dispatchEvent(new MessageEvent('message', {
+    data: { type: PRESENT_MESSAGE_TYPE, accountState },
+    origin: window.location.origin,
+  }))
+}
 
 afterEach(() => {
   document.body.innerHTML = ''
@@ -114,6 +123,7 @@ describe('DashboardPage', () => {
   it('hands the token to the extension and shows Connected when it answers', async () => {
     const postMessage = vi.spyOn(window, 'postMessage')
     renderElement(mountDashboardPage().el)
+    announceExtension(undefined)
     fireEvent.click(screen.getByText('Connect extension'))
 
     await waitFor(() => expect(postMessage).toHaveBeenCalledWith(
@@ -125,6 +135,7 @@ describe('DashboardPage', () => {
 
   it('points to the extension consent tab when the extension needs agreement first', async () => {
     renderElement(mountDashboardPage().el)
+    announceExtension(undefined)
     fireEvent.click(screen.getByText('Connect extension'))
     await waitFor(() => expect(requests.some((request) => request.path.endsWith('/extension/token/'))).toBe(true))
 
@@ -141,6 +152,7 @@ describe('DashboardPage', () => {
       return jsonResponse({ plugins: [] })
     })
     renderElement(mountDashboardPage().el)
+    announceExtension(undefined)
     fireEvent.click(screen.getByText('Connect extension'))
 
     expect(await screen.findByText(/Verify your email first/)).toBeInTheDocument()
@@ -150,6 +162,7 @@ describe('DashboardPage', () => {
   it('tells the reader to reload the page when the extension does not answer', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     renderElement(mountDashboardPage().el)
+    announceExtension(undefined)
     fireEvent.click(screen.getByText('Connect extension'))
     await waitFor(() => expect(requests.some((request) => request.path.endsWith('/extension/token/'))).toBe(true))
     await vi.advanceTimersByTimeAsync(EXTENSION_ANSWER_TIMEOUT_MS + 100)
@@ -160,8 +173,33 @@ describe('DashboardPage', () => {
   it('points to the install page until the extension answers on this page', async () => {
     renderElement(mountDashboardPage().el)
     expect(screen.getByText('Install it first').getAttribute('href')).toBe('/install')
+    expect(screen.getByText('Connect extension')).not.toBeVisible()
 
-    window.dispatchEvent(new MessageEvent('message', { data: { type: 'brainrot-index-extension-present' }, origin: window.location.origin }))
+    announceExtension(undefined)
     expect(screen.getByText('Link the extension in this browser to your account.')).toBeInTheDocument()
+    expect(screen.getByText('Connect extension')).toBeVisible()
+  })
+
+  it('offers no Connect extension button to an extension that connects by itself', async () => {
+    renderElement(mountDashboardPage().el)
+    announceExtension('connected')
+    expect(screen.getByText('Connected')).toBeInTheDocument()
+    expect(screen.getByText('Connect extension')).not.toBeVisible()
+  })
+
+  it('says the extension is connecting, then Connected when it answers', async () => {
+    renderElement(mountDashboardPage().el)
+    announceExtension('not-connected')
+    expect(screen.getByText('The extension connects to your account as soon as your email is verified.')).toBeInTheDocument()
+
+    window.dispatchEvent(new MessageEvent('message', { data: { type: CONNECTED_MESSAGE_TYPE }, origin: window.location.origin }))
+    expect(screen.getByText('Connected')).toBeInTheDocument()
+  })
+
+  it('asks the reader to agree in the extension when it waits for consent', async () => {
+    renderElement(mountDashboardPage().el)
+    announceExtension('consent-needed')
+    expect(screen.getByText(/the extension sends nothing until you agree to its notice/)).toBeInTheDocument()
+    expect(screen.getByText('Connect extension')).not.toBeVisible()
   })
 })

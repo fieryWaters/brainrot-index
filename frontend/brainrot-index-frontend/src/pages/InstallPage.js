@@ -85,7 +85,7 @@ function manualSteps(browser) {
     step(6, 'Pin it to the toolbar (optional)',
       paragraph('Click the puzzle piece icon next to the address bar, then the pin next to BrainRot Index. Its button shows whether it is connected and how many posts it has checked.')),
     step(7, 'Connect it to your account',
-      paragraph('Open ', dashboardLink, ' and press ', strong('Connect extension'), '. That is it: open X, Reddit or YouTube and your feed is filtered.')))
+      paragraph('The extension opens a page that says what it sends. Press ', strong('Agree and continue'), ' there, then sign in to ', dashboardLink, ' if you are not already: the extension connects by itself. That is it: open X, Reddit or YouTube and your feed is filtered.')))
 }
 
 export function mountInstallPage() {
@@ -109,7 +109,7 @@ export function mountInstallPage() {
       el('div', 'mt-8 rounded-2xl border border-white/10 bg-black/30 p-6',
         storeLink,
         el('p', 'mt-4 text-white/70', 'The Chrome Web Store opens. Click ', strong('Add to Chrome'),
-          ' (Brave uses the same store), then come back to ', dashboardLink, ' and press ', strong('Connect extension'), '.')))
+          ' (Brave uses the same store), press ', strong('Agree and continue'), ' on the page the extension opens, and sign in to ', dashboardLink, ': the extension connects by itself.')))
   } else {
     let browserKey = detectBrowser()
     const stepsSlot = el('div', 'mt-8')

@@ -10,14 +10,14 @@ import { createFilterSettingsCard, createInstalledPluginsCard } from '../compone
 import { CARD_CLASS, ACCENT_BUTTON_CLASS } from '../components/styles.js'
 import { pendingFamilyInviteCode } from './JoinFamilyPage.js'
 import { createOnboardingChecklist } from '../components/OnboardingChecklist.js'
-import { detectExtension } from '../lib/extension.js'
+import { getState } from '../lib/auth.js'
+import {
+  detectExtension, handTokenToExtension,
+  CONNECTED_MESSAGE_TYPE, CONSENT_NEEDED_MESSAGE_TYPE, NOT_CONNECTED_STATE, CONSENT_NEEDED_STATE,
+} from '../lib/extension.js'
 
-// Messages exchanged with the extension's content script on this page.
-export const TOKEN_MESSAGE_TYPE = 'brainrot-index-extension-token'
-export const CONNECTED_MESSAGE_TYPE = 'brainrot-index-extension-connected'
-// The extension holds the token but sends nothing until the person agrees on its consent screen.
-export const CONSENT_NEEDED_MESSAGE_TYPE = 'brainrot-index-extension-consent-needed'
 export const EXTENSION_ANSWER_TIMEOUT_MS = 3000
+const CONSENT_NEEDED_TEXT = 'Almost done: the extension sends nothing until you agree to its notice. Press the BrainRot Index button in your browser\'s toolbar, then Review and agree.'
 
 export function mountDashboardPage() {
   const container = el('div', 'max-w-2xl mx-auto px-4 py-12')
@@ -29,25 +29,28 @@ export function mountDashboardPage() {
     errorSlot = next
   }
 
-  // -- Connect extension --
+  // -- Browser extension --
+  // The extension connects by itself on every page of this site (connectExtensionAutomatically
+  // in main.js). The Connect extension button is shown only to an extension older than 0.2.0,
+  // which waits to be handed a token.
   let extensionAnswerTimer = null
   const connectStatus = el('p', 'text-sm text-white/60')
   const connectButton = el('button', 'shrink-0 ' + ACCENT_BUTTON_CLASS, 'Connect extension')
   connectButton.type = 'button'
+  connectButton.hidden = true
   connectButton.addEventListener('click', async () => {
     connectButton.disabled = true
     connectStatus.textContent = 'Connecting...'
-    const { response, data } = await apiFetch('/extension/token/', { method: 'POST' })
+    const outcome = await handTokenToExtension()
     connectButton.disabled = false
-    if (data.code === 'email_not_verified') {
+    if (outcome === 'email-not-verified') {
       connectStatus.textContent = 'Verify your email first: open the link we emailed you, or send a new one from Account settings. Then press Connect extension again.'
       return
     }
-    if (!response.ok) {
+    if (outcome === 'failed') {
       connectStatus.textContent = 'Could not create a connection. Please try again.'
       return
     }
-    window.postMessage({ type: TOKEN_MESSAGE_TYPE, token: data.token }, window.location.origin)
     clearTimeout(extensionAnswerTimer)
     extensionAnswerTimer = setTimeout(() => {
       connectStatus.textContent = 'The extension did not answer on this page. If you just installed or reloaded it, reload this page and press Connect extension again.'
@@ -69,6 +72,22 @@ export function mountDashboardPage() {
   }
   window.addEventListener('message', handleExtensionMessage)
 
+  // accountState is undefined for an extension older than 0.2.0.
+  function showExtensionState(accountState) {
+    if (accountState === undefined) {
+      connectStatus.textContent = 'Link the extension in this browser to your account.'
+      connectButton.hidden = false
+    } else if (accountState === CONSENT_NEEDED_STATE) {
+      connectStatus.textContent = CONSENT_NEEDED_TEXT
+    } else if (accountState === NOT_CONNECTED_STATE && !getState().emailVerified) {
+      connectStatus.textContent = 'The extension connects to your account as soon as your email is verified.'
+    } else if (accountState === NOT_CONNECTED_STATE) {
+      connectStatus.textContent = 'Connecting...'
+    } else {
+      connectStatus.textContent = 'Connected'
+    }
+  }
+
   const connectCard = el('div', CARD_CLASS,
     el('div', 'flex items-center justify-between gap-4',
       el('div', '',
@@ -80,9 +99,9 @@ export function mountDashboardPage() {
   connectStatus.append('The extension is not installed in this browser yet. ', installLink, '.')
 
   const checklist = createOnboardingChecklist()
-  const stopDetectingExtension = detectExtension(() => {
+  const stopDetectingExtension = detectExtension((accountState) => {
     checklist.markExtensionInstalled()
-    connectStatus.textContent = 'Link the extension in this browser to your account.'
+    showExtensionState(accountState)
   })
 
   container.append(

@@ -35,20 +35,6 @@ let reaskInFlight = false;
 const nearViewportObserver = new IntersectionObserver(onPostsNearViewport, { rootMargin: "1000px 0px" });
 const pageChangeObserver = new MutationObserver(onPageChanges);
 
-function sendPostFeedback(postId, shownAction, expectedAction, text) {
-  return extensionApi.runtime.sendMessage({
-    type: "send-feedback",
-    feedback: {
-      page_url: location.href,
-      platform: siteAdapter.platform,
-      post_id: postId,
-      shown_action: shownAction,
-      expected_action: expectedAction,
-      text: text,
-    },
-  });
-}
-
 // The thumbs up and down for a post the server answered for. A post past the daily limit, or one
 // shown because the server never answered, was never classified, so there is nothing to judge.
 function judgmentFor(postId, answer, shownAction) {
@@ -350,38 +336,11 @@ function stopWatching() {
   }
 }
 
-// The post the reader last right-clicked, for the "this should have been filtered" menu item.
-let rightClickedPostElement = null;
-
-document.addEventListener("contextmenu", (event) => {
-  const postsAroundTarget = siteAdapter.findPostElements(event.target);
-  rightClickedPostElement = [...postsAroundTarget].find((postElement) => postElement.contains(event.target)) ?? null;
-}, true);
-
-// The "this should have been filtered" menu item opens the report form over the post the reader
-// right-clicked. Answers false when the right-click was not inside a post, or inside an element the
-// extension never sends (such as a YouTube playlist).
+// The popup asks for this page's address to send with the reader's feedback.
 extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type !== "open-report-form") {
-    return;
+  if (message.type === "get-page-url") {
+    sendResponse(location.href);
   }
-  if (rightClickedPostElement === null) {
-    sendResponse(false);
-    return;
-  }
-  const post = siteAdapter.extractPost(rightClickedPostElement);
-  if (post === null) {
-    sendResponse(false);
-    return;
-  }
-  const answer = answerByPostId.get(post.post_id);
-  let shownAction = "allow";
-  if (answer !== undefined) {
-    shownAction = answer.action;
-  }
-  showReportFormAbovePost(rightClickedPostElement, shownAction, (expectedAction, text) =>
-    sendPostFeedback(post.post_id, shownAction, expectedAction, text));
-  sendResponse(true);
 });
 
 extensionApi.storage.onChanged.addListener((changes, areaName) => {

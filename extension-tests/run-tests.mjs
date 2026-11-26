@@ -8,7 +8,7 @@
 //     checks that depend on the mock's fixed rules (pending first, at least one post hidden by each mock filter)
 //     are reported instead of asserted. For each surface it prints what the server decided.
 //   Adding BRAINROT_SESSION_COOKIE=<sessionid> BRAINROT_CSRF_TOKEN=<csrftoken> (a logged-in website
-//     session for the same account) also runs the real "Connect extension" button on the dashboard,
+//     session for the same account) also checks that the real dashboard connects the extension,
 //     and checks that a plugin threshold and child mode, changed through the API, take effect.
 //   BRAINROT_ONLY=4g node run-tests.mjs x
 //     Runs only the tests whose names start with "4g".
@@ -18,7 +18,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { makeFreshProfileDir, withBrave, launchBraveWithoutExtension, loadExtensionLater, EXTENSION_DIR } from "./browser.mjs";
+import { makeFreshProfileDir, withBrave, EXTENSION_DIR } from "./browser.mjs";
 import { startMockServer, MOCK_TOKEN, MOCK_CONFIG } from "./mock-server.mjs";
 import {
   SAMPLE_REDDIT_COMMENTS, SAMPLE_REDDIT_POSTS, SAMPLE_X_TWEETS, SAMPLE_YOUTUBE_VIDEOS, STAND_IN_URLS,
@@ -187,8 +187,8 @@ async function callWebsiteApi(method, path, body) {
   return response.json();
 }
 
-// The dashboard's "Connect extension" button, clicked in the browser with the test account's session
-// cookies added to the profile. No password is typed anywhere.
+// The real dashboard connects the extension by itself, in the browser with the test account's session
+// cookies added to the profile. No password is typed anywhere, and nothing is clicked.
 async function testRealConnectFlow(context, serviceWorker, extensionId) {
   await serviceWorker.evaluate(async (address) => {
     await chrome.storage.local.set({ serverAddress: address });
@@ -201,11 +201,8 @@ async function testRealConnectFlow(context, serviceWorker, extensionId) {
   ]);
   const dashboardPage = await context.newPage();
   await dashboardPage.goto(serverAddress + "/dashboard", { waitUntil: "domcontentloaded" });
-  const connectButton = dashboardPage.getByRole("button", { name: "Connect extension" });
-  await connectButton.waitFor({ timeout: 15000 });
-  await connectButton.click();
   const connectedText = dashboardPage.getByText("Connected", { exact: true });
-  await connectedText.waitFor({ timeout: 10000 });
+  await connectedText.waitFor({ timeout: 15000 });
   check(await connectedText.isVisible(), "the dashboard shows Connected");
   await dashboardPage.close();
   const stored = await serviceWorker.evaluate(() => chrome.storage.local.get("token"));
@@ -336,7 +333,7 @@ async function connectExtension(context, serviceWorker, extensionId, groupName) 
     await runTest(`2. ${groupName}: connect flow stores the token, popup shows connected`, () =>
       testConnectFlow(serviceWorker, extensionId, context));
   } else if (sessionCookie !== undefined) {
-    await runTest(`2. ${groupName}: real dashboard Connect extension button`, () =>
+    await runTest(`2. ${groupName}: the real dashboard connects with no click`, () =>
       testRealConnectFlow(context, serviceWorker, extensionId));
   } else {
     await configureExtension(serviceWorker);
@@ -636,45 +633,16 @@ async function testJudgeFilteredPost(page, judgmentCalls, platform) {
   check(await waitUntil(async () => (await detailsBox.count()) === 0, 3000), "the details box closes");
 }
 
-// The context menu item cannot be clicked from a test, so the test right-clicks a post (a contextmenu
-// event) and then runs the worker function the menu item calls. It opens the report form over the
-// post with Hidden chosen.
-async function testMissedPostMenuItem(page, serviceWorker, feedbackCalls, platform) {
-  const unfilteredPost = page.locator(UNFILTERED_POST_SELECTOR[platform]).first();
-  for (let step = 0; step < 6 && (await unfilteredPost.count()) === 0; step++) {
-    await scrollDown(page, 1);
-  }
-  check(await unfilteredPost.count() === 1, "an unfiltered post is on the page");
-  const postId = await unfilteredPost.evaluate(readPostIdInPage, platform);
-  await unfilteredPost.dispatchEvent("contextmenu");
-  await serviceWorker.evaluate(async (pageUrl) => {
-    const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    return reportMissedPost(activeTab.id, 0, pageUrl);
-  }, page.url());
-  const form = page.locator(".brainrot-index-report-form").last();
-  await form.waitFor({ timeout: 3000 });
-  check(await form.locator('.brainrot-index-choice[aria-pressed="true"]').textContent() === "Hidden", "the form opens with Hidden chosen");
-  check(await form.locator(".brainrot-index-choice").count() === 1, "and offers no other choice (no Blurred)");
-  await form.locator(".brainrot-index-reason").fill("automated test: new kind of bait");
-  const callsBefore = feedbackCalls.length;
-  await form.locator(".brainrot-index-send").click();
-  await waitUntil(() => feedbackCalls.length > callsBefore, 5000);
-  checkFeedbackCall(feedbackCalls[callsBefore], {
-    platform: platform,
-    post_id: postId,
-    shown_action: "allow",
-    expected_action: "hide",
-    text: "automated test: new kind of bait",
-  });
-  await waitUntil(async () => (await form.count()) === 0, 4000);
-  check(await form.count() === 0, "the form closes after it was recorded");
-}
-
-
-async function testPopupFeedbackBox(context, extensionId, feedbackCalls) {
+// The popup asks the content script of the tab in front for its address. Here the popup is a tab of
+// its own, so the feed page is brought to the front first and the popup's own function is called.
+async function testPopupFeedbackBox(context, extensionId, feedbackCalls, page) {
   const popupPage = await context.newPage();
   await popupPage.goto(`chrome-extension://${extensionId}/popup/popup.html`);
   await popupPage.waitForTimeout(1000);
+  await page.bringToFront();
+  check(await popupPage.evaluate(() => activePageUrl()) === page.url(), "the popup reads the address of the supported site in front");
+  await popupPage.bringToFront();
+  check(await popupPage.evaluate(() => activePageUrl()) === undefined, "and no address for a page that is not a supported site");
   check(await popupPage.textContent("#extension-commit") === expectedExtensionCommit(), "popup shows the extension commit");
   const callsBefore = feedbackCalls.length;
   await popupPage.fill("#feedback-text", "Automated test feedback from the popup");
@@ -1026,8 +994,6 @@ async function testConnectFlow(serviceWorker, extensionId, context) {
   check(await readPopupStatus(context, extensionId) !== "Connected to your account", "popup shows not connected before connecting");
   const sitePage = await context.newPage();
   await sitePage.goto(serverAddress + "/");
-  await sitePage.waitForTimeout(1000);
-  await sitePage.click("#connect-button");
   await waitUntil(async () => (await sitePage.textContent("#connect-status")) === "Extension connected", 5000);
   check(await sitePage.textContent("#connect-status") === "Extension connected", "site received the connected reply");
   await sitePage.close();
@@ -1036,47 +1002,60 @@ async function testConnectFlow(serviceWorker, extensionId, context) {
   check(await readPopupStatus(context, extensionId) === "Connected to your account", "popup shows connected");
 }
 
-// The website hands over the token with window.postMessage; answers whether the extension replied,
-// either that it is connected or that the reader must agree on its consent screen first.
-async function sendTokenFromPage(sitePage) {
-  return sitePage.evaluate(() => new Promise((resolve) => {
-    function onMessage(event) {
-      if (event.data?.type === "brainrot-index-extension-connected" || event.data?.type === "brainrot-index-extension-consent-needed") {
-        window.removeEventListener("message", onMessage);
-        resolve(true);
-      }
-    }
-    window.addEventListener("message", onMessage);
-    window.postMessage({ type: "brainrot-index-extension-token", token: "test-token-from-open-tab" }, window.location.origin);
-    setTimeout(() => resolve(false), 3000);
-  }));
+// The popup's Connect account button, shown only while the extension is not connected.
+async function readPopupConnectButton(context, extensionId) {
+  const popupPage = await context.newPage();
+  await popupPage.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+  await popupPage.waitForTimeout(1500);
+  const connectButton = {
+    visible: await popupPage.isVisible("#connect-link"),
+    href: await popupPage.getAttribute("#connect-link", "href"),
+  };
+  await popupPage.close();
+  return connectButton;
 }
 
-// A person usually has the website open before installing the extension, and reloads the extension
-// after pulling new code. The browser gives content scripts only to pages loaded afterwards, so the
-// extension must add its connect listener to website tabs that are already open.
-async function testConnectFromTabOpenedFirst() {
-  const context = await launchBraveWithoutExtension(makeFreshProfileDir("open-tab"));
-  try {
-    const sitePage = context.pages()[0] ?? (await context.newPage());
-    await sitePage.goto(DEFAULT_SERVER_ADDRESS + "/", { waitUntil: "domcontentloaded" });
-    const extensionId = await loadExtensionLater(context);
-    await sitePage.waitForTimeout(2000);
-    const popupPage = await context.newPage();
-    await popupPage.goto(`chrome-extension://${extensionId}/popup/popup.html`);
-    await popupPage.fill("#feedback-text", "Automated test feedback before connecting");
-    await popupPage.click("#feedback-form button");
-    await waitUntil(async () => (await popupPage.textContent("#feedback-status")) !== "", 3000);
-    check(await popupPage.textContent("#feedback-status") === "Not sent. " + NOT_AGREED_FEEDBACK_REASON,
-      "popup feedback before agreeing says why it was not sent");
-    await popupPage.close();
-    check(await sendTokenFromPage(sitePage), "a website tab opened before installing gets an answer from the extension");
-    await loadExtensionLater(context);
-    await sitePage.waitForTimeout(2000);
-    check(await sendTokenFromPage(sitePage), "the same tab still gets an answer after the extension is reloaded");
-  } finally {
-    await context.close();
-  }
+function siteTabOpenedTo(context, address) {
+  return context.pages().find((page) => page.url().startsWith(address));
+}
+
+// After the reader agrees, the extension opens the site, which connects it with no click when the
+// reader is signed in there, and as soon as they sign in when not.
+async function testAgreeOpensSiteThatConnects() {
+  await withBrave(makeFreshProfileDir("agree-connect"), {}, async ({ context, serviceWorker, extensionId }) => {
+    check(await waitUntil(async () => openConsentPages(context).length === 1, 5000), "installing opens the consent screen");
+    await waitUntil(async () => (await serviceWorker.evaluate(() => chrome.storage.local.get("serverAddress"))).serverAddress !== undefined, 5000);
+    await serviceWorker.evaluate((address) => chrome.storage.local.set({ serverAddress: address }), serverAddress);
+    const consentPage = openConsentPages(context)[0];
+    await consentPage.reload();
+    await consentPage.click("#agree-button");
+    check((await consentPage.textContent("#outcome")).startsWith("Thank you. BrainRot Index opened in a new tab"),
+      "agreeing while not connected says the site opened");
+    check(await waitUntil(async () => siteTabOpenedTo(context, serverAddress + "/dashboard") !== undefined, 5000),
+      "agreeing opens the site's dashboard");
+    const sitePage = siteTabOpenedTo(context, serverAddress + "/dashboard");
+    check(await waitUntil(async () => (await sitePage.textContent("#connect-status")) === "Extension connected", 5000),
+      "the signed-in site connects the extension with no click");
+    check((await serviceWorker.evaluate(() => chrome.storage.local.get("token"))).token === MOCK_TOKEN, "the token is stored");
+    check(await readPopupStatus(context, extensionId) === "Connected to your account", "the popup says it is connected");
+    check(!(await readPopupConnectButton(context, extensionId)).visible, "the popup shows no Connect account button while connected");
+    await sitePage.close();
+
+    await serviceWorker.evaluate(() => chrome.storage.local.remove("token"));
+    const connectButton = await readPopupConnectButton(context, extensionId);
+    check(connectButton.visible, "the popup shows Connect account while not connected");
+    check(connectButton.href === serverAddress + "/dashboard", "Connect account opens the site's dashboard");
+    const signedOutPage = await context.newPage();
+    await signedOutPage.goto(serverAddress + "/?signed-out");
+    await signedOutPage.waitForTimeout(2000);
+    check((await serviceWorker.evaluate(() => chrome.storage.local.get("token"))).token === undefined,
+      "a signed-out site hands over no token");
+    await signedOutPage.click("#sign-in-button");
+    check(await waitUntil(async () => (await signedOutPage.textContent("#connect-status")) === "Extension connected", 5000),
+      "signing in connects the extension with no click");
+    check((await serviceWorker.evaluate(() => chrome.storage.local.get("token"))).token === MOCK_TOKEN, "the token is stored again");
+    await signedOutPage.close();
+  });
 }
 
 // Samples the page's JavaScript while scrolling and adds up time spent in the extension's code,
@@ -1169,8 +1148,7 @@ async function runRedditGroup() {
     await runSurfaceTest("3a. Reddit feed", classifyCalls, () =>
       checkFeed(page, serviceWorker, classifyCalls, "reddit", "https://www.reddit.com/r/popular/"), page);
     await runTest("6a. feedback: thumbs on a filtered post", () => testJudgeFilteredPost(page, judgmentCalls, "reddit"));
-    await runTest("6b. feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "reddit"));
-    await runTest("6c. feedback: popup text box", () => testPopupFeedbackBox(context, extensionId, feedbackCalls));
+    await runTest("6c. feedback: popup text box", () => testPopupFeedbackBox(context, extensionId, feedbackCalls, page));
     await runTest("8b. reveal: Show and Hide again on a hidden Reddit post", () => testRevealHiddenPost(page));
     await runTest("8d. reveal: a revealed Reddit post stays revealed after scrolling away and back", () => testRevealSurvivesScrolling(page, "reddit"));
     if (usingMockServer) {
@@ -1318,7 +1296,6 @@ async function runXGroup() {
     await connectExtension(context, serviceWorker, extensionId, "X profile");
     await serviceWorker.evaluate(() => chrome.storage.session.clear());
     const classifyCalls = recordClassifyCalls(context);
-    const feedbackCalls = recordFeedbackCalls(context);
     const judgmentCalls = recordJudgmentCalls(context);
     const page = context.pages()[0] ?? (await context.newPage());
 
@@ -1328,7 +1305,6 @@ async function runXGroup() {
     await runTest("4j. X reveal: Show and Hide again on a hidden tweet", () => testRevealHiddenPost(page));
     await runTest("4l. X reveal: a revealed tweet stays revealed after X redraws it", () => testRevealSurvivesScrolling(page, "x"));
     await runTest("4d. X feedback: thumbs on a filtered post", () => testJudgeFilteredPost(page, judgmentCalls, "x"));
-    await runTest("4e. X feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "x"));
     await runSurfaceTest("4b. X replies", classifyCalls, async () => {
       await page.goto("https://x.com/home", { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(5000);
@@ -1586,7 +1562,6 @@ async function runYouTubeGroup() {
   await withBrave(makeFreshProfileDir("youtube"), {}, async ({ context, serviceWorker, extensionId }) => {
     await context.addInitScript(recordTileTimesInPage);
     const classifyCalls = recordClassifyCalls(context);
-    const feedbackCalls = recordFeedbackCalls(context);
     const judgmentCalls = recordJudgmentCalls(context);
     const page = context.pages()[0] ?? (await context.newPage());
     await connectExtension(context, serviceWorker, extensionId, "YouTube profile");
@@ -1598,7 +1573,6 @@ async function runYouTubeGroup() {
       checkYouTubeSurface(page, serviceWorker, classifyCalls, "https://www.youtube.com/", 2), page);
     await runTest("9d. YouTube reveal: Show and Hide again on a hidden tile", () => testRevealHiddenPost(page));
     await runTest("9f. YouTube feedback: thumbs on a filtered post", () => testJudgeFilteredPost(page, judgmentCalls, "youtube"));
-    await runTest("9g. YouTube feedback: missed post menu item", () => testMissedPostMenuItem(page, serviceWorker, feedbackCalls, "youtube"));
     await runSurfaceTest("9j. YouTube search results", classifyCalls, () =>
       checkYouTubeSurface(page, serviceWorker, classifyCalls, "https://www.youtube.com/results?search_query=minecraft", 2), page);
     await runTest("9k. YouTube: answers follow the video through in-app navigation", () =>
@@ -2230,6 +2204,14 @@ async function testNothingSentBeforeAgreeing(context, serviceWorker, extensionId
   check(consentCalls.length === 0, "no agreement is recorded before agreeing");
   check(await readPopupStatus(context, extensionId) === "Nothing is sent until you agree to share the posts you see with BrainRot Index.",
     "the popup says nothing is sent until the reader agrees");
+  const popupPage = await context.newPage();
+  await popupPage.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+  await popupPage.fill("#feedback-text", "Automated test feedback before agreeing");
+  await popupPage.click("#feedback-form button");
+  await waitUntil(async () => (await popupPage.textContent("#feedback-status")) !== "", 3000);
+  check(await popupPage.textContent("#feedback-status") === "Not sent. " + NOT_AGREED_FEEDBACK_REASON,
+    "popup feedback before agreeing says why it was not sent");
+  await popupPage.close();
 }
 
 async function testNotNowSendsNothing(context, extensionId, serviceWorker, classifyCalls) {
@@ -2309,7 +2291,7 @@ const mockServer = usingMockServer ? await startMockServer(MOCK_PORT) : null;
 console.log("server: " + serverAddress + (usingMockServer ? " (mock)" : ""));
 try {
   if (groupsToRun.includes("connect")) {
-    await runTest("0. connect from a website tab opened before the extension", testConnectFromTabOpenedFirst);
+    await runTest("0. connect: agreeing opens the site, which connects with no click", testAgreeOpensSiteThatConnects);
   }
   if (groupsToRun.includes("x")) {
     if (pgrepFinds(X_TEST_PROFILE_DIR)) {

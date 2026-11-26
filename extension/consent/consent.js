@@ -2,7 +2,7 @@
 // sends nothing to the server until the reader presses "Agree and continue" here.
 
 const AGREED_AND_CONNECTED_TEXT = "Thank you. Filtering starts the next time you open or reload a supported site.";
-const AGREED_NOT_CONNECTED_TEXT = "Thank you. Next, open your BrainRot Index dashboard and press Connect extension.";
+const AGREED_NOT_CONNECTED_TEXT = "Thank you. BrainRot Index opened in a new tab: sign in there and the extension connects to your account by itself.";
 const NOT_NOW_TEXT = "Nothing was sent. You can agree later from the BrainRot Index button in your browser's toolbar.";
 
 function showOutcome(text) {
@@ -21,6 +21,9 @@ document.getElementById("agree-button").addEventListener("click", async () => {
   if (reply.connected) {
     showOutcome(AGREED_AND_CONNECTED_TEXT);
   } else {
+    // The website connects the extension as soon as the reader is signed in there.
+    const { serverAddress } = await extensionApi.storage.local.get("serverAddress");
+    extensionApi.tabs.create({ url: serverAddress + "/dashboard" });
     showOutcome(AGREED_NOT_CONNECTED_TEXT);
   }
 });

@@ -1,5 +1,7 @@
-// Receives the account token from the "Connect extension" button on the Brainrot Index website, and
-// tells the website the extension is installed, so its setup checklist can say so.
+// Connects the extension to the account of the reader signed in to the BrainRot Index website.
+// On every page of the site it announces itself with the extension's account state; when that state
+// is "not-connected" (no token, or the server refused the one it had), the website, if someone is
+// signed in, creates a token for that account and hands it over here.
 // The manifest loads this script on every address the server may use; it only listens on the one
 // the options page is set to.
 
@@ -8,8 +10,10 @@ extensionApi.storage.local.get("serverAddress").then((stored) => {
     return;
   }
 
-  function announcePresence() {
-    window.postMessage({ type: "brainrot-index-extension-present" }, window.location.origin);
+  // accountState is the popup's state: "consent-needed", "connected", "not-connected", and so on.
+  async function announcePresence() {
+    const status = await extensionApi.runtime.sendMessage({ type: "get-status" });
+    window.postMessage({ type: "brainrot-index-extension-present", accountState: status.state }, window.location.origin);
   }
 
   window.addEventListener("message", async (event) => {

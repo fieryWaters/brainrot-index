@@ -9,19 +9,11 @@ importScripts("extension-api.js");
 // The server a new install talks to. Installs that already have a serverAddress keep it (the options
 // page changes it); the private address is https://brainrot.jacob-waters.com.
 const DEFAULT_SERVER_ADDRESS = "https://brainrotindex.com";
-const MISSED_POST_MENU_ITEM_ID = "should-have-been-filtered";
 // The date the consent screen's wording last changed. A reader who agreed to an older wording is
 // asked again, and nothing is sent until they agree to this one.
 const DATA_SHARING_DISCLOSURE_VERSION = "2026-11-23";
 
 extensionApi.runtime.onInstalled.addListener(async () => {
-  extensionApi.contextMenus.create({
-    id: MISSED_POST_MENU_ITEM_ID,
-    title: "BrainRot Index: report this post",
-    contexts: ["all"],
-    documentUrlPatterns: ["https://www.reddit.com/*", "https://x.com/*", "https://www.youtube.com/*"],
-  });
-
   const stored = await extensionApi.storage.local.get(["serverAddress", "extensionEnabled"]);
   if (stored.serverAddress === undefined) {
     await extensionApi.storage.local.set({ serverAddress: DEFAULT_SERVER_ADDRESS });
@@ -29,7 +21,6 @@ extensionApi.runtime.onInstalled.addListener(async () => {
   if (stored.extensionEnabled === undefined) {
     await extensionApi.storage.local.set({ extensionEnabled: true });
   }
-  await addConnectListenerToOpenSiteTabs();
   if (!(await hasAgreedToDataSharing())) {
     await openConsentPage();
   }
@@ -45,22 +36,6 @@ async function hasAgreedToDataSharing() {
 
 async function openConsentPage() {
   await extensionApi.tabs.create({ url: extensionApi.runtime.getURL("consent/consent.html") });
-}
-
-// The browser gives content scripts only to pages loaded after the extension was installed or
-// reloaded, so a website tab that was already open could not hand over its token. This adds the
-// connect listener to such tabs.
-async function addConnectListenerToOpenSiteTabs() {
-  const { serverAddress } = await extensionApi.storage.local.get("serverAddress");
-  // Match patterns cannot name a port; connect-listener.js checks the full origin itself.
-  const siteUrl = new URL(serverAddress);
-  const siteTabs = await extensionApi.tabs.query({ url: siteUrl.protocol + "//" + siteUrl.hostname + "/*" });
-  for (const siteTab of siteTabs) {
-    await extensionApi.scripting.executeScript({
-      target: { tabId: siteTab.id },
-      files: ["extension-api.js", "content/connect-listener.js"],
-    });
-  }
 }
 
 extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -99,12 +74,6 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "add-judgment-details") {
     addJudgmentDetails(message.judgmentId, message.details).then(sendResponse);
     return true;
-  }
-});
-
-extensionApi.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === MISSED_POST_MENU_ITEM_ID) {
-    reportMissedPost(tab.id, info.frameId, info.pageUrl);
   }
 });
 
@@ -156,7 +125,7 @@ async function agreeToDataSharing() {
   return { connected: true };
 }
 
-// The website's Connect extension button handed over a new token. Answers { consentNeeded }: true
+// The website handed over a new token. Answers { consentNeeded }: true
 // when the reader has not agreed yet, in which case the consent screen is opened and nothing is sent.
 async function startConnection() {
   await extensionApi.storage.local.set({ consentRecordedOnServer: false });
@@ -296,7 +265,7 @@ async function sendReport(method, path, body) {
   }
   const { token } = await extensionApi.storage.local.get("token");
   if (token === undefined) {
-    return { sent: false, reason: "Not connected. Open BrainRot Index and press Connect extension." };
+    return { sent: false, reason: "Not connected. Open the BrainRot Index toolbar button and press Connect account." };
   }
   let response;
   try {
@@ -311,12 +280,12 @@ async function sendReport(method, path, body) {
     return { sent: true, body: await response.json() };
   }
   if (response.status === 401) {
-    return { sent: false, reason: "The connection was refused. Open BrainRot Index and press Connect extension again." };
+    return { sent: false, reason: "The connection was refused. Open the BrainRot Index toolbar button and press Connect account." };
   }
   return { sent: false, reason: "The server answered with error " + response.status + "." };
 }
 
-// feedback holds any of text, page_url, platform, post_id, shown_action and expected_action.
+// feedback holds text and, when the popup was opened over a supported site, page_url.
 async function sendFeedback(feedback) {
   const body = { ...feedback, source: "extension", extension_commit: await extensionCommit() };
   return sendReport("POST", "/api/feedback/", body);
@@ -337,14 +306,4 @@ async function addJudgmentDetails(judgmentId, details) {
 // Takes back a thumbs up or down: the reader clicked the same thumb again.
 async function removeJudgment(judgmentId) {
   return sendReport("DELETE", "/api/judgments/" + judgmentId + "/");
-}
-
-// Opens the report form over the post the reader last right-clicked in that tab. When the right-click
-// was not inside a post, the page itself is reported as one that should have been filtered.
-async function reportMissedPost(tabId, frameId, pageUrl) {
-  const openedForm = await extensionApi.tabs.sendMessage(tabId, { type: "open-report-form" }, { frameId: frameId });
-  if (openedForm) {
-    return;
-  }
-  return sendFeedback({ page_url: pageUrl, expected_action: "hide" });
 }

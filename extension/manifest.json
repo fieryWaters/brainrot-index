@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "BrainRot Index",
   "short_name": "BrainRot",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "BrainRot Index - The algorithm that works for you",
   "homepage_url": "https://brainrotindex.com",
   "icons": {
@@ -11,7 +11,7 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["storage", "contextMenus", "activeTab", "scripting"],
+  "permissions": ["storage"],
   "host_permissions": [
     "https://brainrot.jacob-waters.com/*",
     "https://brainrotindex.com/*",

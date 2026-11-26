@@ -17,7 +17,7 @@ const outputDir = path.resolve(process.argv[2] ?? path.join(TESTS_DIR, "..", "do
 // Each picture on its own goes to a temporary folder; the output folder gets the sheets combining them.
 const partsDir = fs.mkdtempSync(path.join(os.tmpdir(), "brainrot-feedback-ui-"));
 
-const LINE = "html .brainrot-index-notice:not(.brainrot-index-notice-over-post):not(.brainrot-index-report-notice)";
+const LINE = "html .brainrot-index-notice:not(.brainrot-index-notice-over-post)";
 const PILL = "html .brainrot-index-notice-over-post";
 
 // B: the hidden post is a hairline across the feed with its label in the middle; the blurred post's

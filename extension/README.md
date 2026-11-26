@@ -50,12 +50,22 @@ page.
 
 ## Connect it to your account
 
-Sign in at https://brainrot.jacob-waters.com, open the dashboard and press Connect extension. If
-the consent screen was not agreed to yet, it opens now and the page says to agree there. Otherwise the
-page says Connected and the extension's popup says "Connected to your account". A website tab that
-was already open when the extension was installed or reloaded is given the connect listener then,
-so reloading it is not needed. If the dashboard still says the extension did not answer, reload the
-dashboard tab and press Connect extension again.
+Connecting needs no click. Pressing "Agree and continue" on the consent screen opens the site's
+dashboard in a new tab. On every page of the site, the extension's script there
+(`content/connect-listener.js`) tells the page the extension's account state; when that is
+"not-connected" (no key, or the server refused the one it had) and someone is signed in, the site
+creates a key for that account and hands it over (`connectExtensionAutomatically` in the site's
+`lib/extension.js`). Someone not signed in is connected as soon as they sign in. Before the consent
+screen is agreed to, the extension asks for no key.
+
+The key is created only for the account signed in on the site, and handed over only by
+`window.postMessage` within a page of the server address set on the options page; the extension
+takes it from no other page.
+
+The popup shows a Connect account button only while the extension is not connected; it opens the
+same dashboard. A site tab that was open before the extension was installed or reloaded has no
+connect script until it is reloaded. The dashboard's Connect extension button is shown only to an
+extension older than 0.2.0, which waits to be handed a key.
 
 ## Using it
 
@@ -95,18 +105,22 @@ dashboard tab and press Connect extension again.
   itself after a few seconds when it is not touched. Each thumbs is stored on the server with its
   label as a labeled example (`PostJudgment`), with what every filter decided about the post, for
   evaluating filters.
-- **Right-click a post, "BrainRot Index: report this post"**: the same form over a post the extension
-  left alone, with Hidden chosen. Use the text box to name a new kind of post to filter. Outside a
-  post it reports the page as one that should have been filtered.
-- **Popup text box**: free-text feedback, sent with the address of the tab you are on. If it cannot
-  be sent the popup says why (for example, not connected).
+- **Popup text box**: free-text feedback, sent with the address of the page you are on when that is
+  a supported site (the popup asks the extension's script on that page). If it cannot be sent the
+  popup says why (for example, not connected).
 
 Every report carries the extension's code version, shown at the bottom of the popup.
 
 ## Popup
 
-Shows whether the extension is connected, an on/off switch, how many posts were checked and how many
-were hidden in this browser session, the feedback box, and a link to the site.
+Shows whether the extension is connected (with a Connect account button when it is not), an on/off
+switch, how many posts were checked and how many were hidden in this browser session, the feedback
+box, and a link to the site.
+
+## Permissions
+
+Only `storage`, and access to the BrainRot Index server and the three supported sites (Reddit, X
+and YouTube, where the content scripts run).
 
 ## Tests
 

@@ -3,7 +3,7 @@
 const ACCOUNT_STATUS_TEXT = {
   "consent-needed": "Nothing is sent until you agree to share the posts you see with BrainRot Index.",
   "connected": "Connected to your account",
-  "not-connected": "Not connected. Open BrainRot Index and press Connect extension.",
+  "not-connected": "Not connected to your account.",
   "no-subscription": "Your free trial has ended. Subscribe to continue.",
   "email-not-verified": "Verify your email first: open the link BrainRot Index emailed you, then reload the page.",
   "server-error": "The server answered with an error.",
@@ -21,6 +21,15 @@ async function showAccountStatus() {
   if (status.state === "consent-needed") {
     document.getElementById("consent-row").hidden = false;
   }
+  if (status.state === "not-connected") {
+    document.getElementById("connect-row").hidden = false;
+  }
+}
+
+// The website connects the extension by itself once the reader is signed in there.
+async function setUpConnectButton() {
+  const { serverAddress } = await extensionApi.storage.local.get("serverAddress");
+  document.getElementById("connect-link").href = serverAddress + "/dashboard";
 }
 
 function setUpConsentButton() {
@@ -57,16 +66,26 @@ async function setUpSwitchAndLink() {
   document.getElementById("site-link").href = stored.serverAddress;
 }
 
-// Free-text feedback, sent with the address of the tab the popup was opened over.
+// The address of the page the popup was opened over, asked of the extension's content script there.
+// Undefined on a page that is not a supported site.
+async function activePageUrl() {
+  const [activeTab] = await extensionApi.tabs.query({ active: true, currentWindow: true });
+  try {
+    return await extensionApi.tabs.sendMessage(activeTab.id, { type: "get-page-url" });
+  } catch (noContentScript) {
+    return undefined;
+  }
+}
+
+// Free-text feedback, sent with the address of the supported site the popup was opened over.
 function setUpFeedbackForm() {
   const feedbackText = document.getElementById("feedback-text");
   const feedbackStatus = document.getElementById("feedback-status");
   document.getElementById("feedback-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const [activeTab] = await extensionApi.tabs.query({ active: true, currentWindow: true });
     const reply = await extensionApi.runtime.sendMessage({
       type: "send-feedback",
-      feedback: { text: feedbackText.value, page_url: activeTab.url },
+      feedback: { text: feedbackText.value, page_url: await activePageUrl() },
     });
     if (reply.sent) {
       feedbackText.value = "";
@@ -85,6 +104,7 @@ async function showExtensionCommit() {
 setUpSwitchAndLink();
 setUpFeedbackForm();
 setUpConsentButton();
+setUpConnectButton();
 showExtensionCommit();
 showAccountStatus();
 showSessionCounts();

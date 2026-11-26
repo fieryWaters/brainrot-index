@@ -1,5 +1,6 @@
 // A stand-in for the Brainrot Index backend that follows the extension API contract with fixed,
-// predictable rules, plus a one-page website with a "Connect extension" button.
+// predictable rules, plus a one-page website (at / and /dashboard) that connects the extension the
+// way the real site does.
 //
 // Rules for POST /api/classify/:
 //   The first request for a post answers "pending"; every later request answers "done". A slow post
@@ -13,6 +14,11 @@
 //   YouTube: the first "pending" answer for a video carries transcript_wanted, as the real server's
 //   does for a video it never classified; the extension sends no transcript. An id starting "known" is
 //   answered done on the first request.
+//
+// The website is signed in unless its address has ?signed-out; Sign in then signs it in. While signed
+// in it hands the token to an extension that announces "not-connected", as the real site does. Its
+// Connect extension button hands the token over on a click, as the real site does for extensions older
+// than 0.2.0.
 //
 // POST /api/feedback/ checks the required fields and answers 201 with a new id.
 // POST /api/judgments/ (a thumbs up or down) checks its fields and answers 201 with a new id and the
@@ -49,12 +55,23 @@ const CONNECT_PAGE = `<!doctype html>
 <body>
   <h1>Brainrot Index (mock site)</h1>
   <button id="connect-button">Connect extension</button>
+  <button id="sign-in-button">Sign in</button>
   <p id="connect-status">Not connected</p>
   <script>
-    document.getElementById("connect-button").addEventListener("click", () => {
+    let signedIn = !window.location.search.includes("signed-out");
+    function handTokenToExtension() {
       window.postMessage({ type: "brainrot-index-extension-token", token: "${MOCK_TOKEN}" }, window.location.origin);
+    }
+    document.getElementById("connect-button").addEventListener("click", handTokenToExtension);
+    document.getElementById("sign-in-button").addEventListener("click", () => {
+      signedIn = true;
+      window.postMessage({ type: "brainrot-index-extension-ping" }, window.location.origin);
     });
     window.addEventListener("message", (event) => {
+      if (event.origin === window.location.origin && event.data?.type === "brainrot-index-extension-present"
+          && event.data.accountState === "not-connected" && signedIn) {
+        handTokenToExtension();
+      }
       if (event.origin === window.location.origin && event.data?.type === "brainrot-index-extension-connected") {
         document.getElementById("connect-status").textContent = "Extension connected";
       }
@@ -128,7 +145,7 @@ export function startMockServer(port) {
 
   const server = http.createServer(async (request, response) => {
     const path = new URL(request.url, "http://mock").pathname;
-    if (path === "/") {
+    if (path === "/" || path === "/dashboard") {
       response.writeHead(200, { "Content-Type": "text/html" });
       response.end(CONNECT_PAGE);
       return;
@@ -176,8 +193,8 @@ export function startMockServer(port) {
     }
     if (path === "/api/feedback/" && request.method === "POST") {
       const feedback = await readJsonBody(request);
-      if (feedback.source === undefined || (feedback.text === undefined && feedback.expected_action === undefined)) {
-        sendJson(response, 400, { error: "source and one of text or expected_action are required" });
+      if (feedback.source === undefined || feedback.text === undefined) {
+        sendJson(response, 400, { error: "source and text are required" });
         return;
       }
       feedbackCount = feedbackCount + 1;

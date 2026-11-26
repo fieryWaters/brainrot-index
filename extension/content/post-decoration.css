@@ -102,7 +102,6 @@
 .brainrot-index-notice button:focus-visible,
 .brainrot-index-details button:focus-visible,
 .brainrot-index-judge-button:focus-visible,
-.brainrot-index-reason:focus-visible,
 .brainrot-index-details-input:focus-visible {
   outline: 2px solid #2776bb;
   outline-offset: 1px;
@@ -269,21 +268,7 @@
   background: #2776bb;
 }
 
-/* -- The report form from the right-click menu, and the page notice -- */
-
-.brainrot-index-report-notice {
-  flex-wrap: wrap;
-  margin: 4px 0;
-  padding: 4px 4px 4px 10px;
-  border: 1px solid rgba(128, 128, 128, 0.3);
-  background: rgba(128, 128, 128, 0.12);
-}
-
-.brainrot-index-report-notice button {
-  height: 22px;
-  border: 1px solid rgba(128, 128, 128, 0.5);
-  line-height: 20px;
-}
+/* -- The page notice -- */
 
 .brainrot-index-page-notice {
   position: fixed;
@@ -295,38 +280,6 @@
   background: rgba(24, 24, 27, 0.95);
   color: #f4f4f5;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-.brainrot-index-report-form {
-  display: flex;
-  flex: 1 0 100%;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 6px;
-  margin: 2px 0 1px;
-}
-
-.brainrot-index-notice .brainrot-index-choice[aria-pressed="true"] {
-  border-color: #4cbbe1;
-  background: #0b1830;
-  color: #d2ffff;
-}
-
-.brainrot-index-reason {
-  flex: 1 1 160px;
-  min-width: 120px;
-  box-sizing: border-box;
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid rgba(128, 128, 128, 0.5);
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-}
-
-.brainrot-index-report-status:empty {
-  display: none;
 }
 
 .brainrot-index-notice [hidden],

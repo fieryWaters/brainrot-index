@@ -12,7 +12,7 @@ Chrome ignores `--load-extension`.
 ## Run against the mock server
 
     npm test              # all groups
-    npm test -- connect   # connecting from a website tab opened before the extension was installed
+    npm test -- connect   # Agree opens the site, which connects with no click; the popup's Connect account
     npm test -- reddit    # Reddit only: load, connect, feed, comments, feedback, reveal, performance
     npm test -- x         # X only: home feed, recycled tweets, feedback, reveal, replies, performance
     npm test -- youtube   # YouTube only: watch page, home, search, reveal, feedback, navigation, dark theme
@@ -24,9 +24,6 @@ Chrome ignores `--load-extension`.
 `BRAINROT_BROWSER=<path to a Chromium build>` runs the tests in that browser instead of Brave, for
 example Playwright's own Chromium under `xvfb-run` on a Linux machine. Only the groups on stand-in
 pages (transcripts, judgments, consent) are meant for that.
-
-The connect group opens https://brainrot.jacob-waters.com without signing in, even with the mock
-server, because the extension's default address is the only one it adds its listener to on install.
 
 `npm test` first runs `stamp-build-info.mjs`, which writes `extension/build-info.json` (git-ignored)
 with the short commit hash and whether the tree has uncommitted changes. The extension attaches that
@@ -43,11 +40,11 @@ mock follows the API contract with fixed rules (see the top of `mock-server.mjs`
 
 The connect test is skipped (the real site needs a login), and the checks that depend on the mock's
 rules (pending first, at least one blur and one hide) are printed instead of asserted. The feedback
-tests send three real feedback reports (marked as automated in the popup text). The server
+test sends one real feedback report (marked as automated in the popup text). The server
 address must be one the manifest grants: `https://brainrot.jacob-waters.com`, `http://localhost`
 or `http://127.0.0.1`.
 
-To also exercise the real dashboard's Connect extension button and the settings checks (a plugin
+To also check that the real dashboard connects the extension by itself, and the settings checks (a plugin
 threshold of 20 must filter more; child mode must blur pending posts and remove reveal), pass a
 logged-in website session for the same account:
 
@@ -69,7 +66,7 @@ can be given separated by commas, for example `BRAINROT_ONLY=3a,6,8`.
 It signs up a new `e2e+<random>@brainrotindex.com` account with a random password, marks its address
 verified over `ssh spark` (`manage.py mark_email_verified`), logs in, creates an extension token, sends
 one obvious engagement-bait post and waits up to 60 seconds for it to be flagged, then runs the whole
-suite against https://brainrot.jacob-waters.com with the real dashboard Connect button. No password or
+suite against https://brainrot.jacob-waters.com, connecting through the real dashboard. No password or
 token is printed or saved. It needs `ssh spark` to work from this Mac.
 
 ## Profiles

@@ -8,7 +8,7 @@
 import { chromium } from "playwright-core";
 import fs from "node:fs";
 import path from "node:path";
-import { EXTENSION_DIR, TESTS_DIR, makeFreshProfileDir } from "./browser.mjs";
+import { EXTENSION_DIR, TESTS_DIR, HIDE_WINDOW_ARGS, makeFreshProfileDir } from "./browser.mjs";
 import { startMockServer, MOCK_TOKEN, MOCK_CONFIG, MOCK_HIDING_FILTERS } from "./mock-server.mjs";
 import { SAMPLE_REDDIT_POSTS, SAMPLE_X_TWEETS, SAMPLE_YOUTUBE_VIDEOS, STAND_IN_URLS, samplePages, serveStandInPages } from "./stand-in-pages.mjs";
 
@@ -254,7 +254,7 @@ try {
     executablePath: BRAVE_BINARY,
     headless: false,
     ignoreDefaultArgs: ["--disable-extensions"],
-    args: [`--disable-extensions-except=${EXTENSION_DIR}`, `--load-extension=${EXTENSION_DIR}`],
+    args: [`--disable-extensions-except=${EXTENSION_DIR}`, `--load-extension=${EXTENSION_DIR}`, ...HIDE_WINDOW_ARGS],
     viewport: { width: 1280, height: 900 },
     deviceScaleFactor: PICTURE_SCALE,
   });

@@ -1,8 +1,15 @@
 # Extension tests
 
-End-to-end tests for the browser extension in `../extension/`, run in headed Brave against live
-Reddit, X and YouTube. Headed because Reddit and X block headless browsers; Brave because branded Google
-Chrome ignores `--load-extension`.
+End-to-end tests for the browser extension in `../extension/`, run in Brave against live Reddit, X and
+YouTube, and against stand-in pages. Brave because branded Google Chrome ignores `--load-extension`.
+
+The groups that visit the live sites (reddit, x, youtube) open a browser window, because Reddit and X
+block headless browsers. Every other group runs headless, with no window on screen.
+`BRAINROT_SHOW_BROWSER=1` shows a window for every group, for watching a run.
+
+`npm test` with no group named runs every group in its own process, four at a time, each with its own
+mock server port (8788 to 8791) and fresh browser profile. Naming groups, or running against a real
+server, runs them one after another.
 
 ## Setup
 

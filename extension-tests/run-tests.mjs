@@ -2,7 +2,9 @@
 //
 // Usage:
 //   node run-tests.mjs [connect] [reddit] [x] [youtube] [transcripts] [judgments] [consent] [capture]
-//     Runs the named groups (all when none are named) against the mock server, which it starts.
+//     Runs the named groups one after another against the mock server, which it starts. With no group
+//     named, every group runs in its own process, PARALLEL_WORKERS at a time, each with its own mock
+//     server port and fresh browser profile.
 //   BRAINROT_SERVER=https://brainrot.jacob-waters.com BRAINROT_TOKEN=<token> node run-tests.mjs
 //     Runs against a real server. The connect test is skipped (the real site needs a login), and the
 //     checks that depend on the mock's fixed rules (pending first, at least one post hidden by each mock filter)
@@ -15,7 +17,7 @@
 //
 // The reddit group uses a fresh profile in .profiles/. The x group uses the signed-in test profile
 // below and only reads: it never posts, likes, follows or changes anything.
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { makeFreshProfileDir, withBrave, EXTENSION_DIR } from "./browser.mjs";
@@ -27,7 +29,9 @@ import {
 
 const X_TEST_PROFILE_DIR = "/Users/jacob/git-repos/brainrot-test-profile";
 const DEFAULT_SERVER_ADDRESS = "https://brainrot.jacob-waters.com";
-const MOCK_PORT = 8787;
+// Each parallel worker is given its own port, so the mock servers do not collide.
+const MOCK_PORT = Number(process.env.BRAINROT_MOCK_PORT ?? 8787);
+const PARALLEL_WORKERS = 4;
 
 const usingMockServer = process.env.BRAINROT_SERVER === undefined;
 const serverAddress = process.env.BRAINROT_SERVER ?? `http://127.0.0.1:${MOCK_PORT}`;
@@ -1136,7 +1140,7 @@ async function testScrollPerformance(context, serviceWorker, extensionId, classi
 }
 
 async function runRedditGroup() {
-  await withBrave(makeFreshProfileDir("reddit"), {}, async ({ context, serviceWorker, extensionId }) => {
+  await withBrave(makeFreshProfileDir("reddit"), { showWindow: true }, async ({ context, serviceWorker, extensionId }) => {
     const classifyCalls = recordClassifyCalls(context);
     const feedbackCalls = recordFeedbackCalls(context);
     const judgmentCalls = recordJudgmentCalls(context);
@@ -1292,7 +1296,7 @@ async function testXDiscoverMore(page, classifyCalls) {
 }
 
 async function runXGroup() {
-  await withBrave(X_TEST_PROFILE_DIR, { signedInProfile: true }, async ({ context, serviceWorker, extensionId }) => {
+  await withBrave(X_TEST_PROFILE_DIR, { signedInProfile: true, showWindow: true }, async ({ context, serviceWorker, extensionId }) => {
     await connectExtension(context, serviceWorker, extensionId, "X profile");
     await serviceWorker.evaluate(() => chrome.storage.session.clear());
     const classifyCalls = recordClassifyCalls(context);
@@ -1559,7 +1563,7 @@ async function testYouTubeDarkTheme(context, page, classifyCalls) {
 }
 
 async function runYouTubeGroup() {
-  await withBrave(makeFreshProfileDir("youtube"), {}, async ({ context, serviceWorker, extensionId }) => {
+  await withBrave(makeFreshProfileDir("youtube"), { showWindow: true }, async ({ context, serviceWorker, extensionId }) => {
     await context.addInitScript(recordTileTimesInPage);
     const classifyCalls = recordClassifyCalls(context);
     const judgmentCalls = recordJudgmentCalls(context);
@@ -2285,47 +2289,98 @@ function pgrepFinds(pattern) {
   }
 }
 
-const requestedGroups = process.argv.slice(2);
-const groupsToRun = requestedGroups.length > 0 ? requestedGroups : ["connect", "reddit", "x", "youtube", "transcripts", "judgments", "consent", "capture"];
-const mockServer = usingMockServer ? await startMockServer(MOCK_PORT) : null;
-console.log("server: " + serverAddress + (usingMockServer ? " (mock)" : ""));
-try {
-  if (groupsToRun.includes("connect")) {
-    await runTest("0. connect: agreeing opens the site, which connects with no click", testAgreeOpensSiteThatConnects);
-  }
-  if (groupsToRun.includes("x")) {
-    if (pgrepFinds(X_TEST_PROFILE_DIR)) {
-      testResults.push({ name: "4. X", passed: false, error: "the X test profile is open in another Brave window" });
-    } else {
-      await runXGroup();
-    }
-  }
-  if (groupsToRun.includes("reddit")) {
-    await runRedditGroup();
-  }
-  if (groupsToRun.includes("youtube")) {
-    await runYouTubeGroup();
-  }
-  if (groupsToRun.includes("transcripts")) {
-    await runTranscriptsGroup();
-  }
-  if (groupsToRun.includes("judgments")) {
-    await runJudgmentsGroup();
-  }
-  if (groupsToRun.includes("consent")) {
-    await runConsentGroup();
-  }
-  if (groupsToRun.includes("capture")) {
-    await runCaptureGroup();
-  }
-} finally {
-  if (mockServer !== null) {
-    mockServer.close();
-  }
+// Runs one group as `node run-tests.mjs <group>` and resolves with everything it printed.
+function runGroupInOwnProcess(group, mockPort) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [new URL(import.meta.url).pathname, group], {
+      env: { ...process.env, BRAINROT_MOCK_PORT: String(mockPort) },
+    });
+    let output = "";
+    child.stdout.on("data", (chunk) => { output = output + chunk; });
+    child.stderr.on("data", (chunk) => { output = output + chunk; });
+    child.on("close", (exitCode) => resolve({ group, output, exitCode }));
+  });
 }
 
-console.log("\n== summary");
-for (const result of testResults) {
-  console.log((result.passed ? "PASS " : "FAIL ") + result.name + (result.passed ? "" : ": " + result.error));
+// Runs every group, PARALLEL_WORKERS at a time, prints each group's output once it is done, then one
+// summary of all the groups' results.
+async function runGroupsInParallel(groups) {
+  const waitingGroups = [...groups];
+  const finishedRuns = [];
+  async function worker(workerNumber) {
+    while (waitingGroups.length > 0) {
+      const group = waitingGroups.shift();
+      const run = await runGroupInOwnProcess(group, MOCK_PORT + 1 + workerNumber);
+      console.log(`\n######## group ${group} (exit ${run.exitCode})\n` + run.output);
+      finishedRuns.push(run);
+    }
+  }
+  const workers = [];
+  for (let workerNumber = 0; workerNumber < PARALLEL_WORKERS; workerNumber = workerNumber + 1) {
+    workers.push(worker(workerNumber));
+  }
+  await Promise.all(workers);
+
+  console.log("\n== summary");
+  for (const group of groups) {
+    const run = finishedRuns.find((finishedRun) => finishedRun.group === group);
+    const summaryStart = run.output.lastIndexOf("\n== summary\n");
+    if (summaryStart === -1) {
+      console.log(`FAIL group ${group}: exited with code ${run.exitCode} before its summary`);
+    } else {
+      process.stdout.write(run.output.slice(summaryStart + "\n== summary\n".length));
+    }
+  }
+  process.exitCode = finishedRuns.every((run) => run.exitCode === 0) ? 0 : 1;
 }
-process.exitCode = testResults.every((result) => result.passed) ? 0 : 1;
+
+const ALL_GROUPS = ["connect", "reddit", "x", "youtube", "transcripts", "judgments", "consent", "capture"];
+const requestedGroups = process.argv.slice(2);
+// Against a real server the groups share one account and change its settings, so they run one at a time.
+if (requestedGroups.length === 0 && usingMockServer) {
+  await runGroupsInParallel(ALL_GROUPS);
+} else {
+  const groupsToRun = requestedGroups.length > 0 ? requestedGroups : ALL_GROUPS;
+  const mockServer = usingMockServer ? await startMockServer(MOCK_PORT) : null;
+  console.log("server: " + serverAddress + (usingMockServer ? " (mock)" : ""));
+  try {
+    if (groupsToRun.includes("connect")) {
+      await runTest("0. connect: agreeing opens the site, which connects with no click", testAgreeOpensSiteThatConnects);
+    }
+    if (groupsToRun.includes("x")) {
+      if (pgrepFinds(X_TEST_PROFILE_DIR)) {
+        testResults.push({ name: "4. X", passed: false, error: "the X test profile is open in another Brave window" });
+      } else {
+        await runXGroup();
+      }
+    }
+    if (groupsToRun.includes("reddit")) {
+      await runRedditGroup();
+    }
+    if (groupsToRun.includes("youtube")) {
+      await runYouTubeGroup();
+    }
+    if (groupsToRun.includes("transcripts")) {
+      await runTranscriptsGroup();
+    }
+    if (groupsToRun.includes("judgments")) {
+      await runJudgmentsGroup();
+    }
+    if (groupsToRun.includes("consent")) {
+      await runConsentGroup();
+    }
+    if (groupsToRun.includes("capture")) {
+      await runCaptureGroup();
+    }
+  } finally {
+    if (mockServer !== null) {
+      mockServer.close();
+    }
+  }
+
+  console.log("\n== summary");
+  for (const result of testResults) {
+    console.log((result.passed ? "PASS " : "FAIL ") + result.name + (result.passed ? "" : ": " + result.error));
+  }
+  process.exitCode = testResults.every((result) => result.passed) ? 0 : 1;
+}

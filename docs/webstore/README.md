@@ -1,7 +1,7 @@
 # Chrome Web Store submission kit
 
 Everything the Chrome Web Store Developer Dashboard asks for, checked against the code on
-2026-11-23 at extension version 0.1.1 (`extension/manifest.json`, `background.js`, `consent/`, `content/`,
+2026-11-25 at extension version 0.2.0 (`extension/manifest.json`, `background.js`, `consent/`, `content/`,
 `sites/`, `popup/`, `options/`, and the backend's `classification/` app) and against the live Privacy
 Policy at https://brainrotindex.com/privacy. Copy each block into the
 field of the same name. Brave installs extensions from the Chrome Web Store, so one listing covers
@@ -20,19 +20,19 @@ The dashboard's own wording wins where it differs from this file.
 
 | File | Use |
 | --- | --- |
-| `screenshot-1-1280x800.png` to `screenshot-5-1280x800.png` | The five screenshots, in this order |
+| `screenshot-1-1280x800.png` to `screenshot-4-1280x800.png` | The four screenshots, in this order |
 | `promo-tile-440x280.png` | Small promo tile |
 | `../../extension/icons/icon128.png` | Store icon (also inside the zip) |
 
 The zip is not committed (`dist/` is ignored). Build it from a clean checkout of the commit being
-submitted: `node scripts/package-extension.mjs` writes `dist/brainrot-index-extension-0.1.1.zip`.
+submitted: `node scripts/package-extension.mjs` writes `dist/brainrot-index-extension-0.2.0.zip`.
 Upload that zip, never a zip of the `extension/` folder made by hand: the script takes the
 development addresses (localhost, 127.0.0.1, brainrot.jacob-waters.com) out of the manifest, so the
 published copy asks for access to https://brainrotindex.com only.
 
-The screenshots are redrawn by `node extension-tests/screenshot-webstore.mjs` and the promo tile by
-`node extension-tests/make-icons.mjs`. The screenshots show the real extension on stand-in pages with
-made-up posts, which each picture says in a footnote.
+The screenshots are text slides made by the owner; the promo tile is drawn by
+`node extension-tests/make-icons.mjs`. (`extension-tests/screenshot-webstore.mjs` draws the earlier
+pictures of the extension on stand-in pages, which are no longer used.)
 
 ## Steps for the owner
 
@@ -42,7 +42,7 @@ made-up posts, which each picture says in a footnote.
    shows the current amount).
 2. **Account tab.** Set the publisher name (`BrainRot Index`) and a contact email that is read, and
    verify it from the email Google sends. Declare **trader**
-   status: BrainRot Index is sold for $5 a month, so it is a trader under EU law, and Google then
+   status: BrainRot Index is sold for $4.99 a month, so it is a trader under EU law, and Google then
    asks for an address and phone number that it shows to people in the EU.
 3. **Optional: verify the domain.** Verify brainrotindex.com in Google Search Console with the same
    Google account. It can then be chosen as the listing's Official URL and shows as verified.
@@ -64,8 +64,9 @@ made-up posts, which each picture says in a footnote.
    through the store.
 9. **Submit for review.** Leave "publish automatically after approval" on or off as you like.
    Review usually takes from a day to a few weeks; extensions that read site content take longer.
-10. **After approval.** Install it from the unlisted link in a fresh Brave profile, sign in, press
-    Connect extension on the dashboard and check that a feed is filtered. Then switch Distribution to
+10. **After approval.** Install it from the unlisted link in a fresh Brave profile, press Agree and
+    continue, sign in on the tab that opens (the extension connects by itself) and check that a feed
+    is filtered. Then switch Distribution to
     **Public** (a change of visibility for the same package; if the dashboard sends it to review
     again, it is the package already approved). To make the site
     offer the store button, put the listing's address in `.env` as `WEBSTORE_URL=` and redeploy.
@@ -85,32 +86,15 @@ made-up posts, which each picture says in a footnote.
 
 **Description**
 
-    The algorithm that works for you.
+    Social Media companies spend billions to make their products more addictive and to optimize profits at the cost of you and your children's health.
 
-    Your feeds are tuned to keep you scrolling. BrainRot Index is tuned by you. It reads your social feeds with AI as you scroll and clears out the brainrot, engagement bait and rude posts before you reach it. You choose what goes.
+    BrainRot Index fixes that.
 
-    HOW IT WORKS
-    As posts, replies and videos come onto your screen, the extension sends them to the BrainRot Index service, where AI models rate each one from its text, images and video. Posts your filters flag are folded into a single line that says they were hidden; hover it to see which filter caught them and the ratings behind its score. One click shows any of them.
+    People rely on Social Media for important aspects of their lives and cold quitting simply isn't feasible despite serious consequences for mental health. BrainRot Index offers a powerful middle ground: all the good stuff without the bad stuff.
 
-    FILTERS YOU CONTROL
-    Four filters are built in:
-    - Brainrot: attention sinks with nothing inside.
-    - Engagement bait: posts made to farm replies, likes and shares.
-    - Low Effort: inane, generic or mass-produced posts that give you nothing.
-    - Rude or Toxic: posts written to insult, demean or pour contempt on people or groups.
-    On your dashboard you turn each filter on or off and set how strict it is. The plugin store has more filters. Child mode keeps posts hidden until they have been checked and does not let filtered posts be revealed.
+    BrainRot Index works by creating filters designed to identify and block harmful content such as Brainrot, Rude & Toxic content, and fake AI content.
 
-    TEACH IT
-    Thumbs up or down on any post tells the filters whether they got it right, and you can pick which filter should have caught it. Right-click a post to report one they missed. The toolbar button turns filtering off and on and shows how many posts were checked.
-
-    GETTING STARTED
-    1. Create an account at brainrotindex.com. The first 7 days are free and need no card.
-    2. Add this extension.
-    3. Open your dashboard and press Connect extension.
-    An account is required. After the free trial BrainRot Index costs $5 a month, paid on the website.
-
-    PRIVACY
-    Before it sends anything, the extension asks for your agreement. To decide which posts to hide, BrainRot Index sends the posts you see on supported sites to our server, where our service judges them with AI from our service providers. We don't sell your data. Details: https://brainrotindex.com/privacy
+    Protect yourself and make the experience of browsing social media more enjoyable. Start your free trial today and protect your health for $4.99/mo.
 
 **Category**: Lifestyle, Well-being. (Second choice: Social Networking.)
 
@@ -127,31 +111,24 @@ made-up posts, which each picture says in a footnote.
 | Asset | Size | Required | File |
 | --- | --- | --- | --- |
 | Store icon | 128 x 128 PNG, artwork 96 x 96 with 16 px transparent margin | yes | `extension/icons/icon128.png` (inside the zip) |
-| Screenshots | 1280 x 800, square corners, full bleed; 1 to 5 | at least 1 | `screenshot-1` to `screenshot-5`, upload in order |
+| Screenshots | 1280 x 800, square corners, full bleed; 1 to 5 | at least 1 | `screenshot-1` to `screenshot-4`, upload in order |
 | Small promo tile | 440 x 280 | no, but listings without it rank lower | `promo-tile-440x280.png` |
 | Marquee promo tile | 1400 x 560 | only for being featured | not made |
 
-What each screenshot shows, with its caption:
+What each screenshot shows:
 
-1. "The algorithm that works for you": a dark feed with a hidden post's line hovered, showing the
-   filter, the ratings behind its score and the score ("Engagement bait · reply hook 8, emptiness
-   6.5 · 84/100"), Show, and thumbs. Caption: posts your filters flag are folded into one line; hover
-   it to see which filter caught the post and why.
-2. "Every post and reply, checked as you scroll": a light thread with a hidden post and a hidden
-   reply. Caption: AI reads each post with its text and images, replies are checked too, and one
-   click shows anything filtered.
-3. "Videos too": a dark video grid with hidden videos. Caption: suggested and searched videos are
-   judged too; AI watches the video itself, not only its title.
-4. "You choose what goes": the dashboard's My plugins card with the four default filters (Brainrot,
-   Engagement bait, Low Effort, Rude or Toxic) and their strictness sliders. Caption: turn each
-   filter on or off and set how strict it is; the plugin store has more filters.
-5. "Tell it when it is wrong": the thumbs box with its label picker ("Should be" / "Or blocked as",
-   Low Effort picked) and the toolbar popup. Caption: thumbs teach the filters, you can pick which
-   filter should have caught a post, and the toolbar button switches filtering off and shows what
-   was checked.
+1. "Social media is built to be addictive.": companies spend billions to keep you scrolling, at the
+   cost of your health and your children's.
+2. "All the good stuff without the bad stuff.": quitting cold isn't realistic; BrainRot Index is the
+   middle ground.
+3. "Filters that block harmful content.": three hidden-post lines (Brainrot, Rude & Toxic, Fake AI
+   content), each with Show and thumbs; Brainrot, Rude & Toxic posts and fake AI content are hidden
+   before you see them.
+4. "Start your free trial today. $4.99 /mo": the toolbar popup, connected, with the on/off switch, the
+   session counts and the feedback box; protect your health and enjoy social media again. The popup
+   in this picture shows version 0.1.1 at the bottom.
 
-The consent screen is not among them: the store takes five screenshots at most, and the five above
-show what the extension does. Reviewers see the consent screen when they install it (Test
+The consent screen is not among them. Reviewers see it when they install the extension (Test
 instructions, step 1).
 
 ## Privacy tab
@@ -165,10 +142,7 @@ instructions, step 1).
 | Permission | Justification |
 | --- | --- |
 | `storage` | Stores the user's settings, account connection and consent choice, and remembers results for posts already checked in this browser session. |
-| `contextMenus` | Adds a right-click menu item on supported sites to report a post the filters missed. |
-| `activeTab` | Attaches the current tab's address to feedback the user sends from the toolbar popup. |
-| `scripting` | After install, adds the connect script to brainrotindex.com tabs that are already open. |
-| Host permission `https://brainrotindex.com/*` | The extension's own service: sends posts to be classified, reads the user's filter settings, sends feedback and thumbs, and connects the account. |
+| Host permission `https://brainrotindex.com/*` | The extension's own service: sends posts to be classified, reads the user's filter settings, sends feedback and thumbs. A script on brainrotindex.com connects the extension to the account the user is signed in to there. |
 | Content scripts on `https://x.com/*`, `https://www.reddit.com/*`, `https://www.youtube.com/*` | Read the posts shown in the feed and hide the ones flagged. |
 
 **Remote code**: "No, I am not using remote code." All JavaScript is in the package; the service only
@@ -181,8 +155,8 @@ returns JSON data.
 - **Personally identifiable information**: yes. Post authors' usernames, and posts are stored with
   the user's account, which has their email address.
 - **Authentication information**: yes. The account connection key.
-- **Web history**: yes. The addresses of the posts and videos seen on supported sites, and the
-  current tab's address on feedback sent from the popup.
+- **Web history**: yes. The addresses of the posts and videos seen on supported sites, and, on
+  feedback sent from the popup while a supported site is in front, that page's address.
 - **User activity**: no.
 - **Location, health, financial and payment, personal communications**: no.
 
@@ -193,7 +167,7 @@ returns JSON data.
 - I do not use or transfer user data to determine creditworthiness or for lending purposes.
 
 Not for the dashboard: Limited Use allows a person on our side to read an individual stored post only
-with the user's consent (such as a post they thumb or report), for security or abuse, or when the law
+with the user's consent (such as a post they thumb), for security or abuse, or when the law
 requires it. Transfer to service providers is allowed when it serves the single purpose: post text
 and images go to OpenRouter for Google Gemini models to rate, and a post's video goes to Google's
 Gemini API to be watched (YouTube videos by their address; the opening seconds of Reddit and X
@@ -205,12 +179,12 @@ videos, which the server downloads). The Privacy Policy names these as "AI provi
 
 Fill in the reviewer account from step 4 (`grant_comp` gives it permanent free access, so the
 trial cannot run out during review), and paste this into the additional instructions box, which
-takes 500 characters at most (this is 478). Reddit and YouTube work without signing in to
+takes 500 characters at most (this is 464). Reddit and YouTube work without signing in to
 those sites, so the reviewer needs no account there; X does need one, so it is not mentioned.
 
     Account has permanent free access; no payment.
     1. Install. A BrainRot Index tab opens: press "Agree and continue". Nothing is sent before that.
-    2. Sign in at https://brainrotindex.com/login, open /dashboard, press "Connect extension".
+    2. A brainrotindex.com tab opens: sign in. The extension connects by itself.
     3. Open https://www.reddit.com/r/popular/ or https://www.youtube.com/ (no sign-in needed). Flagged posts become a line reading "Hidden"; hovering it shows the filter and its score, and "Show" reveals the post.
     4. Toolbar button: on/off switch.
 
@@ -222,7 +196,7 @@ Ordered from most to least likely to cause trouble.
    scrolls past to a server, which is the data Google's User Data policy watches most. It passes if
    the listing, the Privacy tab and the Privacy Policy agree, which they do on what is sent and why, and if the user
    agrees in the product first. The extension's consent screen (`extension/consent/`) opens on
-   install and again on Connect extension, says in one paragraph what is sent and why, links the
+   install (and when the site hands it a key before the user agreed), says in one paragraph what is sent and why, links the
    Privacy Policy, and has "Agree and continue" and "Not now". Nothing goes to the server before
    the user agrees; "Not now" leaves the extension doing nothing; turning the extension off or
    removing it stops it. The server records each agreement with the wording's version
@@ -251,12 +225,10 @@ Ordered from most to least likely to cause trouble.
 7. **Child mode.** Risk: low. The listing mentions it, but neither the listing nor the site says the
    product is made for children, and the Privacy Policy says children under 13 may not have their own
    account. Do not tick anything that marks the item as designed for children.
-8. **`activeTab` and `scripting`.** Risk: low. Each has one narrow use (above); reviewers mainly
-   reject permissions that are never used, and both are used.
-
 Already fine: no remote code, no `eval` or markup injection (everything is built element by
-element), no obfuscation or minification, Manifest V3, no `<all_urls>`, no `tabs` or `webRequest`
-permission.
+element), no obfuscation or minification, Manifest V3, no `<all_urls>`, and no permission besides
+`storage` and the host access above (no `tabs`, `activeTab`, `scripting`, `contextMenus` or
+`webRequest`).
 
 ## Elsewhere, not part of the submission
 

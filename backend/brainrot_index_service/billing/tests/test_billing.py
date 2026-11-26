@@ -352,11 +352,13 @@ class SetupStripeTests(TestCase):
         with fake_stripe(client):
             call_command('setup_stripe', stderr=StringIO())
         client.v1.prices.create.assert_not_called()
+        client.v1.prices.update.assert_not_called()
+        client.v1.products.update.assert_not_called()
         client.v1.billing_portal.configurations.create.assert_not_called()
 
     def test_new_amount_replaces_the_price_and_moves_subscriptions_without_proration(self):
-        old_price = {'id': 'price_old', 'product': 'prod_main', 'unit_amount': 500}
-        new_price = {'id': 'price_current', 'product': 'prod_main', 'unit_amount': 499}
+        old_price = {'id': 'price_old', 'product': 'prod_main', 'unit_amount': 500, 'active': True}
+        new_price = {'id': 'price_current', 'product': 'prod_main', 'unit_amount': 499, 'active': True}
         client = MagicMock()
         client.v1.prices.list.side_effect = [
             {'data': [old_price]},
@@ -379,6 +381,7 @@ class SetupStripeTests(TestCase):
         self.assertEqual(created['product'], 'prod_main')
         self.assertEqual(created['lookup_key'], 'brainrot_index_monthly')
         self.assertTrue(created['transfer_lookup_key'])
+        client.v1.products.update.assert_called_once_with('prod_main', {'default_price': 'price_current'})
         client.v1.prices.update.assert_called_once_with('price_old', {'active': False})
         self.assertEqual(client.v1.subscriptions.list.call_args_list[1].args[0]['starting_after'], 'sub_1')
         self.assertEqual(client.v1.subscriptions.update.call_args_list[0].args, ('sub_1', {

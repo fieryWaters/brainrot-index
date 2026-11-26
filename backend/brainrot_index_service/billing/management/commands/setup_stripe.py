@@ -5,9 +5,10 @@ Without options: the "Brainrot Index" product with its $4.99/month price
 (found by its lookup key) and this site's Customer Portal configuration.
 
 Stripe prices cannot be changed. When PRICE_CENTS differs from the amount of
-the price holding the lookup key, a new price is made on the same product, the
-lookup key moves to it and the old price is deactivated. Every subscription on
-another price of the product is then moved to the current one, with no
+the price holding the lookup key, a new price is made on the same product and
+the lookup key moves to it. Every run then makes the price holding the lookup
+key the product's default price, deactivates the product's other prices, and
+moves every subscription on another price of the product to it, with no
 proration: nothing is charged or credited now, and the next renewal is at the
 new amount.
 
@@ -93,7 +94,12 @@ class Command(BaseCommand):
             self.say(f'Price {PRICE_LOOKUP_KEY} exists: {price["id"]}')
         else:
             price = self.replace_price(client, price)
-        self.move_subscriptions_to(client, price)
+        other_prices = []
+        for product_price in client.v1.prices.list({'product': price['product'], 'limit': 100})['data']:
+            if product_price['id'] != price['id']:
+                other_prices.append(product_price)
+        self.deactivate_other_prices(client, price, other_prices)
+        self.move_subscriptions_to(client, price, other_prices)
 
     def create_first_price(self, client):
         price = client.v1.prices.create({
@@ -114,20 +120,24 @@ class Command(BaseCommand):
             'lookup_key': PRICE_LOOKUP_KEY,
             'transfer_lookup_key': True,
         })
-        client.v1.prices.update(old_price['id'], {'active': False})
-        self.say(f'Created price {price["id"]} at {PRICE_CENTS} cents, moved {PRICE_LOOKUP_KEY} to it '
-                 f'and deactivated {old_price["id"]} ({old_price["unit_amount"]} cents)')
+        self.say(f'Created price {price["id"]} at {PRICE_CENTS} cents and moved {PRICE_LOOKUP_KEY} to it '
+                 f'from {old_price["id"]} ({old_price["unit_amount"]} cents)')
         return price
 
-    def move_subscriptions_to(self, client, price):
-        other_price_ids = []
-        for product_price in client.v1.prices.list({'product': price['product'], 'limit': 100})['data']:
-            if product_price['id'] != price['id']:
-                other_price_ids.append(product_price['id'])
+    # Stripe refuses to deactivate the product's default price, so the default moves first.
+    def deactivate_other_prices(self, client, price, other_prices):
+        active_other_prices = [other_price for other_price in other_prices if other_price['active']]
+        if not active_other_prices:
+            return
+        client.v1.products.update(price['product'], {'default_price': price['id']})
+        for other_price in active_other_prices:
+            client.v1.prices.update(other_price['id'], {'active': False})
+            self.say(f'Deactivated price {other_price["id"]} ({other_price["unit_amount"]} cents)')
 
+    def move_subscriptions_to(self, client, price, other_prices):
         moved_count = 0
-        for other_price_id in other_price_ids:
-            for subscription in subscriptions_on_price(client, other_price_id):
+        for other_price in other_prices:
+            for subscription in subscriptions_on_price(client, other_price['id']):
                 item = subscription['items']['data'][0]
                 client.v1.subscriptions.update(subscription['id'], {
                     'items': [{'id': item['id'], 'price': price['id']}],

@@ -48,7 +48,7 @@ without a subscription; `billing.access.account_has_access` decides it. See
 | `GET /api/plugins/` | session | `{plugins: [{slug, name, description, enabled, threshold, flagged_action}]}` |
 | `PATCH /api/plugins/<slug>/` | session | change `enabled`, `threshold`, `flagged_action` |
 | `GET /api/billing/` | session | trial days left, subscription status, `has_access` |
-| `POST /api/billing/checkout/` | session | a Stripe Checkout address for the $5/month plan |
+| `POST /api/billing/checkout/` | session | a Stripe Checkout address for the $4.99/month plan |
 | `POST /api/billing/checkout/reconcile/` | session | `{session_id}`: reads a finished Checkout from Stripe |
 | `POST /api/billing/portal/` | session | a Stripe Customer Portal address |
 | `POST /api/stripe/webhook/` | Stripe signature | subscription and invoice events |

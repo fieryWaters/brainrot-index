@@ -1,8 +1,15 @@
 """Creates in Stripe what the site needs, so nothing is set up by hand in the
 Stripe dashboard. Safe to run again: whatever exists already is left alone.
 
-Without options: the "Brainrot Index" product with its $5/month price (found
-by its lookup key) and this site's Customer Portal configuration.
+Without options: the "Brainrot Index" product with its $4.99/month price
+(found by its lookup key) and this site's Customer Portal configuration.
+
+Stripe prices cannot be changed. When PRICE_CENTS differs from the amount of
+the price holding the lookup key, a new price is made on the same product, the
+lookup key moves to it and the old price is deactivated. Every subscription on
+another price of the product is then moved to the current one, with no
+proration: nothing is charged or credited now, and the next renewal is at the
+new amount.
 
 With --webhook-url: also the webhook endpoint. Stripe shows its signing secret
 only once, when it is created, and it is the only thing written to standard
@@ -32,6 +39,18 @@ from billing.stripe_sync import (
 from billing.views import INVOICE_EVENTS, SUBSCRIPTION_EVENTS
 
 WEBHOOK_EVENTS = sorted({'checkout.session.completed'} | SUBSCRIPTION_EVENTS | INVOICE_EVENTS)
+
+
+def subscriptions_on_price(client, price_id):
+    """Every subscription on the price that is not canceled, read page by page."""
+    subscriptions = []
+    params = {'price': price_id, 'limit': 100}
+    while True:
+        page = client.v1.subscriptions.list(params)
+        subscriptions.extend(page['data'])
+        if not page['has_more']:
+            return subscriptions
+        params = {**params, 'starting_after': page['data'][-1]['id']}
 
 
 class Command(BaseCommand):
@@ -67,9 +86,16 @@ class Command(BaseCommand):
 
     def create_price(self, client):
         price = monthly_price()
-        if price is not None:
-            self.say(f'Price {PRICE_LOOKUP_KEY} exists: {price["id"]}')
+        if price is None:
+            self.create_first_price(client)
             return
+        if price['unit_amount'] == PRICE_CENTS:
+            self.say(f'Price {PRICE_LOOKUP_KEY} exists: {price["id"]}')
+        else:
+            price = self.replace_price(client, price)
+        self.move_subscriptions_to(client, price)
+
+    def create_first_price(self, client):
         price = client.v1.prices.create({
             'currency': 'usd',
             'unit_amount': PRICE_CENTS,
@@ -78,6 +104,37 @@ class Command(BaseCommand):
             'product_data': {'name': PRODUCT_NAME, 'statement_descriptor': STATEMENT_DESCRIPTOR},
         })
         self.say(f'Created product {price["product"]} and price {PRICE_LOOKUP_KEY}: {price["id"]}')
+
+    def replace_price(self, client, old_price):
+        price = client.v1.prices.create({
+            'currency': 'usd',
+            'unit_amount': PRICE_CENTS,
+            'recurring': {'interval': 'month'},
+            'product': old_price['product'],
+            'lookup_key': PRICE_LOOKUP_KEY,
+            'transfer_lookup_key': True,
+        })
+        client.v1.prices.update(old_price['id'], {'active': False})
+        self.say(f'Created price {price["id"]} at {PRICE_CENTS} cents, moved {PRICE_LOOKUP_KEY} to it '
+                 f'and deactivated {old_price["id"]} ({old_price["unit_amount"]} cents)')
+        return price
+
+    def move_subscriptions_to(self, client, price):
+        other_price_ids = []
+        for product_price in client.v1.prices.list({'product': price['product'], 'limit': 100})['data']:
+            if product_price['id'] != price['id']:
+                other_price_ids.append(product_price['id'])
+
+        moved_count = 0
+        for other_price_id in other_price_ids:
+            for subscription in subscriptions_on_price(client, other_price_id):
+                item = subscription['items']['data'][0]
+                client.v1.subscriptions.update(subscription['id'], {
+                    'items': [{'id': item['id'], 'price': price['id']}],
+                    'proration_behavior': 'none',
+                })
+                moved_count = moved_count + 1
+        self.say(f'Moved {moved_count} subscriptions to price {price["id"]}')
 
     def create_portal_configuration(self, client):
         configuration_id = portal_configuration_id()

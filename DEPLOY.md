@@ -150,7 +150,7 @@ to the sender's address. A failed email is logged and never fails the message.
 Every account gets a 7-day free trial when it is created, with no card. When
 the trial ends, `/api/extension/config/` and `/api/classify/` answer 402 and
 the dashboard and extension popup say "Your free trial has ended. Subscribe to
-continue." Subscribing goes through Stripe Checkout ($5/month); the dashboard's
+continue." Subscribing goes through Stripe Checkout ($4.99/month); the dashboard's
 Manage subscription button opens the Stripe Customer Portal (cancel, change card,
 invoices). A cancellation keeps access until the end of the paid month.
 
@@ -170,10 +170,16 @@ having subscribed (their 7-day trial still applies if it has not run out).
     docker compose exec backend python manage.py setup_stripe --live   # live key
 
 It creates the "Brainrot Index" product (card statements read
-"BRAINROT INDEX") with its $5/month price (lookup key
+"BRAINROT INDEX") with its $4.99/month price (lookup key
 `brainrot_index_monthly`) and this site's Customer Portal configuration. It is
 safe to run again; whatever exists is left alone. With a live key it refuses
 to run without `--live`, and `--live` with a test key is refused too.
+
+To change the price, change `PRICE_CENTS` in `billing/stripe_sync.py`, deploy
+and run `setup_stripe` again. Stripe prices cannot be edited, so it makes a new
+price on the product, moves the lookup key to it, deactivates the old price and
+moves every subscription to the new one with no proration: nothing is charged
+now, and each next renewal is at the new amount. It says how many it moved.
 
 Until the webhook exists, the site still works: the page Checkout returns to
 asks the backend to read the finished payment from Stripe, the dashboard reads

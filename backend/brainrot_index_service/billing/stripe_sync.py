@@ -13,7 +13,7 @@ PRODUCT_NAME = 'Brainrot Index'
 # What card statements show for the charge.
 STATEMENT_DESCRIPTOR = 'BRAINROT INDEX'
 PRICE_LOOKUP_KEY = 'brainrot_index_monthly'
-PRICE_CENTS = 500
+PRICE_CENTS = 499
 
 # Tags the Customer Portal configuration this site creates, so it is found
 # again even in a Stripe account shared with another site.
@@ -38,7 +38,7 @@ def stripe_client():
 
 
 def monthly_price():
-    """The $5/month price, or None before setup_stripe has run."""
+    """The monthly price holding the lookup key, or None before setup_stripe has run."""
     prices = stripe_client().v1.prices.list({'lookup_keys': [PRICE_LOOKUP_KEY], 'active': True, 'limit': 1})
     if not prices['data']:
         return None

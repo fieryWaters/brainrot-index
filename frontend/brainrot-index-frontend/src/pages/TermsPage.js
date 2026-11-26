@@ -8,7 +8,7 @@
 
 import { mountLegalPage } from './LegalPage.js'
 
-export const TERMS_EFFECTIVE_DATE = 'November 16, 2026'
+export const TERMS_EFFECTIVE_DATE = 'November 25, 2026'
 
 const TERMS_HTML = `
 <p>These terms are the agreement between you and BrainRot Index ("we", "us") for using the BrainRot Index website at
@@ -34,7 +34,7 @@ sites make can stop the extension from working until we update it.</p>
 <h2>3. Free trial, subscription and cancellation</h2>
 <ul>
   <li>A new account gets a free trial of 7 days. No payment card is needed to start it. When the trial ends, filtering stops until you subscribe.</li>
-  <li>The subscription costs $5 per month (plus any tax that applies), charged in advance each month by our payment processor, Stripe,
+  <li>The subscription costs $4.99 per month (plus any tax that applies), charged in advance each month by our payment processor, Stripe,
   until you cancel. If you subscribe during your trial, the first charge comes when the trial would have ended.</li>
   <li>You can cancel at any time from your dashboard (Manage subscription). Filtering keeps working until the end of the month you have paid
   for, and you are not charged again. We do not refund partial months, except where the law requires it.</li>

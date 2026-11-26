@@ -16,7 +16,7 @@ afterEach(() => {
 describe('BillingCard', () => {
   it('shows trial days left and a subscribe button', () => {
     renderElement(createBillingCard(TRIAL))
-    expect(screen.getByText('Free trial: 5 days left. Then $5 per month.')).toBeInTheDocument()
+    expect(screen.getByText('Free trial: 5 days left. Then $4.99 per month.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Subscribe' })).toBeInTheDocument()
   })
 

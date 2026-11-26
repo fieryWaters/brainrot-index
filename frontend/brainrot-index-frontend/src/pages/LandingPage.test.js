@@ -37,6 +37,6 @@ describe('Legal pages', () => {
   it('state the price and how to cancel', () => {
     renderElement(mountTermsPage().el)
     expect(screen.getByRole('heading', { name: 'Terms of Service' })).toBeInTheDocument()
-    expect(screen.getByText(/costs \$5 per month/)).toBeInTheDocument()
+    expect(screen.getByText(/costs \$4\.99 per month/)).toBeInTheDocument()
   })
 })

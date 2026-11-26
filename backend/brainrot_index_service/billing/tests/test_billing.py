@@ -340,13 +340,13 @@ class SetupStripeTests(TestCase):
         with fake_stripe(client):
             call_command('setup_stripe', stderr=StringIO())
         self.assertEqual(client.v1.prices.create.call_args.args[0]['lookup_key'], 'brainrot_index_monthly')
-        self.assertEqual(client.v1.prices.create.call_args.args[0]['unit_amount'], 500)
+        self.assertEqual(client.v1.prices.create.call_args.args[0]['unit_amount'], 499)
         self.assertEqual(
             client.v1.prices.create.call_args.args[0]['product_data']['statement_descriptor'], 'BRAINROT INDEX')
         client.v1.billing_portal.configurations.create.assert_called_once()
 
         client.reset_mock()
-        client.v1.prices.list.return_value = {'data': [{'id': 'price_new'}]}
+        client.v1.prices.list.return_value = {'data': [{'id': 'price_new', 'product': 'prod_new', 'unit_amount': 499}]}
         client.v1.billing_portal.configurations.list.return_value = {
             'data': [{'id': 'bpc_new', 'metadata': {'site': 'brainrot_index'}}]}
         with fake_stripe(client):
@@ -354,9 +354,43 @@ class SetupStripeTests(TestCase):
         client.v1.prices.create.assert_not_called()
         client.v1.billing_portal.configurations.create.assert_not_called()
 
+    def test_new_amount_replaces_the_price_and_moves_subscriptions_without_proration(self):
+        old_price = {'id': 'price_old', 'product': 'prod_main', 'unit_amount': 500}
+        new_price = {'id': 'price_current', 'product': 'prod_main', 'unit_amount': 499}
+        client = MagicMock()
+        client.v1.prices.list.side_effect = [
+            {'data': [old_price]},
+            {'data': [new_price, old_price]},
+        ]
+        client.v1.prices.create.return_value = new_price
+        client.v1.subscriptions.list.side_effect = [
+            {'data': [{'id': 'sub_1', 'items': {'data': [{'id': 'si_1'}]}}], 'has_more': True},
+            {'data': [{'id': 'sub_2', 'items': {'data': [{'id': 'si_2'}]}}], 'has_more': False},
+        ]
+        client.v1.billing_portal.configurations.list.return_value = {
+            'data': [{'id': 'bpc_new', 'metadata': {'site': 'brainrot_index'}}]}
+        messages = StringIO()
+
+        with fake_stripe(client):
+            call_command('setup_stripe', stderr=messages)
+
+        created = client.v1.prices.create.call_args.args[0]
+        self.assertEqual(created['unit_amount'], 499)
+        self.assertEqual(created['product'], 'prod_main')
+        self.assertEqual(created['lookup_key'], 'brainrot_index_monthly')
+        self.assertTrue(created['transfer_lookup_key'])
+        client.v1.prices.update.assert_called_once_with('price_old', {'active': False})
+        self.assertEqual(client.v1.subscriptions.list.call_args_list[1].args[0]['starting_after'], 'sub_1')
+        self.assertEqual(client.v1.subscriptions.update.call_args_list[0].args, ('sub_1', {
+            'items': [{'id': 'si_1', 'price': 'price_current'}],
+            'proration_behavior': 'none',
+        }))
+        self.assertEqual(client.v1.subscriptions.update.call_count, 2)
+        self.assertIn('Moved 2 subscriptions', messages.getvalue())
+
     def test_webhook_secret_goes_only_to_standard_output(self):
         client = MagicMock()
-        client.v1.prices.list.return_value = {'data': [{'id': 'price_new'}]}
+        client.v1.prices.list.return_value = {'data': [{'id': 'price_new', 'product': 'prod_new', 'unit_amount': 499}]}
         client.v1.billing_portal.configurations.list.return_value = {
             'data': [{'id': 'bpc_new', 'metadata': {'site': 'brainrot_index'}}]}
         client.v1.webhook_endpoints.list.return_value = {'data': []}
@@ -373,7 +407,7 @@ class SetupStripeTests(TestCase):
     @override_settings(STRIPE_SECRET_KEY='sk_live_fake', STRIPE_LIVE_MODE=True)
     def test_live_key_needs_the_live_flag(self):
         client = MagicMock()
-        client.v1.prices.list.return_value = {'data': [{'id': 'price_live'}]}
+        client.v1.prices.list.return_value = {'data': [{'id': 'price_live', 'product': 'prod_live', 'unit_amount': 499}]}
         client.v1.billing_portal.configurations.list.return_value = {
             'data': [{'id': 'bpc_live', 'metadata': {'site': 'brainrot_index'}}]}
 
@@ -385,7 +419,7 @@ class SetupStripeTests(TestCase):
             messages = StringIO()
             call_command('setup_stripe', live=True, stderr=messages)
         self.assertIn('live mode', messages.getvalue())
-        client.v1.prices.list.assert_called_once()
+        client.v1.billing_portal.configurations.list.assert_called_once()
 
     def test_live_flag_with_a_test_key_is_refused(self):
         with self.assertRaises(CommandError):

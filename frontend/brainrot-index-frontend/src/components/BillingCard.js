@@ -4,7 +4,7 @@
 import { apiFetch } from '../lib/api.js'
 import { el } from '../lib/dom.js'
 
-export const PRICE_TEXT = '$5 per month'
+export const PRICE_TEXT = '$4.99 per month'
 export const TRIAL_ENDED_TEXT = 'Your free trial has ended. Subscribe to continue.'
 
 const CARD_CLASS = 'rounded-2xl border border-white/10 bg-black/30 p-6 mb-6'

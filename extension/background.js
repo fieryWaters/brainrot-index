@@ -7,7 +7,7 @@
 importScripts("extension-api.js");
 
 // The server a new install talks to. Installs that already have a serverAddress keep it (the options
-// page changes it); the private address is https://brainrot.jacob-waters.com.
+// page changes it).
 const DEFAULT_SERVER_ADDRESS = "https://brainrotindex.com";
 // The date the consent screen's wording last changed. A reader who agreed to an older wording is
 // asked again, and nothing is sent until they agree to this one.
